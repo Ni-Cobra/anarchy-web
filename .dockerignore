@@ -6,3 +6,4 @@ Dockerfile
 .dockerignore
 README.md
 *.log
+src/gen

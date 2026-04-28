@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package anarchy.v1;
+
+// Every WS frame is exactly one ClientMessage or ServerMessage,
+// encoded as binary protobuf. One decode path per side.
+
+message ClientMessage {
+  uint64 seq = 1;
+  oneof payload {
+    Hello hello = 10;
+    Ping ping = 11;
+    InputState input = 20;
+  }
+}
+
+message ServerMessage {
+  uint64 seq = 1;
+  uint64 ack_seq = 2;
+  oneof payload {
+    Welcome welcome = 10;
+    Pong pong = 11;
+    InputEcho input_echo = 20;
+  }
+}
+
+message Hello {
+  string client_version = 1;
+}
+
+message Welcome {
+  string server_version = 1;
+  uint32 tick_rate_hz = 2;
+}
+
+message Ping {
+  uint64 client_time_ms = 1;
+}
+
+message Pong {
+  uint64 client_time_ms = 1;
+  uint64 server_time_ms = 2;
+}
+
+message InputState {
+  uint32 buttons = 1;
+  uint64 client_time_ms = 2;
+}
+
+enum Button {
+  BUTTON_UNSPECIFIED = 0;
+  BUTTON_UP = 1;
+  BUTTON_DOWN = 2;
+  BUTTON_LEFT = 4;
+  BUTTON_RIGHT = 8;
+}
+
+message InputEcho {
+  uint32 buttons = 1;
+}

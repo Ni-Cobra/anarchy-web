@@ -1,4 +1,14 @@
 import * as THREE from "three";
+import { connect } from "./net.js";
+import { installInput } from "./input.js";
+
+const conn = connect("ws://localhost:8080/ws", (msg) => {
+  console.log("[recv]", msg.toJSON());
+});
+
+installInput((buttons, clientTimeMs) => {
+  conn.send({ input: { buttons, clientTimeMs } });
+});
 
 const scene = new THREE.Scene();
 

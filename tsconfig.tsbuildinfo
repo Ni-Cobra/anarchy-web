@@ -1,1 +1,1 @@
-{"root":["./src/main.ts"],"version":"5.9.3"}
+{"root":["./src/input.ts","./src/main.ts","./src/net.ts","./src/gen/anarchy.d.ts"],"version":"5.9.3"}
