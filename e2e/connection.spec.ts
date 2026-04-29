@@ -69,7 +69,7 @@ test("websocket endpoint accepts a connection", async () => {
   ws.close();
 });
 
-test("server sends a ServerWelcome with snapshot fields on connect", async () => {
+test("server sends a ServerWelcome with assigned player id and self in snapshot", async () => {
   const { ws, next } = await openSocket();
 
   const frame = (await next((f) => f.kind === "msg")) as Extract<Frame, { kind: "msg" }>;
@@ -77,15 +77,20 @@ test("server sends a ServerWelcome with snapshot fields on connect", async () =>
     welcome?: {
       serverVersion?: string;
       playerId?: string | number;
-      snapshot?: { players?: unknown[] };
+      snapshot?: { players?: { id?: string | number; x?: number; y?: number }[] };
     };
   };
   expect(msg.welcome).toBeTruthy();
   expect(typeof msg.welcome!.serverVersion).toBe("string");
   expect(msg.welcome!.serverVersion!.length).toBeGreaterThan(0);
-  // playerId and snapshot are placeholders today; the network module fills them
-  // in next. The wire fields must already be present so the client can decode.
-  expect(msg.welcome!.snapshot).toBeDefined();
+
+  const playerId = Number(msg.welcome!.playerId);
+  expect(playerId).toBeGreaterThan(0);
+
+  // Snapshot must contain the joining player so the client view is correct
+  // from frame zero, with no need to wait for the next tick.
+  const players = msg.welcome!.snapshot!.players ?? [];
+  expect(players.some((p) => Number(p.id) === playerId)).toBe(true);
 
   ws.close();
 });
