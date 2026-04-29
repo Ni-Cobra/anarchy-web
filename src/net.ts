@@ -20,7 +20,7 @@ export function connect(url: string, onMessage: ServerHandler): Connection {
     console.log("[net] open", url);
     sendInternal({
       seq: nextSeq(),
-      hello: { clientVersion: "anarchy-web/0.1.0" },
+      hello: { clientVersion: "anarchy-client/0.1.0" },
     });
   });
 
