@@ -8,9 +8,9 @@ package anarchy.v1;
 message ClientMessage {
   uint64 seq = 1;
   oneof payload {
-    Hello hello = 10;
+    ClientHello hello = 10;
     Ping ping = 11;
-    InputState input = 20;
+    ClientAction action = 20;
   }
 }
 
@@ -18,19 +18,24 @@ message ServerMessage {
   uint64 seq = 1;
   uint64 ack_seq = 2;
   oneof payload {
-    Welcome welcome = 10;
+    ServerWelcome welcome = 10;
     Pong pong = 11;
-    InputEcho input_echo = 20;
+    StateUpdate state_update = 20;
+    PlayerDespawned player_despawned = 21;
   }
 }
 
-message Hello {
+message ClientHello {
   string client_version = 1;
 }
 
-message Welcome {
+message ServerWelcome {
   string server_version = 1;
   uint32 tick_rate_hz = 2;
+  // The id the server has assigned to this connection's player.
+  uint64 player_id = 3;
+  // Initial world state so a late joiner is correct from frame zero.
+  WorldSnapshot snapshot = 4;
 }
 
 message Ping {
@@ -42,19 +47,36 @@ message Pong {
   uint64 server_time_ms = 2;
 }
 
-message InputState {
-  uint32 buttons = 1;
-  uint64 client_time_ms = 2;
+// Server-authoritative movement intent. The server alone derives the
+// resulting position; the client never sends coordinates.
+message ClientAction {
+  ActionKind action = 1;
 }
 
-enum Button {
-  BUTTON_UNSPECIFIED = 0;
-  BUTTON_UP = 1;
-  BUTTON_DOWN = 2;
-  BUTTON_LEFT = 4;
-  BUTTON_RIGHT = 8;
+enum ActionKind {
+  ACTION_KIND_UNSPECIFIED = 0;
+  ACTION_KIND_MOVE_NORTH = 1;
+  ACTION_KIND_MOVE_SOUTH = 2;
+  ACTION_KIND_MOVE_EAST = 3;
+  ACTION_KIND_MOVE_WEST = 4;
 }
 
-message InputEcho {
-  uint32 buttons = 1;
+// Periodic full-world broadcast emitted by the server tick loop.
+message StateUpdate {
+  WorldSnapshot snapshot = 1;
+}
+
+message WorldSnapshot {
+  repeated PlayerSnapshot players = 1;
+}
+
+message PlayerSnapshot {
+  uint64 id = 1;
+  sint32 x = 2;
+  sint32 y = 3;
+}
+
+// Emitted when a player leaves the world.
+message PlayerDespawned {
+  uint64 player_id = 1;
 }

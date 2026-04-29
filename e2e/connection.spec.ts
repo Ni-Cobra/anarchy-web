@@ -69,21 +69,28 @@ test("websocket endpoint accepts a connection", async () => {
   ws.close();
 });
 
-test("server sends a Welcome on connect", async () => {
+test("server sends a ServerWelcome with snapshot fields on connect", async () => {
   const { ws, next } = await openSocket();
 
   const frame = (await next((f) => f.kind === "msg")) as Extract<Frame, { kind: "msg" }>;
   const msg = ServerMessage.decode(frame.data).toJSON() as {
-    welcome?: { serverVersion?: string };
+    welcome?: {
+      serverVersion?: string;
+      playerId?: string | number;
+      snapshot?: { players?: unknown[] };
+    };
   };
   expect(msg.welcome).toBeTruthy();
   expect(typeof msg.welcome!.serverVersion).toBe("string");
   expect(msg.welcome!.serverVersion!.length).toBeGreaterThan(0);
+  // playerId and snapshot are placeholders today; the network module fills them
+  // in next. The wire fields must already be present so the client can decode.
+  expect(msg.welcome!.snapshot).toBeDefined();
 
   ws.close();
 });
 
-test("Hello → server roundtrip: connection survives the client handshake", async () => {
+test("Hello → Action → Ping: connection survives a multi-message handshake", async () => {
   const { ws, next, frames } = await openSocket();
 
   // Drain the unsolicited Welcome the server sends on connect.
@@ -97,28 +104,37 @@ test("Hello → server roundtrip: connection survives the client handshake", asy
   ).finish();
   ws.send(hello);
 
-  // Server logs Hello but doesn't reply — verify the socket stays open under load
-  // by sending a follow-up Input and confirming we get an InputEcho back.
-  const input = ClientMessage.encode(
+  // ClientAction is fire-and-forget today; the network module + tick loop
+  // will pick this up later. We just need the socket to keep eating bytes.
+  const action = ClientMessage.encode(
     ClientMessage.create({
       seq: 2,
-      input: { buttons: 0b0101, clientTimeMs: 123 },
+      action: { action: 1 /* MOVE_NORTH */ },
     }),
   ).finish();
-  ws.send(input);
+  ws.send(action);
 
-  const echoFrame = (await next((f) => {
+  // Pong is the cheapest reply we can demand to prove the server is still
+  // processing this connection's frames in order after the silent Hello/Action.
+  const ping = ClientMessage.encode(
+    ClientMessage.create({
+      seq: 3,
+      ping: { clientTimeMs: 999 },
+    }),
+  ).finish();
+  ws.send(ping);
+
+  const pongFrame = (await next((f) => {
     if (f.kind !== "msg") return false;
-    const decoded = ServerMessage.decode(f.data).toJSON() as { inputEcho?: unknown };
-    return decoded.inputEcho !== undefined;
+    const decoded = ServerMessage.decode(f.data).toJSON() as { pong?: unknown };
+    return decoded.pong !== undefined;
   })) as Extract<Frame, { kind: "msg" }>;
-  const echo = ServerMessage.decode(echoFrame.data).toJSON() as {
+  const pong = ServerMessage.decode(pongFrame.data).toJSON() as {
     ackSeq?: string | number;
-    inputEcho?: { buttons?: number };
+    pong?: { clientTimeMs?: string | number };
   };
-  expect(echo.inputEcho!.buttons).toBe(0b0101);
-  // ackSeq is uint64; protobufjs renders it as a string in toJSON.
-  expect(Number(echo.ackSeq)).toBe(2);
+  expect(Number(pong.pong!.clientTimeMs)).toBe(999);
+  expect(Number(pong.ackSeq)).toBe(3);
 
   // No close frames observed during the exchange.
   expect(frames.some((f) => f.kind === "close")).toBe(false);
