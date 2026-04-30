@@ -13,10 +13,10 @@ export interface Sample {
 const DEFAULT_CAPACITY = 16;
 
 /**
- * Per-player ring of recent positions, used by the renderer to lerp remote
- * players ~100 ms behind real time. Tile coordinates from the server are
- * integers; samples are kept as numbers because `sample()` returns
- * interpolated floats between bracketing observations.
+ * Per-player ring of recent positions for render-time interpolation. Tile
+ * coordinates from the server are integers; samples are stored as numbers
+ * because `sample()` returns interpolated floats between bracketing
+ * observations.
  *
  * Per ADR 0001 there is no client-side prediction: `sample(t)` clamps to
  * the newest known position when `t` is beyond the latest snapshot rather

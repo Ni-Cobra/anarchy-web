@@ -2,22 +2,19 @@ import type { Player, PlayerId } from "./player.js";
 
 /**
  * Client-side mirror of the server's `game::World`. Holds the latest
- * server-authoritative view of every player. The render layer reads from
- * here and never touches raw protobuf or WebSocket frames — a wire layer
- * (future) translates incoming messages into calls on this class.
+ * server-authoritative view of every player.
  *
  * Per ADR 0001 the server broadcasts a full snapshot every tick, so the
  * full-replace `applySnapshot` is the only update path needed here;
- * `removePlayer` exists so a `PlayerDespawned` notification can drop a
- * player without waiting for the next tick.
+ * `removePlayer` exists so an explicit despawn can drop a player without
+ * waiting for the next tick.
  */
 export class World {
   private readonly playersById = new Map<PlayerId, Player>();
 
   /**
-   * Replace the entire player set with `players`. Callers (the wire layer)
-   * pass in the players from a `WorldSnapshot` — both the initial Welcome
-   * snapshot and every per-tick `StateUpdate` go through here.
+   * Replace the entire player set with `players`. Inputs are copied so
+   * external mutation of the caller's objects can't leak into the world.
    */
   applySnapshot(players: Iterable<Player>): void {
     this.playersById.clear();
