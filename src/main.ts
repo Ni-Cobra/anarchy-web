@@ -1,4 +1,5 @@
 import { World } from "./game/index.js";
+import { InputController } from "./input/index.js";
 import { connect } from "./net.js";
 import { Renderer } from "./render/index.js";
 
@@ -18,6 +19,13 @@ world.applySnapshot([
 ]);
 renderer.setLocalPlayerId(LOCAL_ID);
 
-connect("ws://localhost:8080/ws", (msg) => {
+const conn = connect("ws://localhost:8080/ws", (msg) => {
   console.log("[recv]", msg.toJSON());
 });
+
+const input = new InputController({
+  sendAction(action) {
+    conn.send({ action: { action } });
+  },
+});
+input.start(window);
