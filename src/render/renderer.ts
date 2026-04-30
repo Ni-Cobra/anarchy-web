@@ -13,6 +13,14 @@ const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
 const CUBE_SIZE = 1;
 const CAMERA_HEIGHT = 14;
+// Half-length of each ground axis line. Lines extend from -AXIS_HALF_LENGTH to
+// +AXIS_HALF_LENGTH along their respective axis; the camera-far clip (1000)
+// then bounds what's actually visible from the player's vantage point.
+const AXIS_HALF_LENGTH = 10000;
+// Tiny lift off the ground plane so axis lines aren't z-fought to death.
+const AXIS_Y_OFFSET = 0.01;
+const AXIS_X_COLOR = 0xff5050;
+const AXIS_Y_COLOR = 0x60a0ff;
 
 /**
  * Render-time delay applied to remote players. Per ADR 0001 we draw remote
@@ -94,6 +102,23 @@ export class Renderer {
     );
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
+
+    // Reference axis lines through the world origin. Server +x (east) runs
+    // along scene +x; server +y (north) maps to scene -z (see tileToScene).
+    this.scene.add(
+      buildAxisLine(
+        new THREE.Vector3(-AXIS_HALF_LENGTH, AXIS_Y_OFFSET, 0),
+        new THREE.Vector3(AXIS_HALF_LENGTH, AXIS_Y_OFFSET, 0),
+        AXIS_X_COLOR,
+      ),
+    );
+    this.scene.add(
+      buildAxisLine(
+        new THREE.Vector3(0, AXIS_Y_OFFSET, -AXIS_HALF_LENGTH),
+        new THREE.Vector3(0, AXIS_Y_OFFSET, AXIS_HALF_LENGTH),
+        AXIS_Y_COLOR,
+      ),
+    );
 
     this.playerGroup = new THREE.Group();
     this.scene.add(this.playerGroup);
@@ -183,4 +208,14 @@ export class Renderer {
     this.camera.position.set(focus.x, CAMERA_HEIGHT, focus.z);
     this.camera.lookAt(focus);
   }
+}
+
+function buildAxisLine(
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+  color: number,
+): THREE.Line {
+  const geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
+  const material = new THREE.LineBasicMaterial({ color });
+  return new THREE.Line(geometry, material);
 }
