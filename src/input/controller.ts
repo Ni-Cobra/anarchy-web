@@ -2,19 +2,22 @@ import { anarchy } from "../gen/anarchy.js";
 import { keyToAction, SCROLL_KEY_CODES } from "./keymap.js";
 
 /**
- * Where the controller sends a fired action. The wire layer (`net.ts`)
- * supplies one of these so the controller stays protobuf/WebSocket-free.
+ * Where the controller sends a tick's worth of input. The wire layer
+ * (`net.ts`) supplies one of these so the controller stays protobuf/
+ * WebSocket-free. One call per tick carries every currently-held action
+ * — typically one per held direction key — packed into a single frame.
  */
 export interface InputSink {
-  sendAction(action: anarchy.v1.ActionKind): void;
+  sendActions(actions: anarchy.v1.ActionKind[]): void;
 }
 
 /**
- * 20 Hz matches the server tick (ADR 0001): one held-key emit per tick
- * gives the server exactly one tile-step worth of intent per simulation
- * frame. Far below the 30/s + burst 60 per-connection action limit on the
- * server for any single direction; sustained dual-direction holds (e.g.
- * W+D for diagonals) sit just above sustained limit but inside the burst.
+ * 20 Hz matches the server tick (ADR 0001): one frame per tick gives the
+ * server exactly one tile-step worth of intent per simulation frame.
+ * Diagonals (W+D) ride inside that single frame as a multi-action list,
+ * so the per-connection frame rate stays at 20/s regardless of how many
+ * direction keys are held — comfortably below the server's 30/s sustained
+ * limit (see network/conn.rs).
  */
 const DEFAULT_TICK_INTERVAL_MS = 50;
 
@@ -76,13 +79,14 @@ export class InputController {
   }
 
   /**
-   * Emit one `ClientAction` per currently-held direction. Public so tests
-   * can drive the flush deterministically without waiting on the interval.
+   * Emit a single `ClientAction` carrying every currently-held direction.
+   * No-op when nothing is held — empty frames are pointless and would
+   * still cost rate-limit budget on the server. Public so tests can drive
+   * the flush deterministically without waiting on the interval.
    */
   flush(): void {
-    for (const action of this.held) {
-      this.sink.sendAction(action);
-    }
+    if (this.held.size === 0) return;
+    this.sink.sendActions(Array.from(this.held));
   }
 
   private stop(): void {

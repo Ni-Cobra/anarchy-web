@@ -19,10 +19,13 @@ function dispatchKey(target: EventTarget, type: "keydown" | "keyup", init: KeyEv
 }
 
 function makeSink() {
-  const sent: anarchy.v1.ActionKind[] = [];
+  // Each entry is one frame's worth of actions, mirroring how the wire
+  // sees them: one call per tick, even when the call carries multiple
+  // held directions.
+  const sent: anarchy.v1.ActionKind[][] = [];
   const sink: InputSink = {
-    sendAction(action) {
-      sent.push(action);
+    sendActions(actions) {
+      sent.push([...actions]);
     },
   };
   return { sent, sink };
@@ -40,7 +43,7 @@ describe("InputController", () => {
     vi.useRealTimers();
   });
 
-  it("emits one action per held direction on each tick", () => {
+  it("emits one frame per tick carrying the held direction", () => {
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
@@ -49,12 +52,12 @@ describe("InputController", () => {
     expect(sent).toEqual([]); // intent only emits on tick, not on press
 
     vi.advanceTimersByTime(50);
-    expect(sent).toEqual([ActionKind.ACTION_KIND_MOVE_NORTH]);
+    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_NORTH]]);
 
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([
-      ActionKind.ACTION_KIND_MOVE_NORTH,
-      ActionKind.ACTION_KIND_MOVE_NORTH,
+      [ActionKind.ACTION_KIND_MOVE_NORTH],
+      [ActionKind.ACTION_KIND_MOVE_NORTH],
     ]);
 
     stop();
@@ -70,11 +73,14 @@ describe("InputController", () => {
     dispatchKey(target, "keyup", { code: "KeyD" });
     vi.advanceTimersByTime(200);
 
-    expect(sent).toEqual([ActionKind.ACTION_KIND_MOVE_EAST]);
+    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_EAST]]);
     stop();
   });
 
-  it("emits one of each held direction per tick when multiple keys are held", () => {
+  it("packs every held direction into a single frame per tick", () => {
+    // The whole point of the multi-action wire frame: holding W+D produces
+    // exactly one frame per tick, not two — see ADR 0001 + the rate-limit
+    // budget in network/conn.rs.
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
@@ -83,10 +89,29 @@ describe("InputController", () => {
     dispatchKey(target, "keydown", { code: "KeyD" });
     vi.advanceTimersByTime(50);
 
-    expect(new Set(sent)).toEqual(
+    expect(sent).toHaveLength(1);
+    expect(new Set(sent[0])).toEqual(
       new Set([ActionKind.ACTION_KIND_MOVE_NORTH, ActionKind.ACTION_KIND_MOVE_EAST]),
     );
-    expect(sent).toHaveLength(2);
+    stop();
+  });
+
+  it("does not emit a frame on ticks where nothing is held", () => {
+    // Empty frames waste rate-limit budget for no reason — the controller
+    // simply skips the send call when the held set is empty.
+    const { sent, sink } = makeSink();
+    const ctrl = new InputController(sink, 50);
+    const stop = ctrl.start(target);
+
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+
+    dispatchKey(target, "keydown", { code: "KeyW" });
+    vi.advanceTimersByTime(50);
+    dispatchKey(target, "keyup", { code: "KeyW" });
+    vi.advanceTimersByTime(200);
+
+    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_NORTH]]);
     stop();
   });
 
@@ -102,7 +127,7 @@ describe("InputController", () => {
     dispatchKey(target, "keydown", { code: "KeyW", repeat: true });
 
     vi.advanceTimersByTime(50);
-    expect(sent).toEqual([ActionKind.ACTION_KIND_MOVE_NORTH]);
+    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_NORTH]]);
 
     // After release, even a stray repeat=true must not re-arm the held set.
     dispatchKey(target, "keyup", { code: "KeyW" });
@@ -164,7 +189,7 @@ describe("InputController", () => {
     dispatchKey(target, "keydown", { code: "KeyA" });
     vi.advanceTimersByTime(50);
 
-    expect(sent).toEqual([ActionKind.ACTION_KIND_MOVE_WEST]);
+    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_WEST]]);
     stop2();
   });
 

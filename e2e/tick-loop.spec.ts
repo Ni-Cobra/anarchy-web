@@ -86,7 +86,7 @@ async function readWelcome(s: Socket): Promise<DecodedWelcome> {
 
 function sendAction(s: Socket, seq: number, actionKind: number) {
   const bytes = ClientMessage.encode(
-    ClientMessage.create({ seq, action: { action: actionKind } }),
+    ClientMessage.create({ seq, action: { actions: [actionKind] } }),
   ).finish();
   s.ws.send(bytes);
 }

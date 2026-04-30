@@ -24,8 +24,8 @@ const conn = connect("ws://localhost:8080/ws", (msg) => {
 });
 
 const input = new InputController({
-  sendAction(action) {
-    conn.send({ action: { action } });
+  sendActions(actions) {
+    conn.send({ action: { actions } });
   },
 });
 input.start(window);
@@ -44,5 +44,5 @@ declare global {
 window.__anarchy = {
   world,
   getLocalPlayerId: () => localPlayerId,
-  sendAction: (kind) => conn.send({ action: { action: kind } }),
+  sendAction: (kind) => conn.send({ action: { actions: [kind] } }),
 };

@@ -135,10 +135,10 @@ test("a flood of actions is rate-limited so the player cannot teleport", async (
   const wa = await readWelcome(a);
   const me = wa.playerId;
 
-  // Fire-hose 200 MoveEast actions.
+  // Fire-hose 200 MoveEast frames.
   for (let i = 1; i <= 200; i++) {
     const bytes = ClientMessage.encode(
-      ClientMessage.create({ seq: i, action: { action: ACTION_MOVE_EAST } }),
+      ClientMessage.create({ seq: i, action: { actions: [ACTION_MOVE_EAST] } }),
     ).finish();
     a.ws.send(bytes);
   }

@@ -49,8 +49,14 @@ message Pong {
 
 // Server-authoritative movement intent. The server alone derives the
 // resulting position; the client never sends coordinates.
+//
+// One frame may carry multiple action kinds — typically one per held
+// direction key on the client — so a player holding W+D for a diagonal
+// produces a single frame per tick instead of two competing frames.
+// The server applies them in array order within the next tick. Frames
+// are bounded server-side; see network/conn.rs.
 message ClientAction {
-  ActionKind action = 1;
+  repeated ActionKind actions = 1;
 }
 
 enum ActionKind {
