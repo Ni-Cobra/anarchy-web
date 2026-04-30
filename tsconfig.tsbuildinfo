@@ -1,1 +1,1 @@
-{"root":["./src/main.ts","./src/net.ts","./src/game/index.ts","./src/game/player.ts","./src/game/world.test.ts","./src/game/world.ts","./src/gen/anarchy.d.ts"],"version":"5.9.3"}
+{"root":["./src/main.ts","./src/net.ts","./src/game/index.ts","./src/game/player.ts","./src/game/world.test.ts","./src/game/world.ts","./src/gen/anarchy.d.ts","./src/render/index.ts","./src/render/renderer.ts","./src/render/sync.test.ts","./src/render/sync.ts"],"version":"5.9.3"}
