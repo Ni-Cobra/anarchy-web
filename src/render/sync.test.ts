@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 
-import { World, type Player } from "../game/index.js";
 import {
   disposePlayerMesh,
   syncPlayerMeshes,
   tileToScene,
   type PlayerMeshFactory,
+  type RenderableEntity,
 } from "./sync.js";
 
-const p = (id: number, x = 0, y = 0): Player => ({ id, x, y });
+const e = (id: number, x = 0, y = 0): RenderableEntity => ({ id, x, y });
 
 interface FactoryCall {
   id: number;
@@ -47,14 +47,12 @@ describe("tileToScene", () => {
 });
 
 describe("syncPlayerMeshes", () => {
-  it("creates a mesh for each new player and adds it to the parent", () => {
-    const world = new World();
-    world.applySnapshot([p(1, 2, 3), p(2, -1, 0)]);
+  it("creates a mesh for each new entity and adds it to the parent", () => {
     const meshes = new Map<number, THREE.Mesh>();
     const parent = new THREE.Group();
     const { factory, calls } = recordingFactory();
 
-    syncPlayerMeshes(world, 1, meshes, parent, factory);
+    syncPlayerMeshes([e(1, 2, 3), e(2, -1, 0)], 1, meshes, parent, factory);
 
     expect(meshes.size).toBe(2);
     expect(parent.children).toHaveLength(2);
@@ -66,18 +64,15 @@ describe("syncPlayerMeshes", () => {
     ]);
   });
 
-  it("updates positions for existing players without recreating meshes", () => {
-    const world = new World();
-    world.applySnapshot([p(1, 0, 0)]);
+  it("updates positions for existing entities without recreating meshes", () => {
     const meshes = new Map<number, THREE.Mesh>();
     const parent = new THREE.Group();
     const { factory, calls } = recordingFactory();
 
-    syncPlayerMeshes(world, 1, meshes, parent, factory);
+    syncPlayerMeshes([e(1, 0, 0)], 1, meshes, parent, factory);
     const original = meshes.get(1)!;
 
-    world.applySnapshot([p(1, 5, -7)]);
-    syncPlayerMeshes(world, 1, meshes, parent, factory);
+    syncPlayerMeshes([e(1, 5, -7)], 1, meshes, parent, factory);
 
     expect(meshes.get(1)).toBe(original);
     expectVec(original.position, 5, 0.5, 7);
@@ -85,22 +80,29 @@ describe("syncPlayerMeshes", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("removes and disposes meshes for players no longer in the world", () => {
-    const world = new World();
-    world.applySnapshot([p(1), p(2)]);
+  it("accepts non-integer coords (interpolated remote positions)", () => {
     const meshes = new Map<number, THREE.Mesh>();
     const parent = new THREE.Group();
     const { factory } = recordingFactory();
 
-    syncPlayerMeshes(world, null, meshes, parent, factory);
+    syncPlayerMeshes([e(1, 2.5, -3.25)], null, meshes, parent, factory);
+
+    expectVec(meshes.get(1)!.position, 2.5, 0.5, 3.25);
+  });
+
+  it("removes and disposes meshes for entities no longer present", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    const parent = new THREE.Group();
+    const { factory } = recordingFactory();
+
+    syncPlayerMeshes([e(1), e(2)], null, meshes, parent, factory);
     const stale = meshes.get(2)!;
     let disposed = false;
     stale.geometry.addEventListener("dispose", () => {
       disposed = true;
     });
 
-    world.applySnapshot([p(1)]);
-    syncPlayerMeshes(world, null, meshes, parent, factory);
+    syncPlayerMeshes([e(1)], null, meshes, parent, factory);
 
     expect(meshes.has(2)).toBe(false);
     expect(parent.children).toHaveLength(1);
@@ -109,26 +111,22 @@ describe("syncPlayerMeshes", () => {
   });
 
   it("flags only the local player id as local", () => {
-    const world = new World();
-    world.applySnapshot([p(7), p(8), p(9)]);
     const meshes = new Map<number, THREE.Mesh>();
     const parent = new THREE.Group();
     const { factory, calls } = recordingFactory();
 
-    syncPlayerMeshes(world, 8, meshes, parent, factory);
+    syncPlayerMeshes([e(7), e(8), e(9)], 8, meshes, parent, factory);
 
     const localCalls = calls.filter((c) => c.isLocal);
     expect(localCalls).toEqual([{ id: 8, isLocal: true }]);
   });
 
   it("handles a null local id (everyone is remote)", () => {
-    const world = new World();
-    world.applySnapshot([p(1), p(2)]);
     const meshes = new Map<number, THREE.Mesh>();
     const parent = new THREE.Group();
     const { factory, calls } = recordingFactory();
 
-    syncPlayerMeshes(world, null, meshes, parent, factory);
+    syncPlayerMeshes([e(1), e(2)], null, meshes, parent, factory);
 
     expect(calls.every((c) => c.isLocal === false)).toBe(true);
   });

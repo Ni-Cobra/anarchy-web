@@ -1,10 +1,10 @@
-import { anarchy } from "./gen/anarchy.js";
+import { anarchy } from "../gen/anarchy.js";
 
 const { ClientMessage, ServerMessage } = anarchy.v1;
 
 // Heartbeat: send a Ping every PING_INTERVAL_MS, and close the socket if no
 // frame at all has arrived from the server within RECV_TIMEOUT_MS. The server
-// kicks idle clients on its own clock — see anarchy-server/src/ws.rs.
+// kicks idle clients on its own clock — see anarchy-server/src/network/conn.rs.
 const PING_INTERVAL_MS = 5_000;
 const RECV_TIMEOUT_MS = 15_000;
 

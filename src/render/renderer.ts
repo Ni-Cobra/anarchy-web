@@ -1,17 +1,27 @@
 import * as THREE from "three";
 
-import type { Player, PlayerId, World } from "../game/index.js";
+import type { Player, PlayerId, SnapshotBuffer, World } from "../game/index.js";
 import {
   disposePlayerMesh,
   syncPlayerMeshes,
   tileToScene,
   type PlayerMeshFactory,
+  type RenderableEntity,
 } from "./sync.js";
 
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
 const CUBE_SIZE = 1;
 const CAMERA_HEIGHT = 14;
+
+/**
+ * Render-time delay applied to remote players. Per ADR 0001 we draw remote
+ * cubes ~100 ms behind real time and lerp between bracketing snapshots, so
+ * a typical jitter or a single dropped tick never produces a visible jump.
+ * The local player ignores this delay and reads the latest authoritative
+ * position directly off `World`.
+ */
+export const REMOTE_RENDER_DELAY_MS = 100;
 
 const defaultFactory: PlayerMeshFactory = {
   create(_player: Player, isLocal: boolean) {
@@ -24,13 +34,14 @@ const defaultFactory: PlayerMeshFactory = {
 };
 
 /**
- * Owns the Three.js scene + render loop. Each frame it pulls the latest
- * server-authoritative player set out of `world` and reconciles meshes,
- * then keeps the camera anchored over the local player.
+ * Owns the Three.js scene + render loop. Each frame it composes a list of
+ * renderable entities — the local player at its latest server-authoritative
+ * position, every remote player at the lerp output of `SnapshotBuffer` —
+ * and reconciles meshes against it. The camera tracks the local player.
  *
- * The renderer is networking-agnostic: a future wire layer feeds `World`
- * via `applySnapshot` / `removePlayer` and tells us who we are with
- * `setLocalPlayerId`. Nothing here knows about WebSockets or protobuf.
+ * The renderer is networking-agnostic: a wire layer feeds `World` /
+ * `SnapshotBuffer` and tells us who we are with `setLocalPlayerId`. Nothing
+ * here knows about WebSockets or protobuf.
  */
 export class Renderer {
   private readonly scene: THREE.Scene;
@@ -39,14 +50,18 @@ export class Renderer {
   private readonly playerGroup: THREE.Group;
   private readonly meshes = new Map<PlayerId, THREE.Mesh>();
   private readonly factory: PlayerMeshFactory;
+  private readonly now: () => number;
   private localPlayerId: PlayerId | null = null;
 
   constructor(
     private readonly world: World,
+    private readonly buffer: SnapshotBuffer,
     container: HTMLElement = document.body,
     factory: PlayerMeshFactory = defaultFactory,
+    now: () => number = () => Date.now(),
   ) {
     this.factory = factory;
+    this.now = now;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x202028);
@@ -126,8 +141,9 @@ export class Renderer {
   };
 
   private frame = () => {
+    const entities = this.composeEntities();
     syncPlayerMeshes(
-      this.world,
+      entities,
       this.localPlayerId,
       this.meshes,
       this.playerGroup,
@@ -136,6 +152,25 @@ export class Renderer {
     this.updateCamera();
     this.webgl.render(this.scene, this.camera);
   };
+
+  private composeEntities(): RenderableEntity[] {
+    const tRender = this.now() - REMOTE_RENDER_DELAY_MS;
+    const out: RenderableEntity[] = [];
+    for (const player of this.world.players()) {
+      if (player.id === this.localPlayerId) {
+        // Local player: latest authoritative position, no interpolation lag.
+        out.push({ id: player.id, x: player.x, y: player.y });
+        continue;
+      }
+      // Remote: 100 ms-delayed interpolated position. Falls back to the
+      // current world position if no buffered samples exist yet (only
+      // possible immediately after spawn, before the first push lands).
+      const interp = this.buffer.sample(player.id, tRender);
+      const pos = interp ?? { x: player.x, y: player.y };
+      out.push({ id: player.id, x: pos.x, y: pos.y });
+    }
+    return out;
+  }
 
   private updateCamera() {
     const target =

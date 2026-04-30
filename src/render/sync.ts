@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import type { Player, PlayerId, World } from "../game/index.js";
+import type { Player, PlayerId } from "../game/index.js";
 
 /**
  * Builds a fresh `THREE.Mesh` for a player. `isLocal` lets the factory pick a
@@ -8,6 +8,18 @@ import type { Player, PlayerId, World } from "../game/index.js";
  */
 export interface PlayerMeshFactory {
   create(player: Player, isLocal: boolean): THREE.Mesh;
+}
+
+/**
+ * One entity to draw this frame. The renderer composes these from authoritative
+ * world state for the local player and from the interpolation buffer for
+ * remote players, but `syncPlayerMeshes` doesn't care which path produced
+ * each entry — it just reconciles meshes against the iterable.
+ */
+export interface RenderableEntity {
+  readonly id: PlayerId;
+  readonly x: number;
+  readonly y: number;
 }
 
 /**
@@ -20,31 +32,34 @@ export function tileToScene(x: number, y: number): THREE.Vector3 {
 }
 
 /**
- * Reconcile `meshes` and `parent` with the players currently in `world`:
- *   - players new to the world get a mesh built by `factory` and added,
+ * Reconcile `meshes` and `parent` with `entities`:
+ *   - new ids get a mesh built by `factory` and added,
  *   - existing meshes get their position synced,
- *   - meshes whose player has left are removed and disposed.
+ *   - meshes whose id is no longer in `entities` are removed and disposed.
  *
  * Pure of any rendering-loop / WebGL state — safe to unit-test against a
  * plain `THREE.Group`.
  */
 export function syncPlayerMeshes(
-  world: World,
+  entities: Iterable<RenderableEntity>,
   localPlayerId: PlayerId | null,
   meshes: Map<PlayerId, THREE.Mesh>,
   parent: THREE.Object3D,
   factory: PlayerMeshFactory,
 ): void {
   const seen = new Set<PlayerId>();
-  for (const player of world.players()) {
-    seen.add(player.id);
-    let mesh = meshes.get(player.id);
+  for (const entity of entities) {
+    seen.add(entity.id);
+    let mesh = meshes.get(entity.id);
     if (!mesh) {
-      mesh = factory.create(player, player.id === localPlayerId);
-      meshes.set(player.id, mesh);
+      mesh = factory.create(
+        { id: entity.id, x: entity.x, y: entity.y },
+        entity.id === localPlayerId,
+      );
+      meshes.set(entity.id, mesh);
       parent.add(mesh);
     }
-    mesh.position.copy(tileToScene(player.x, player.y));
+    mesh.position.copy(tileToScene(entity.x, entity.y));
   }
   for (const id of [...meshes.keys()]) {
     if (seen.has(id)) continue;
