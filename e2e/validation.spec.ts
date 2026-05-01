@@ -209,6 +209,77 @@ test("a flood of intent updates is rate-limited so the player cannot teleport", 
   a.ws.close();
 });
 
+test("an oversized binary frame is rejected and the connection is dropped", async () => {
+  // Server caps inbound message size at 64 KiB (see
+  // anarchy-server/src/network/conn.rs::MAX_INBOUND_MESSAGE_SIZE). A
+  // legitimate ClientMessage is well under 256 bytes — anything an order
+  // of magnitude larger is a misbehaving or hostile client. Send 256 KiB
+  // and expect the WebSocket to close, proving the server did not just
+  // allocate the full payload silently.
+  test.setTimeout(10_000);
+
+  const a = await openSocket();
+  await readWelcome(a);
+
+  const huge = new Uint8Array(256 * 1024); // 256 KiB > the 64 KiB cap.
+  a.ws.send(huge);
+
+  // The server should tear the connection down. Either a Close frame or
+  // an underlying socket close (close-event) is acceptable — what we care
+  // about is that we don't sit in a half-open state forever, and that no
+  // crash takes the whole server down (the next test confirms the second
+  // half by reconnecting).
+  const closed = await a.next((f) => f.kind === "close");
+  expect(closed.kind).toBe("close");
+});
+
+test("a flood of inbound frames (ping-spam) is rate-limited and the server keeps serving", async () => {
+  // The inbound rate limit applies to every binary frame, not just
+  // actions, so a Ping flood cannot force the server to allocate
+  // unbounded Pong replies. After firing many pings rapidly, we must
+  // still receive *some* Pongs (the burst budget) but well fewer than
+  // sent. The server must remain healthy throughout — fresh connection
+  // opens and gets a Welcome.
+  test.setTimeout(15_000);
+
+  const a = await openSocket();
+  await readWelcome(a);
+
+  const N = 500;
+  for (let i = 1; i <= N; i++) {
+    const bytes = ClientMessage.encode(
+      ClientMessage.create({ seq: i, ping: { clientTimeMs: i } }),
+    ).finish();
+    a.ws.send(bytes);
+  }
+
+  // Settle. The recv-side limiter is 60/s sustained, 120 burst — at most
+  // ~120 Pongs in the first instant, with more over time as the bucket
+  // refills. Wait long enough for the server to have processed (or
+  // dropped) every queued frame.
+  await new Promise((r) => setTimeout(r, 1500));
+
+  let pongCount = 0;
+  for (const f of a.frames) {
+    if (f.kind !== "msg") continue;
+    const decoded = ServerMessage.decode(f.data).toJSON() as { pong?: unknown };
+    if (decoded.pong !== undefined) pongCount++;
+  }
+  // Hard limit on accepted frames over ~1.5s = burst (120) + 60/s * 1.5s
+  // ≈ 210 — far less than N=500. Assert we got at least one Pong (the
+  // burst served some) and strictly fewer than N (the rest were dropped).
+  expect(pongCount).toBeGreaterThan(0);
+  expect(pongCount).toBeLessThan(N);
+
+  // Server is still healthy: a brand-new connection opens and gets a
+  // Welcome.
+  const b = await openSocket();
+  await readWelcome(b);
+
+  a.ws.close();
+  b.ws.close();
+});
+
 // Touch TICK_DT so it shows up in linter scans even if no test consumes it
 // directly. Keeps the constant grouped with SPEED above for clarity.
 void TICK_DT;
