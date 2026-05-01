@@ -8,3 +8,8 @@
 export type { Player, PlayerId } from "./player.js";
 export { World } from "./world.js";
 export { SnapshotBuffer } from "./snapshot_buffer.js";
+export {
+  LocalPredictor,
+  RECONCILE_SNAP_DISTANCE,
+  SPEED,
+} from "./predictor.js";

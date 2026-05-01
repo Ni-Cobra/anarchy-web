@@ -1,4 +1,9 @@
-import type { PlayerId, SnapshotBuffer, World } from "../game/index.js";
+import type {
+  LocalPredictor,
+  PlayerId,
+  SnapshotBuffer,
+  World,
+} from "../game/index.js";
 import type { RenderableEntity } from "./sync.js";
 
 /**
@@ -9,35 +14,34 @@ import type { RenderableEntity } from "./sync.js";
 export const REMOTE_RENDER_DELAY_MS = 100;
 
 /**
- * Render-time delay applied to the local player. One tick (50 ms at the
- * 20 Hz server cadence) — just enough that consecutive snapshots always
- * bracket the query and the player position interpolates smoothly between
- * them at the browser frame rate, while keeping the latency surfaced to
- * input as small as possible until full client-side prediction lands.
- */
-export const LOCAL_RENDER_DELAY_MS = 50;
-
-/**
- * Compose the per-frame draw list. Both local and remote players run
- * through the same `SnapshotBuffer` interpolation path; the only
- * difference is the render delay applied to each. If the buffer has no
- * sample for an id (only possible immediately after spawn, before the
- * first push lands), fall back to the latest authoritative position from
- * `world` so the player still appears on screen instead of vanishing.
+ * Compose the per-frame draw list. Remote players run through the
+ * `SnapshotBuffer` interpolation path with `REMOTE_RENDER_DELAY_MS` of
+ * lag; the local player is drawn at the predictor's current position so
+ * input lands on the next frame instead of after a WebSocket round-trip.
+ *
+ * If a remote player has no sample yet (only possible immediately after
+ * spawn, before the first snapshot push lands) we fall back to the latest
+ * authoritative `World` position so the entity still appears on screen.
+ * If `predictor` is null the local player renders from the snapshot buffer
+ * just like remote players — the wire layer hands a non-null predictor in
+ * once `ServerWelcome` has assigned a local player id.
  */
 export function composePlayerEntities(
   world: World,
   buffer: SnapshotBuffer,
   localPlayerId: PlayerId | null,
+  predictor: LocalPredictor | null,
   nowMs: number,
-  localDelayMs: number = LOCAL_RENDER_DELAY_MS,
   remoteDelayMs: number = REMOTE_RENDER_DELAY_MS,
 ): RenderableEntity[] {
   const out: RenderableEntity[] = [];
   for (const player of world.players()) {
-    const delay =
-      player.id === localPlayerId ? localDelayMs : remoteDelayMs;
-    const interp = buffer.sample(player.id, nowMs - delay);
+    if (player.id === localPlayerId && predictor !== null) {
+      const pos = predictor.position(nowMs);
+      out.push({ id: player.id, x: pos.x, y: pos.y });
+      continue;
+    }
+    const interp = buffer.sample(player.id, nowMs - remoteDelayMs);
     const pos = interp ?? { x: player.x, y: player.y };
     out.push({ id: player.id, x: pos.x, y: pos.y });
   }

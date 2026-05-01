@@ -69,8 +69,15 @@ message Pong {
 // — the server stores the latest per-player intent and advances positions
 // each tick from it. Diagonals are normalized client-side; the server
 // clamps `|move_intent| ≤ 1` defensively.
+//
+// `client_seq` is a per-client monotonic action counter. The server stores
+// the largest seq it has applied for each player and echoes it back in the
+// player's `PlayerSnapshot.acked_client_seq` field, so the client knows
+// which of its inputs the server has integrated. Used by client-side
+// prediction + reconciliation (see ADR 0001 amendment, 2026-05-01).
 message ClientAction {
   MoveIntent move_intent = 1;
+  uint64 client_seq = 2;
 }
 
 // Continuous 2D movement intent in world axes (+x = east, +y = north).
@@ -99,6 +106,11 @@ message PlayerSnapshot {
   // movement intent and tick-based stepping land. See ADR 0001.
   double x = 2;
   double y = 3;
+  // Largest `ClientAction.client_seq` from this player that the server has
+  // integrated. Always present; zero before the player has sent any action.
+  // Each client uses the value attached to its own `PlayerSnapshot` to drive
+  // local prediction reconciliation (ADR 0001 amendment, 2026-05-01).
+  uint64 acked_client_seq = 4;
 }
 
 // Emitted when a player leaves the world.

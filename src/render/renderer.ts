@@ -1,6 +1,12 @@
 import * as THREE from "three";
 
-import type { Player, PlayerId, SnapshotBuffer, World } from "../game/index.js";
+import type {
+  LocalPredictor,
+  Player,
+  PlayerId,
+  SnapshotBuffer,
+  World,
+} from "../game/index.js";
 import { composePlayerEntities } from "./compose.js";
 import {
   disposePlayerMesh,
@@ -34,16 +40,17 @@ const defaultFactory: PlayerMeshFactory = {
 
 /**
  * Owns the Three.js scene + render loop. Each frame it composes a list of
- * renderable entities — every player at the lerp output of
- * `SnapshotBuffer`, the local player using `LOCAL_RENDER_DELAY_MS` and
- * remote players using the larger `REMOTE_RENDER_DELAY_MS` — and
- * reconciles meshes against it. The camera tracks the local player at its
- * interpolated position so the follow stays smooth at the browser frame
- * rate even though snapshots only land at the 20 Hz server cadence.
+ * renderable entities — remote players from the lerp output of
+ * `SnapshotBuffer` (with `REMOTE_RENDER_DELAY_MS` of delay), the local
+ * player from `LocalPredictor` (advancing at `SPEED * dt` so input feels
+ * immediate) — and reconciles meshes against it. The camera tracks the
+ * local player at its predicted position so the follow stays smooth at
+ * the browser frame rate even though snapshots only land at the 20 Hz
+ * server cadence.
  *
  * The renderer is networking-agnostic: a wire layer feeds `World` /
- * `SnapshotBuffer` and tells us who we are with `setLocalPlayerId`. Nothing
- * here knows about WebSockets or protobuf.
+ * `SnapshotBuffer` / `LocalPredictor` and tells us who we are with
+ * `setLocalPlayerId`. Nothing here knows about WebSockets or protobuf.
  */
 export class Renderer {
   private readonly scene: THREE.Scene;
@@ -58,6 +65,7 @@ export class Renderer {
   constructor(
     private readonly world: World,
     private readonly buffer: SnapshotBuffer,
+    private readonly predictor: LocalPredictor,
     container: HTMLElement = document.body,
     factory: PlayerMeshFactory = defaultFactory,
     now: () => number = () => Date.now(),
@@ -164,6 +172,7 @@ export class Renderer {
       this.world,
       this.buffer,
       this.localPlayerId,
+      this.localPlayerId !== null ? this.predictor : null,
       this.now(),
     );
     syncPlayerMeshes(
@@ -178,7 +187,7 @@ export class Renderer {
   };
 
   private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {
-    // Follow the *interpolated* local position so the camera moves at the
+    // Follow the *predicted* local position so the camera moves at the
     // browser frame rate rather than stepping at the 20 Hz snapshot cadence.
     const local =
       this.localPlayerId !== null

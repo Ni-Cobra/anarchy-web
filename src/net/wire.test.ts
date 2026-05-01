@@ -1,19 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { anarchy } from "../gen/anarchy.js";
-import { SnapshotBuffer, World, type PlayerId } from "../game/index.js";
+import {
+  LocalPredictor,
+  SnapshotBuffer,
+  World,
+  type PlayerId,
+} from "../game/index.js";
 import { applyServerMessage, type LocalPlayerSink, type WireDeps } from "./wire.js";
 
-function makeFixture(now = () => 1_000) {
+function makeFixture(now = () => 1_000, predictor?: LocalPredictor) {
   const world = new World();
   const buffer = new SnapshotBuffer();
   const localCalls: Array<PlayerId | null> = [];
+  let currentLocalId: PlayerId | null = null;
   const local: LocalPlayerSink = {
     setLocalPlayerId(id) {
+      currentLocalId = id;
       localCalls.push(id);
     },
+    getLocalPlayerId() {
+      return currentLocalId;
+    },
   };
-  const deps: WireDeps = { world, buffer, local, now };
+  const deps: WireDeps = { world, buffer, local, predictor, now };
   return { world, buffer, localCalls, deps };
 }
 
@@ -140,5 +150,96 @@ describe("applyServerMessage", () => {
     expect(world.size()).toBe(0);
     expect(buffer.sample(1, 1_000)).toBeNull();
     expect(localCalls).toEqual([]);
+  });
+
+  it("Welcome resets the predictor to the local player's authoritative spawn", () => {
+    const predictor = new LocalPredictor();
+    // Pre-soil the predictor as if a previous session left state on it.
+    predictor.setIntent(1, 0, 99);
+    predictor.position(0);
+    predictor.position(2_000);
+
+    const { deps } = makeFixture(() => 5_000, predictor);
+    applyServerMessage(
+      decodeRoundtrip({
+        welcome: {
+          playerId: 7,
+          snapshot: {
+            players: [
+              { id: 7, x: -3.5, y: 4.25 },
+              { id: 8, x: 0, y: 0 },
+            ],
+          },
+        },
+      }),
+      deps,
+    );
+
+    // Predictor anchored at the local player's spawn, with seq + intent zeroed.
+    expect(predictor.position(5_000)).toEqual({ x: -3.5, y: 4.25 });
+    expect(predictor.intentForTest()).toEqual({ dx: 0, dy: 0 });
+    expect(predictor.latestSentSeqForTest()).toBe(0);
+  });
+
+  it("StateUpdate reconciles the predictor with the local player's snapshot entry", () => {
+    const predictor = new LocalPredictor();
+    const { deps } = makeFixture(() => 1_000, predictor);
+
+    // Bind the local id, anchor the predictor.
+    applyServerMessage(
+      decodeRoundtrip({
+        welcome: { playerId: 7, snapshot: { players: [{ id: 7, x: 0, y: 0 }] } },
+      }),
+      deps,
+    );
+    // Client predicts moving east at full speed and has sent up through seq=3.
+    predictor.setIntent(1, 0, 3);
+    predictor.position(1_000);
+    predictor.position(1_500); // advances ~2.5 along x
+
+    // Server snapshot says we're at (15, 0) with all our inputs acked — that's
+    // a clear divergence (e.g. a server override). Reconcile should snap.
+    applyServerMessage(
+      decodeRoundtrip({
+        stateUpdate: {
+          snapshot: {
+            players: [{ id: 7, x: 15, y: 0, ackedClientSeq: 3 }],
+          },
+        },
+      }),
+      deps,
+    );
+    // After reconcile, query at the same time as last advance -> snapped.
+    expect(predictor.position(1_500)).toEqual({ x: 15, y: 0 });
+  });
+
+  it("StateUpdate skips reconciliation when server hasn't acked the latest input", () => {
+    const predictor = new LocalPredictor();
+    const { deps } = makeFixture(() => 1_000, predictor);
+    applyServerMessage(
+      decodeRoundtrip({
+        welcome: { playerId: 7, snapshot: { players: [{ id: 7, x: 0, y: 0 }] } },
+      }),
+      deps,
+    );
+    // Client has sent up through seq=10; predicted has advanced.
+    predictor.setIntent(1, 0, 10);
+    predictor.position(1_000);
+    predictor.position(2_000); // ~5 along x at SPEED=5
+
+    // Server still only acked seq=2 — predicted is correctly ahead. Don't snap.
+    applyServerMessage(
+      decodeRoundtrip({
+        stateUpdate: {
+          snapshot: {
+            players: [{ id: 7, x: 0, y: 0, ackedClientSeq: 2 }],
+          },
+        },
+      }),
+      deps,
+    );
+    const pos = predictor.position(2_000);
+    expect(pos.x).toBeCloseTo(5);
+    expect(pos.y).toBe(0);
   });
 });
