@@ -5,6 +5,7 @@ import type {
   LocalPredictor,
   PlayerId,
   SnapshotBuffer,
+  Terrain,
   World,
 } from "../game/index.js";
 import { composePlayerEntities } from "./compose.js";
@@ -15,6 +16,7 @@ import {
   type PlayerMeshFactory,
   type RenderableEntity,
 } from "./sync.js";
+import { buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
@@ -105,6 +107,7 @@ export class Renderer {
   private readonly factory: PlayerMeshFactory;
   private readonly now: () => number;
   private localPlayerId: PlayerId | null = null;
+  private terrainGroup: THREE.Object3D | null = null;
 
   constructor(
     private readonly world: World,
@@ -112,6 +115,7 @@ export class Renderer {
     private readonly predictor: LocalPredictor,
     container: HTMLElement,
     viewport: Viewport,
+    terrain: Terrain | null = null,
     factory: PlayerMeshFactory = defaultFactory,
     now: () => number = () => Date.now(),
   ) {
@@ -170,6 +174,11 @@ export class Renderer {
     this.playerGroup = new THREE.Group();
     this.scene.add(this.playerGroup);
 
+    if (terrain !== null) {
+      this.terrainGroup = buildTerrainMesh(terrain);
+      this.scene.add(this.terrainGroup);
+    }
+
     this.webgl.setAnimationLoop(this.frame);
   }
 
@@ -211,6 +220,10 @@ export class Renderer {
       disposePlayerMesh(mesh, this.playerGroup);
     }
     this.meshes.clear();
+    if (this.terrainGroup) {
+      disposeTerrainMesh(this.terrainGroup, this.scene);
+      this.terrainGroup = null;
+    }
     this.webgl.dispose();
     this.webgl.domElement.remove();
   }
