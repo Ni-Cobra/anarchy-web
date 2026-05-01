@@ -5,7 +5,12 @@
  * knowledge of the network or proto layer — a wire layer feeds both stores
  * and tells the renderer which player id is local.
  */
-export { Renderer, REMOTE_RENDER_DELAY_MS } from "./renderer.js";
+export { Renderer } from "./renderer.js";
+export {
+  composePlayerEntities,
+  LOCAL_RENDER_DELAY_MS,
+  REMOTE_RENDER_DELAY_MS,
+} from "./compose.js";
 export {
   syncPlayerMeshes,
   tileToScene,

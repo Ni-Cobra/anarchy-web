@@ -1,12 +1,12 @@
 import * as THREE from "three";
 
 import type { Player, PlayerId, SnapshotBuffer, World } from "../game/index.js";
+import { composePlayerEntities } from "./compose.js";
 import {
   disposePlayerMesh,
   syncPlayerMeshes,
   tileToScene,
   type PlayerMeshFactory,
-  type RenderableEntity,
 } from "./sync.js";
 
 const LOCAL_COLOR = 0xff3030;
@@ -22,15 +22,6 @@ const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
 const AXIS_Y_COLOR = 0x60a0ff;
 
-/**
- * Render-time delay applied to remote players. Per ADR 0001 we draw remote
- * cubes ~100 ms behind real time and lerp between bracketing snapshots, so
- * a typical jitter or a single dropped tick never produces a visible jump.
- * The local player ignores this delay and reads the latest authoritative
- * position directly off `World`.
- */
-export const REMOTE_RENDER_DELAY_MS = 100;
-
 const defaultFactory: PlayerMeshFactory = {
   create(_player: Player, isLocal: boolean) {
     const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
@@ -43,9 +34,12 @@ const defaultFactory: PlayerMeshFactory = {
 
 /**
  * Owns the Three.js scene + render loop. Each frame it composes a list of
- * renderable entities — the local player at its latest server-authoritative
- * position, every remote player at the lerp output of `SnapshotBuffer` —
- * and reconciles meshes against it. The camera tracks the local player.
+ * renderable entities — every player at the lerp output of
+ * `SnapshotBuffer`, the local player using `LOCAL_RENDER_DELAY_MS` and
+ * remote players using the larger `REMOTE_RENDER_DELAY_MS` — and
+ * reconciles meshes against it. The camera tracks the local player at its
+ * interpolated position so the follow stays smooth at the browser frame
+ * rate even though snapshots only land at the 20 Hz server cadence.
  *
  * The renderer is networking-agnostic: a wire layer feeds `World` /
  * `SnapshotBuffer` and tells us who we are with `setLocalPlayerId`. Nothing
@@ -166,7 +160,12 @@ export class Renderer {
   };
 
   private frame = () => {
-    const entities = this.composeEntities();
+    const entities = composePlayerEntities(
+      this.world,
+      this.buffer,
+      this.localPlayerId,
+      this.now(),
+    );
     syncPlayerMeshes(
       entities,
       this.localPlayerId,
@@ -174,36 +173,19 @@ export class Renderer {
       this.playerGroup,
       this.factory,
     );
-    this.updateCamera();
+    this.updateCamera(entities);
     this.webgl.render(this.scene, this.camera);
   };
 
-  private composeEntities(): RenderableEntity[] {
-    const tRender = this.now() - REMOTE_RENDER_DELAY_MS;
-    const out: RenderableEntity[] = [];
-    for (const player of this.world.players()) {
-      if (player.id === this.localPlayerId) {
-        // Local player: latest authoritative position, no interpolation lag.
-        out.push({ id: player.id, x: player.x, y: player.y });
-        continue;
-      }
-      // Remote: 100 ms-delayed interpolated position. Falls back to the
-      // current world position if no buffered samples exist yet (only
-      // possible immediately after spawn, before the first push lands).
-      const interp = this.buffer.sample(player.id, tRender);
-      const pos = interp ?? { x: player.x, y: player.y };
-      out.push({ id: player.id, x: pos.x, y: pos.y });
-    }
-    return out;
-  }
-
-  private updateCamera() {
-    const target =
+  private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {
+    // Follow the *interpolated* local position so the camera moves at the
+    // browser frame rate rather than stepping at the 20 Hz snapshot cadence.
+    const local =
       this.localPlayerId !== null
-        ? this.world.getPlayer(this.localPlayerId)
+        ? entities.find((e) => e.id === this.localPlayerId)
         : undefined;
-    const focus = target
-      ? tileToScene(target.x, target.y)
+    const focus = local
+      ? tileToScene(local.x, local.y)
       : new THREE.Vector3(0, 0, 0);
     this.camera.position.set(focus.x, CAMERA_HEIGHT, focus.z);
     this.camera.lookAt(focus);
