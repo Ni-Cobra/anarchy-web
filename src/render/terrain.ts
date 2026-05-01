@@ -85,7 +85,12 @@ const TOP_BOX_HEIGHT = 1.0;
 // the ground-slab top), centered at half-height above that surface.
 const TOP_BOX_Y = GROUND_Y + GROUND_THICKNESS / 2 + TOP_BOX_HEIGHT / 2;
 
-function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Group {
+/**
+ * Build a per-chunk sub-group named `chunk:cx,cy`. Exported so the renderer
+ * can rebuild a single chunk on a `ChunkLoaded` event without throwing away
+ * the rest of the terrain mesh.
+ */
+export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Group {
   // Per-chunk shared geometries + materials. One shape per layer role; one
   // material per BlockType encountered. Sharing keeps the per-build
   // allocation count proportional to "kinds present" rather than "tiles" —

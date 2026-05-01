@@ -1,4 +1,4 @@
-import { LocalPredictor, SnapshotBuffer, World } from "./game/index.js";
+import { LocalPredictor, SnapshotBuffer, Terrain, World } from "./game/index.js";
 import { InputController } from "./input/index.js";
 import { applyServerMessage, connect } from "./net/index.js";
 import { Renderer } from "./render/index.js";
@@ -10,6 +10,7 @@ declare global {
     __anarchy?: {
       world: World;
       predictor: LocalPredictor;
+      terrain: Terrain;
       getLocalPlayerId: () => number | null;
       sendMoveIntent: (dx: number, dy: number) => void;
     };
@@ -33,11 +34,19 @@ function runMain(): void {
   const world = new World();
   const buffer = new SnapshotBuffer();
   const predictor = new LocalPredictor();
-  const renderer = new Renderer(world, buffer, predictor, document.body, {
-    width: window.innerWidth,
-    height: window.innerHeight,
-    pixelRatio: window.devicePixelRatio,
-  });
+  const terrain = new Terrain();
+  const renderer = new Renderer(
+    world,
+    buffer,
+    predictor,
+    document.body,
+    {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      pixelRatio: window.devicePixelRatio,
+    },
+    terrain,
+  );
   window.addEventListener("resize", () => {
     renderer.resize(window.innerWidth, window.innerHeight);
   });
@@ -53,6 +62,12 @@ function runMain(): void {
       world,
       buffer,
       predictor,
+      terrain,
+      terrainSink: {
+        onSnapshot: () => renderer.applyTerrainSnapshot(),
+        onChunkLoaded: (cx, cy) => renderer.applyChunkLoaded(cx, cy),
+        onChunkUnloaded: (cx, cy) => renderer.applyChunkUnloaded(cx, cy),
+      },
       local: {
         setLocalPlayerId: (id) => {
           localPlayerId = id;
@@ -75,6 +90,7 @@ function runMain(): void {
   window.__anarchy = {
     world,
     predictor,
+    terrain,
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,
   };

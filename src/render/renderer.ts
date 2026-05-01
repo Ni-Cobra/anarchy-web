@@ -16,7 +16,7 @@ import {
   type PlayerMeshFactory,
   type RenderableEntity,
 } from "./sync.js";
-import { buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
+import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
@@ -107,7 +107,8 @@ export class Renderer {
   private readonly factory: PlayerMeshFactory;
   private readonly now: () => number;
   private localPlayerId: PlayerId | null = null;
-  private terrainGroup: THREE.Object3D | null = null;
+  private terrain: Terrain | null;
+  private terrainGroup: THREE.Group | null = null;
 
   constructor(
     private readonly world: World,
@@ -119,6 +120,7 @@ export class Renderer {
     factory: PlayerMeshFactory = defaultFactory,
     now: () => number = () => Date.now(),
   ) {
+    this.terrain = terrain;
     this.factory = factory;
     this.now = now;
 
@@ -178,6 +180,8 @@ export class Renderer {
       this.terrainGroup = buildTerrainMesh(terrain);
       this.scene.add(this.terrainGroup);
     }
+    // Even if the caller passed `null`, the wire layer may swap a Terrain in
+    // later via `setTerrain`; the empty group is allocated lazily then.
 
     this.webgl.setAnimationLoop(this.frame);
   }
@@ -200,6 +204,74 @@ export class Renderer {
       this.meshes.delete(pid);
     }
     this.localPlayerId = id;
+  }
+
+  /**
+   * Bind a `Terrain` reference for chunk-level refresh. `main.ts` calls
+   * this once at startup with the same `Terrain` the wire layer mutates.
+   * The renderer never mutates `Terrain` itself — it just reads from it
+   * when the wire layer signals a change via the chunk-refresh hooks.
+   */
+  setTerrain(terrain: Terrain): void {
+    this.terrain = terrain;
+  }
+
+  /**
+   * The wire layer just applied a bulk `TerrainSnapshot` to the bound
+   * `Terrain`. Dispose the existing terrain mesh and rebuild it from
+   * scratch.
+   */
+  applyTerrainSnapshot(): void {
+    if (!this.terrain) return;
+    if (this.terrainGroup) {
+      disposeTerrainMesh(this.terrainGroup, this.scene);
+      this.terrainGroup = null;
+    }
+    this.terrainGroup = buildTerrainMesh(this.terrain);
+    this.scene.add(this.terrainGroup);
+  }
+
+  /**
+   * The wire layer just inserted or replaced the chunk at `(cx, cy)`.
+   * Replace just that chunk's sub-group inside the terrain mesh, leaving
+   * neighbors untouched.
+   */
+  applyChunkLoaded(cx: number, cy: number): void {
+    if (!this.terrain) return;
+    const chunk = this.terrain.get(cx, cy);
+    if (!chunk) return;
+    const root = this.terrainGroupOrCreate();
+    this.disposeChunkSubgroup(cx, cy, root);
+    root.add(buildChunkMesh(cx, cy, chunk));
+  }
+
+  /**
+   * The wire layer just removed the chunk at `(cx, cy)`. Drop its
+   * sub-group from the terrain mesh.
+   */
+  applyChunkUnloaded(cx: number, cy: number): void {
+    if (!this.terrainGroup) return;
+    this.disposeChunkSubgroup(cx, cy, this.terrainGroup);
+  }
+
+  private terrainGroupOrCreate(): THREE.Group {
+    if (this.terrainGroup) return this.terrainGroup;
+    const g = new THREE.Group();
+    g.name = "terrain";
+    this.scene.add(g);
+    this.terrainGroup = g;
+    return g;
+  }
+
+  private disposeChunkSubgroup(
+    cx: number,
+    cy: number,
+    root: THREE.Group,
+  ): void {
+    const name = `chunk:${cx},${cy}`;
+    const existing = root.children.find((c) => c.name === name);
+    if (!existing) return;
+    disposeTerrainMesh(existing, root);
   }
 
   /**
