@@ -9,6 +9,7 @@ package anarchy.v1;
 // Payload field-number convention inside the envelope oneofs:
 //   10-19 : connection lifecycle (handshake, heartbeat)
 //   20-29 : per-tick state and intent
+//   30-39 : terrain (bulk + per-chunk load / unload)
 // New payloads slot into the matching range so wire numbers stay grouped.
 
 // === Envelopes ===
@@ -30,6 +31,9 @@ message ServerMessage {
     Pong pong = 11;
     StateUpdate state_update = 20;
     PlayerDespawned player_despawned = 21;
+    TerrainSnapshot terrain_snapshot = 30;
+    ChunkLoaded chunk_loaded = 31;
+    ChunkUnloaded chunk_unloaded = 32;
   }
 }
 
@@ -137,4 +141,82 @@ enum Direction8 {
 // Emitted when a player leaves the world.
 message PlayerDespawned {
   uint64 player_id = 1;
+}
+
+// === Terrain ===
+//
+// Mirrors the in-memory model fixed by ADR 0002 (anarchy-server/docs/
+// decisions/0002-terrain-model.md): a chunk is two named layers
+// (`ground` walkable surface, `top` standing geometry); each layer is a
+// flat 16×16 array of `Block`s; a `Block` is a struct wrapping a typed
+// kind so per-block metadata can grow as a field addition rather than a
+// per-variant change. Wire integers for `BlockType` are chosen so AIR
+// occupies the proto3 zero value — a default-initialized `Block` is an
+// empty tile, which is exactly the right semantic. This deviates from
+// the `Direction8` convention (`*_UNSPECIFIED = 0`) deliberately:
+// `Direction8` has no natural identity element, but `BlockType` does,
+// so a separate sentinel would just collapse into AIR anyway.
+//
+// On a successful join the server sends one `TerrainSnapshot` carrying
+// every currently-loaded chunk before the first `StateUpdate`. While the
+// session runs, the radius-based loader broadcasts a `ChunkLoaded` when
+// it generates a new chunk and a `ChunkUnloaded` when one drops out of
+// every connected player's neighborhood. This is the naive shape; a
+// proper streaming/diffing protocol is a future task — the schema here
+// is intentionally a 1:1 dump of the in-memory model.
+
+enum BlockType {
+  BLOCK_TYPE_AIR = 0;
+  BLOCK_TYPE_GRASS = 1;
+  BLOCK_TYPE_WOOD = 2;
+  BLOCK_TYPE_STONE = 3;
+}
+
+// One tile. Field set is intentionally minimal today — the wrapper
+// message exists so per-block metadata (variant, hp, owner, lighting,
+// …) can be added as field additions without rippling through every
+// signature.
+message Block {
+  BlockType kind = 1;
+}
+
+// One horizontal slab of blocks. `blocks` is a flat array of length
+// `LAYER_AREA = LAYER_SIZE * LAYER_SIZE = 16 * 16 = 256`, indexed by
+// `idx(x, y) = y * LAYER_SIZE + x`. Receivers MUST verify the length
+// before indexing — the wire encoding can't enforce it (proto3 has no
+// fixed-size repeated).
+message Layer {
+  repeated Block blocks = 1;
+}
+
+// One 16×16 chunk at chunk-coord `(x, y)`. Chunk-coord `(cx, cy)` covers
+// world tiles `cx*16 .. (cx+1)*16` along both axes — see ADR 0002 §5.
+message Chunk {
+  int32 x = 1;
+  int32 y = 2;
+  Layer ground = 3;
+  Layer top = 4;
+}
+
+// Bulk terrain dump sent to a joining client before its first
+// `StateUpdate`, carrying every chunk the server currently has loaded.
+// Late arrivals (chunks loaded after join) come through `ChunkLoaded`.
+message TerrainSnapshot {
+  repeated Chunk chunks = 1;
+}
+
+// Broadcast when the radius-based loader generates a new chunk. Every
+// connected client should ingest it into its local `Terrain` map; a
+// receiver that already has the chunk replaces it (the server is the
+// authority on chunk contents).
+message ChunkLoaded {
+  Chunk chunk = 1;
+}
+
+// Broadcast when a chunk drops out of every connected player's
+// neighborhood and is no longer authoritative on the server. Clients
+// should remove `(x, y)` from their local `Terrain` map.
+message ChunkUnloaded {
+  int32 x = 1;
+  int32 y = 2;
 }
