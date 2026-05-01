@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { REMOTE_RENDER_DELAY_MS } from "../config.js";
 import { LocalPredictor, SnapshotBuffer, World } from "../game/index.js";
-import { composePlayerEntities, REMOTE_RENDER_DELAY_MS } from "./compose.js";
+import { composePlayerEntities } from "./compose.js";
 
 const LOCAL = 1;
 const REMOTE = 2;

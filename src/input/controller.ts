@@ -1,3 +1,4 @@
+import { INPUT_HEARTBEAT_TICKS, INPUT_TICK_INTERVAL_MS } from "../config.js";
 import { keyToDirection, SCROLL_KEY_CODES } from "./keymap.js";
 
 /**
@@ -10,21 +11,6 @@ import { keyToDirection, SCROLL_KEY_CODES } from "./keymap.js";
 export interface InputSink {
   sendMoveIntent(dx: number, dy: number): void;
 }
-
-/**
- * 20 Hz matches the server tick (ADR 0001). The controller polls the held
- * key set this often, recomputes the intent vector, and pushes it to the
- * sink whenever it changes — plus a periodic heartbeat resend for
- * robustness against dropped frames in any future non-TCP transport.
- */
-const DEFAULT_TICK_INTERVAL_MS = 50;
-
-/**
- * Resend the current intent every N ticks even when it hasn't changed, so
- * a dropped frame can't leave the server with a stale view of the player's
- * intent for more than ~N * tickInterval. 10 ticks ≈ 500 ms.
- */
-const HEARTBEAT_TICKS = 10;
 
 /**
  * Tracks which movement keys are held and pushes a `MoveIntent` to `sink`
@@ -51,7 +37,7 @@ export class InputController {
 
   constructor(
     private readonly sink: InputSink,
-    private readonly tickIntervalMs: number = DEFAULT_TICK_INTERVAL_MS,
+    private readonly tickIntervalMs: number = INPUT_TICK_INTERVAL_MS,
   ) {}
 
   /**
@@ -98,7 +84,7 @@ export class InputController {
     const moving = intent.dx !== 0 || intent.dy !== 0;
 
     this.heartbeatCounter += 1;
-    const heartbeatDue = moving && this.heartbeatCounter >= HEARTBEAT_TICKS;
+    const heartbeatDue = moving && this.heartbeatCounter >= INPUT_HEARTBEAT_TICKS;
 
     if (changed || heartbeatDue) {
       this.sink.sendMoveIntent(intent.dx, intent.dy);

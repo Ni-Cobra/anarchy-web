@@ -1,5 +1,6 @@
 import * as THREE from "three";
 
+import { CAMERA_HEIGHT } from "../config.js";
 import type {
   LocalPredictor,
   Player,
@@ -18,7 +19,6 @@ import {
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
 const CUBE_SIZE = 1;
-const CAMERA_HEIGHT = 14;
 // Half-length of each ground axis line. Lines extend from -AXIS_HALF_LENGTH to
 // +AXIS_HALF_LENGTH along their respective axis; the camera-far clip (1000)
 // then bounds what's actually visible from the player's vantage point.

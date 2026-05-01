@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  LocalPredictor,
-  RECONCILE_SNAP_DISTANCE,
-  SPEED,
-} from "./predictor.js";
+import { RECONCILE_SNAP_DISTANCE, SPEED } from "../config.js";
+import { LocalPredictor } from "./predictor.js";
 
 describe("LocalPredictor", () => {
   it("starts at origin with zero intent", () => {

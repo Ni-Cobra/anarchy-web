@@ -1,21 +1,5 @@
+import { RECONCILE_SNAP_DISTANCE, SPEED } from "../config.js";
 import type { Player } from "./player.js";
-
-/**
- * World units per second. Mirrors `game::world::SPEED` on the server — the
- * two must stay equal so that predicted client motion converges with the
- * authoritative server tick. See ADR 0001 (movement-intent amendment).
- */
-export const SPEED = 5.0;
-
-/**
- * If predicted position diverges from the latest reconcilable server
- * snapshot by more than this many world units, snap to the server. Picked to
- * be larger than the typical server-vs-client lag distance for a player
- * moving at full speed (`|intent| * SPEED * RTT/2` is well under 1.0 on a
- * sub-100 ms link) but small enough that an actual override (collision,
- * future anti-cheat) gets corrected within a single tick.
- */
-export const RECONCILE_SNAP_DISTANCE = 1.5;
 
 /**
  * Local-player position predictor. Replaces snapshot-buffer rendering for
