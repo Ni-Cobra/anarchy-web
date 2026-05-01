@@ -12,19 +12,12 @@ export { SnapshotBuffer } from "./snapshot_buffer.js";
 export { LocalPredictor } from "./predictor.js";
 export type { Block, Chunk, Layer } from "./terrain.js";
 export {
-  AIR_BLOCK,
   BlockType,
   CHUNK_SIZE,
   LAYER_AREA,
   LAYER_SIZE,
   Terrain,
-  chunkCoordForWorldPos,
-  chunkKey,
   emptyChunk,
-  emptyLayer,
-  filledLayer,
   getBlock,
-  layerIdx,
-  parseChunkKey,
   setBlock,
 } from "./terrain.js";

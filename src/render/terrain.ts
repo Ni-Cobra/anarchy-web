@@ -17,9 +17,8 @@ import {
  *
  * Pure function — call it once and add the result to a scene; call
  * `disposeTerrainMesh` to free GPU resources when the group leaves the
- * scene. Refresh by disposing then rebuilding (the next networking task
- * will introduce per-chunk reactive sync; for now the scaffold rebuilds
- * wholesale).
+ * scene. The renderer rebuilds wholesale on `TerrainSnapshot` and per-chunk
+ * via `buildChunkMesh` on `ChunkLoaded` / `ChunkUnloaded`.
  */
 export function buildTerrainMesh(terrain: Terrain): THREE.Group {
   const group = new THREE.Group();

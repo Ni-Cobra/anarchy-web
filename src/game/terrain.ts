@@ -2,8 +2,8 @@
  * Client-side mirror of the server's `game::terrain` data model. Pure data +
  * math; no networking. The shape (block kinds, layer size, two-layer chunks,
  * sparse `Terrain` map) tracks ADR 0002 in the server repo — see
- * `anarchy-server/docs/decisions/0002-terrain-model.md` — so the next
- * networking task can map the proto schema 1:1 onto these types.
+ * `anarchy-server/docs/decisions/0002-terrain-model.md` — so the proto
+ * payloads ingested in `net/wire.ts` map 1:1 onto these types.
  *
  * The `Terrain` map is keyed by a `"cx,cy"` string under the hood (ES Maps
  * compare object keys by reference, so a tuple key would be useless); the
@@ -148,8 +148,9 @@ export function chunkCoordForWorldPos(
  * Iteration order is insertion order (ES `Map` semantics) — callers that
  * need a specific order should sort.
  *
- * Mirrors `game::Terrain` on the server; networking and the per-chunk
- * load/unload policy attach in follow-up BACKLOG tasks.
+ * Mirrors `game::Terrain` on the server. The wire layer (`net/wire.ts`)
+ * mutates this in place when `TerrainSnapshot` / `ChunkLoaded` /
+ * `ChunkUnloaded` arrive; the server alone decides the loaded set.
  */
 export class Terrain {
   private readonly chunks = new Map<string, Chunk>();
