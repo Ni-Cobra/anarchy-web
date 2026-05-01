@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { anarchy } from "../gen/anarchy.js";
 import { InputController, type InputSink } from "./controller.js";
-
-const { ActionKind } = anarchy.v1;
 
 interface KeyEventInit {
   code: string;
@@ -18,17 +15,25 @@ function dispatchKey(target: EventTarget, type: "keydown" | "keyup", init: KeyEv
   return e;
 }
 
+interface SentIntent {
+  dx: number;
+  dy: number;
+}
+
 function makeSink() {
-  // Each entry is one frame's worth of actions, mirroring how the wire
-  // sees them: one call per tick, even when the call carries multiple
-  // held directions.
-  const sent: anarchy.v1.ActionKind[][] = [];
+  const sent: SentIntent[] = [];
   const sink: InputSink = {
-    sendActions(actions) {
-      sent.push([...actions]);
+    sendMoveIntent(dx, dy) {
+      sent.push({ dx, dy });
     },
   };
   return { sent, sink };
+}
+
+const INV_SQRT2 = 1 / Math.sqrt(2);
+
+function near(a: number, b: number, eps = 1e-9): boolean {
+  return Math.abs(a - b) < eps;
 }
 
 describe("InputController", () => {
@@ -43,27 +48,29 @@ describe("InputController", () => {
     vi.useRealTimers();
   });
 
-  it("emits one frame per tick carrying the held direction", () => {
+  it("emits a single intent on press and stops sending while held + idle", () => {
+    // The state-replacing model: pressing W once produces one (0, 1) frame;
+    // subsequent ticks holding the same key send nothing until either the
+    // intent changes or the heartbeat timer ticks over.
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
 
     dispatchKey(target, "keydown", { code: "KeyW" });
-    expect(sent).toEqual([]); // intent only emits on tick, not on press
+    expect(sent).toEqual([]); // emit only happens on tick
 
     vi.advanceTimersByTime(50);
-    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_NORTH]]);
+    expect(sent).toEqual([{ dx: 0, dy: 1 }]);
 
-    vi.advanceTimersByTime(50);
-    expect(sent).toEqual([
-      [ActionKind.ACTION_KIND_MOVE_NORTH],
-      [ActionKind.ACTION_KIND_MOVE_NORTH],
-    ]);
+    // Two more ticks while still holding W — same intent, no resend yet
+    // (heartbeat is at 10 ticks).
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual([{ dx: 0, dy: 1 }]);
 
     stop();
   });
 
-  it("stops emitting once the key is released", () => {
+  it("emits a stop frame when the key is released", () => {
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
@@ -71,16 +78,18 @@ describe("InputController", () => {
     dispatchKey(target, "keydown", { code: "KeyD" });
     vi.advanceTimersByTime(50);
     dispatchKey(target, "keyup", { code: "KeyD" });
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(50);
 
-    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_EAST]]);
+    expect(sent).toEqual([
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: 0 },
+    ]);
     stop();
   });
 
-  it("packs every held direction into a single frame per tick", () => {
-    // The whole point of the multi-action wire frame: holding W+D produces
-    // exactly one frame per tick, not two — see ADR 0001 + the rate-limit
-    // budget in network/conn.rs.
+  it("normalizes diagonal holds to unit magnitude", () => {
+    // W+D held simultaneously: raw vector (1, 1), normalized to
+    // (≈0.7071, ≈0.7071) so diagonal speed equals straight speed.
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
@@ -90,28 +99,69 @@ describe("InputController", () => {
     vi.advanceTimersByTime(50);
 
     expect(sent).toHaveLength(1);
-    expect(new Set(sent[0])).toEqual(
-      new Set([ActionKind.ACTION_KIND_MOVE_NORTH, ActionKind.ACTION_KIND_MOVE_EAST]),
-    );
+    expect(near(sent[0].dx, INV_SQRT2)).toBe(true);
+    expect(near(sent[0].dy, INV_SQRT2)).toBe(true);
+    expect(near(Math.hypot(sent[0].dx, sent[0].dy), 1)).toBe(true);
+
     stop();
   });
 
-  it("does not emit a frame on ticks where nothing is held", () => {
-    // Empty frames waste rate-limit budget for no reason — the controller
-    // simply skips the send call when the held set is empty.
+  it("opposing keys cancel to zero intent", () => {
+    // W and S held together → (0, 0) — the player is "trying to move both
+    // ways", which is the same as not moving.
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
 
-    vi.advanceTimersByTime(200);
-    expect(sent).toEqual([]);
-
     dispatchKey(target, "keydown", { code: "KeyW" });
     vi.advanceTimersByTime(50);
-    dispatchKey(target, "keyup", { code: "KeyW" });
-    vi.advanceTimersByTime(200);
+    dispatchKey(target, "keydown", { code: "KeyS" });
+    vi.advanceTimersByTime(50);
 
-    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_NORTH]]);
+    expect(sent).toEqual([
+      { dx: 0, dy: 1 }, // W alone
+      { dx: 0, dy: 0 }, // W+S cancels
+    ]);
+    stop();
+  });
+
+  it("resends current intent at the heartbeat cadence while moving", () => {
+    // Hold W for 11 ticks. The heartbeat fires every 10 ticks with the same
+    // (0, 1) so a dropped frame can't leave the server with stale intent.
+    const { sent, sink } = makeSink();
+    const ctrl = new InputController(sink, 50);
+    const stop = ctrl.start(target);
+
+    dispatchKey(target, "keydown", { code: "KeyW" });
+    // Tick 1: change-driven send.
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([{ dx: 0, dy: 1 }]);
+
+    // 9 more ticks: no extra send (still tick 10 from start of held state).
+    vi.advanceTimersByTime(50 * 9);
+    expect(sent).toEqual([{ dx: 0, dy: 1 }]);
+
+    // Tick 11: heartbeat resend fires.
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([
+      { dx: 0, dy: 1 },
+      { dx: 0, dy: 1 },
+    ]);
+
+    stop();
+  });
+
+  it("does not heartbeat when intent is zero", () => {
+    // Idle player — held set is empty, intent is (0, 0). No heartbeat
+    // resend is needed: the server is the authoritative state and zero is
+    // its default; no liveness concern.
+    const { sent, sink } = makeSink();
+    const ctrl = new InputController(sink, 50);
+    const stop = ctrl.start(target);
+
+    vi.advanceTimersByTime(50 * 30);
+    expect(sent).toEqual([]);
+
     stop();
   });
 
@@ -120,17 +170,17 @@ describe("InputController", () => {
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
 
-    // First press registers, repeated synthetic events from the OS should not
-    // re-add the action — they just confirm the same held state.
     dispatchKey(target, "keydown", { code: "KeyW", repeat: false });
     dispatchKey(target, "keydown", { code: "KeyW", repeat: true });
     dispatchKey(target, "keydown", { code: "KeyW", repeat: true });
 
     vi.advanceTimersByTime(50);
-    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_NORTH]]);
+    expect(sent).toEqual([{ dx: 0, dy: 1 }]);
 
-    // After release, even a stray repeat=true must not re-arm the held set.
+    // Release, then a stray repeat=true must not re-arm the held set —
+    // intent stays at (0, 0) on the next tick.
     dispatchKey(target, "keyup", { code: "KeyW" });
+    vi.advanceTimersByTime(50); // emits the stop frame
     sent.length = 0;
     dispatchKey(target, "keydown", { code: "KeyW", repeat: true });
     vi.advanceTimersByTime(50);
@@ -189,7 +239,7 @@ describe("InputController", () => {
     dispatchKey(target, "keydown", { code: "KeyA" });
     vi.advanceTimersByTime(50);
 
-    expect(sent).toEqual([[ActionKind.ACTION_KIND_MOVE_WEST]]);
+    expect(sent).toEqual([{ dx: -1, dy: 0 }]);
     stop2();
   });
 

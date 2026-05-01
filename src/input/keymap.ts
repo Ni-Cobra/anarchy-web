@@ -1,25 +1,28 @@
-import { anarchy } from "../gen/anarchy.js";
-
-const { ActionKind } = anarchy.v1;
-
-const KEY_TO_ACTION: Readonly<Record<string, anarchy.v1.ActionKind>> = {
-  KeyW: ActionKind.ACTION_KIND_MOVE_NORTH,
-  ArrowUp: ActionKind.ACTION_KIND_MOVE_NORTH,
-  KeyS: ActionKind.ACTION_KIND_MOVE_SOUTH,
-  ArrowDown: ActionKind.ACTION_KIND_MOVE_SOUTH,
-  KeyD: ActionKind.ACTION_KIND_MOVE_EAST,
-  ArrowRight: ActionKind.ACTION_KIND_MOVE_EAST,
-  KeyA: ActionKind.ACTION_KIND_MOVE_WEST,
-  ArrowLeft: ActionKind.ACTION_KIND_MOVE_WEST,
+/**
+ * Per-key contribution to the player's continuous movement intent vector,
+ * in world axes (`+x = east`, `+y = north`). Each entry is a unit step in
+ * one cardinal direction; the controller sums every held key's vector and
+ * normalizes the result so |intent| ≤ 1.
+ */
+const KEY_TO_DIRECTION: Readonly<Record<string, readonly [number, number]>> = {
+  KeyW: [0, 1],
+  ArrowUp: [0, 1],
+  KeyS: [0, -1],
+  ArrowDown: [0, -1],
+  KeyD: [1, 0],
+  ArrowRight: [1, 0],
+  KeyA: [-1, 0],
+  ArrowLeft: [-1, 0],
 };
 
 /**
- * Translate a `KeyboardEvent.code` to its `ActionKind`, or `undefined` for
- * keys we don't bind. We key off `code` (physical key) rather than `key`
- * (layout-dependent character) so WASD continues to work on AZERTY/Dvorak.
+ * Translate a `KeyboardEvent.code` to its movement-direction contribution
+ * `[dx, dy]`, or `undefined` for keys we don't bind. We key off `code`
+ * (physical key) rather than `key` (layout-dependent character) so WASD
+ * continues to work on AZERTY/Dvorak.
  */
-export function keyToAction(code: string): anarchy.v1.ActionKind | undefined {
-  return KEY_TO_ACTION[code];
+export function keyToDirection(code: string): readonly [number, number] | undefined {
+  return KEY_TO_DIRECTION[code];
 }
 
 /** Arrow-key codes whose default action (page scroll) we want to suppress. */

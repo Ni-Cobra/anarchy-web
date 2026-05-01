@@ -114,7 +114,7 @@ test("Hello → Action → Ping: connection survives a multi-message handshake",
   const action = ClientMessage.encode(
     ClientMessage.create({
       seq: 2,
-      action: { actions: [1 /* MOVE_NORTH */] },
+      action: { moveIntent: { dx: 0.0, dy: 1.0 } },
     }),
   ).finish();
   ws.send(action);

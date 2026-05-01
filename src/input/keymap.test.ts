@@ -1,28 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { anarchy } from "../gen/anarchy.js";
-import { keyToAction, SCROLL_KEY_CODES } from "./keymap.js";
+import { keyToDirection, SCROLL_KEY_CODES } from "./keymap.js";
 
-const { ActionKind } = anarchy.v1;
-
-describe("keyToAction", () => {
+describe("keyToDirection", () => {
   it.each([
-    ["KeyW", ActionKind.ACTION_KIND_MOVE_NORTH],
-    ["ArrowUp", ActionKind.ACTION_KIND_MOVE_NORTH],
-    ["KeyS", ActionKind.ACTION_KIND_MOVE_SOUTH],
-    ["ArrowDown", ActionKind.ACTION_KIND_MOVE_SOUTH],
-    ["KeyA", ActionKind.ACTION_KIND_MOVE_WEST],
-    ["ArrowLeft", ActionKind.ACTION_KIND_MOVE_WEST],
-    ["KeyD", ActionKind.ACTION_KIND_MOVE_EAST],
-    ["ArrowRight", ActionKind.ACTION_KIND_MOVE_EAST],
-  ])("maps %s to the right ActionKind", (code, expected) => {
-    expect(keyToAction(code)).toBe(expected);
+    ["KeyW", [0, 1]],
+    ["ArrowUp", [0, 1]],
+    ["KeyS", [0, -1]],
+    ["ArrowDown", [0, -1]],
+    ["KeyA", [-1, 0]],
+    ["ArrowLeft", [-1, 0]],
+    ["KeyD", [1, 0]],
+    ["ArrowRight", [1, 0]],
+  ] as const)("maps %s to the right unit direction vector", (code, expected) => {
+    expect(keyToDirection(code)).toEqual(expected);
   });
 
   it("returns undefined for unbound keys", () => {
-    expect(keyToAction("KeyQ")).toBeUndefined();
-    expect(keyToAction("Space")).toBeUndefined();
-    expect(keyToAction("")).toBeUndefined();
+    expect(keyToDirection("KeyQ")).toBeUndefined();
+    expect(keyToDirection("Space")).toBeUndefined();
+    expect(keyToDirection("")).toBeUndefined();
   });
 
   it("only flags the four arrow keys as scroll-suppressing", () => {

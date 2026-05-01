@@ -1,4 +1,3 @@
-import { anarchy } from "./gen/anarchy.js";
 import { SnapshotBuffer, World } from "./game/index.js";
 import { InputController } from "./input/index.js";
 import { applyServerMessage, connect } from "./net/index.js";
@@ -24,8 +23,8 @@ const conn = connect("ws://localhost:8080/ws", (msg) => {
 });
 
 const input = new InputController({
-  sendActions(actions) {
-    conn.send({ action: { actions } });
+  sendMoveIntent(dx, dy) {
+    conn.send({ action: { moveIntent: { dx, dy } } });
   },
 });
 input.start(window);
@@ -37,12 +36,12 @@ declare global {
     __anarchy?: {
       world: World;
       getLocalPlayerId: () => number | null;
-      sendAction: (kind: anarchy.v1.ActionKind) => void;
+      sendMoveIntent: (dx: number, dy: number) => void;
     };
   }
 }
 window.__anarchy = {
   world,
   getLocalPlayerId: () => localPlayerId,
-  sendAction: (kind) => conn.send({ action: { actions: [kind] } }),
+  sendMoveIntent: (dx, dy) => conn.send({ action: { moveIntent: { dx, dy } } }),
 };

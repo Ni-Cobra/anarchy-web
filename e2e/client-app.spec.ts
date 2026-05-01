@@ -9,8 +9,6 @@ import { test, expect, type Page } from "@playwright/test";
 // file is to exercise the *browser entry path* — that index.html + main.ts
 // + the wire bridge actually wire together end-to-end in a real browser.
 
-const ACTION_MOVE_EAST = 3;
-
 interface SelfView {
   id: number;
   x: number;
@@ -88,14 +86,14 @@ test("one client moves and the other observes the move", async ({ browser }) => 
       return p !== undefined && p.x === 0 && p.y === 0;
     }, meA.id);
 
-    // A pushes a single MOVE_EAST. The server applies it on the next tick
-    // and broadcasts a StateUpdate that B's wire layer should fold into
-    // its world.
-    await a.evaluate((kind) => window.__anarchy!.sendAction(kind), ACTION_MOVE_EAST);
+    // A pushes a single MoveIntent east. The server stores it and starts
+    // advancing A's position each tick; B observes the eastward motion via
+    // the StateUpdate broadcasts.
+    await a.evaluate(() => window.__anarchy!.sendMoveIntent(1, 0));
 
     await b.waitForFunction((peerId) => {
       const p = window.__anarchy?.world.getPlayer(peerId);
-      return p !== undefined && p.x === 1 && p.y === 0;
+      return p !== undefined && p.x > 0 && p.y === 0;
     }, meA.id);
   } finally {
     await ctxA.close();

@@ -61,24 +61,24 @@ message Pong {
 
 // === Client -> server intent ===
 
-// Server-authoritative movement intent. The server alone derives the
-// resulting position; the client never sends coordinates.
+// Server-authoritative client intent for one tick. The server alone derives
+// the resulting position; the client never sends coordinates.
 //
-// One frame may carry multiple action kinds - typically one per held
-// direction key on the client - so a player holding W+D for a diagonal
-// produces a single frame per tick instead of two competing frames.
-// Actions are applied in array order within the next tick. Frame size
-// and emission rate are bounded server-side.
+// Today the only intent is movement; future kinds (attack, pickup, …) will
+// land here as siblings. The client emits these as state-replacing updates
+// — the server stores the latest per-player intent and advances positions
+// each tick from it. Diagonals are normalized client-side; the server
+// clamps `|move_intent| ≤ 1` defensively.
 message ClientAction {
-  repeated ActionKind actions = 1;
+  MoveIntent move_intent = 1;
 }
 
-enum ActionKind {
-  ACTION_KIND_UNSPECIFIED = 0;
-  ACTION_KIND_MOVE_NORTH = 1;
-  ACTION_KIND_MOVE_SOUTH = 2;
-  ACTION_KIND_MOVE_EAST = 3;
-  ACTION_KIND_MOVE_WEST = 4;
+// Continuous 2D movement intent in world axes (+x = east, +y = north).
+// Magnitude is in `{0, 1}` for a canonical client (zero = stopped, one =
+// full speed in the (dx, dy) direction). The server clamps to ≤ 1.
+message MoveIntent {
+  double dx = 1;
+  double dy = 2;
 }
 
 // === Server -> client world state ===

@@ -12,7 +12,8 @@ const ServerMessage = root.lookupType("anarchy.v1.ServerMessage");
 
 const WS_URL = "ws://localhost:8080/ws";
 
-const ACTION_MOVE_EAST = 3;
+const SPEED = 5.0;
+const TICK_DT = 0.05;
 
 type Frame = { kind: "open" } | { kind: "msg"; data: Uint8Array } | { kind: "close"; code: number };
 
@@ -125,31 +126,26 @@ test("malformed binary frames are dropped without killing the connection", async
   a.ws.close();
 });
 
-test("a flood of actions is rate-limited so the player cannot teleport", async () => {
-  // ACTIONS_BURST is 60 in the server; sending 200 actions back-to-back and
-  // checking that the latest snapshot reflects at most ~60 + (refill * wait)
-  // proves a hostile client cannot drag-race the world state.
+test("an oversized intent magnitude is clamped to unit speed", async () => {
+  // Hostile client sends |intent| = 100 east. Server must clamp to 1, so
+  // the player advances at SPEED tiles/sec, not 100*SPEED. Sample after
+  // ~500ms and assert the position is bounded by SPEED * elapsed * a
+  // small slack factor.
   test.setTimeout(10_000);
 
   const a = await openSocket();
   const wa = await readWelcome(a);
   const me = wa.playerId;
 
-  // Fire-hose 200 MoveEast frames.
-  for (let i = 1; i <= 200; i++) {
-    const bytes = ClientMessage.encode(
-      ClientMessage.create({ seq: i, action: { actions: [ACTION_MOVE_EAST] } }),
-    ).finish();
-    a.ws.send(bytes);
-  }
+  const bytes = ClientMessage.encode(
+    ClientMessage.create({ seq: 1, action: { moveIntent: { dx: 100.0, dy: 0.0 } } }),
+  ).finish();
+  a.ws.send(bytes);
 
-  // Wait long enough for several ticks plus measurable refill. Refill is
-  // 30 tokens/s, so 1500 ms can buy at most ~45 additional accepted actions.
-  const WAIT_MS = 1500;
+  const WAIT_MS = 500;
   await new Promise((r) => setTimeout(r, WAIT_MS));
 
-  // Walk the raw frame buffer and find the latest StateUpdate that includes
-  // me. Using `next()` would only return the first match in the buffer.
+  // Find the latest snapshot mentioning me.
   let latestX: number | null = null;
   for (const f of a.frames) {
     if (f.kind !== "msg") continue;
@@ -159,17 +155,60 @@ test("a flood of actions is rate-limited so the player cannot teleport", async (
     if (self) latestX = self.x;
   }
 
-  const BURST = 60;
-  // 30 tokens/sec * 1.5s = 45 extra; plus a little slack for tick alignment.
-  const REFILL_DURING_WAIT = 60;
-
   expect(latestX).not.toBeNull();
-  // Player moved meaningfully forward — rate limit isn't simply rejecting all.
-  expect(latestX!).toBeGreaterThan(0);
-  // But cannot exceed burst plus what could have refilled during the wait.
-  expect(latestX!).toBeLessThanOrEqual(BURST + REFILL_DURING_WAIT);
-  // Sanity: 200 actions sent, well under that observed.
-  expect(latestX!).toBeLessThan(200);
+  // Clamp must hold: travelled distance ≤ SPEED * elapsed (with some
+  // generous slack for tick alignment / scheduling jitter).
+  const maxExpected = SPEED * (WAIT_MS / 1000) * 1.5; // 50% slack
+  expect(latestX!).toBeGreaterThan(0); // motion happened
+  expect(latestX!).toBeLessThan(maxExpected);
 
   a.ws.close();
 });
+
+test("a flood of intent updates is rate-limited so the player cannot teleport", async () => {
+  // The 30/s sustained limit caps how many intent updates are accepted. A
+  // hostile client that fires 200 alternating-direction intents back-to-
+  // back should still see its player travel at most SPEED * elapsed (since
+  // each accepted intent is itself clamped to magnitude 1 and the server
+  // applies them sequentially as state-replacing). The limit prevents
+  // backlog DoS, not teleporting (which is already ruled out by clamping).
+  test.setTimeout(10_000);
+
+  const a = await openSocket();
+  const wa = await readWelcome(a);
+  const me = wa.playerId;
+
+  // Fire-hose 200 east intents — each above unit magnitude on purpose to
+  // also exercise the clamp.
+  for (let i = 1; i <= 200; i++) {
+    const bytes = ClientMessage.encode(
+      ClientMessage.create({ seq: i, action: { moveIntent: { dx: 5.0, dy: 0.0 } } }),
+    ).finish();
+    a.ws.send(bytes);
+  }
+
+  // Wait long enough for several ticks plus measurable refill.
+  const WAIT_MS = 1500;
+  await new Promise((r) => setTimeout(r, WAIT_MS));
+
+  let latestX: number | null = null;
+  for (const f of a.frames) {
+    if (f.kind !== "msg") continue;
+    const players = readStateUpdate(f);
+    if (!players) continue;
+    const self = players.find((p) => p.id === me);
+    if (self) latestX = self.x;
+  }
+
+  expect(latestX).not.toBeNull();
+  expect(latestX!).toBeGreaterThan(0);
+  // Hard cap from the clamp: position ≤ SPEED * elapsed (generous slack).
+  const maxExpected = SPEED * (WAIT_MS / 1000) * 1.5;
+  expect(latestX!).toBeLessThan(maxExpected);
+
+  a.ws.close();
+});
+
+// Touch TICK_DT so it shows up in linter scans even if no test consumes it
+// directly. Keeps the constant grouped with SPEED above for clarity.
+void TICK_DT;
