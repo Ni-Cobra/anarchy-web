@@ -3,7 +3,6 @@ import * as THREE from "three";
 import { CAMERA_HEIGHT } from "../config.js";
 import type {
   LocalPredictor,
-  Player,
   PlayerId,
   SnapshotBuffer,
   World,
@@ -14,6 +13,7 @@ import {
   syncPlayerMeshes,
   tileToScene,
   type PlayerMeshFactory,
+  type RenderableEntity,
 } from "./sync.js";
 
 const LOCAL_COLOR = 0xff3030;
@@ -29,7 +29,7 @@ const AXIS_X_COLOR = 0xff5050;
 const AXIS_Y_COLOR = 0x60a0ff;
 
 const defaultFactory: PlayerMeshFactory = {
-  create(_player: Player, isLocal: boolean) {
+  create(_entity: RenderableEntity, isLocal: boolean) {
     const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
     const material = new THREE.MeshLambertMaterial({
       color: isLocal ? LOCAL_COLOR : REMOTE_COLOR,

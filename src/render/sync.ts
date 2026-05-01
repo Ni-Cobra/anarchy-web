@@ -1,13 +1,16 @@
 import * as THREE from "three";
 
-import type { Player, PlayerId } from "../game/index.js";
+import type { PlayerId } from "../game/index.js";
 
 /**
  * Builds a fresh `THREE.Mesh` for a player. `isLocal` lets the factory pick a
  * distinct color so the local player can never be confused with a remote one.
+ * The factory only sees the renderable shape (`id` + position) — frame-by-
+ * frame state like facing is applied by the per-frame sync pass, not at
+ * mesh creation.
  */
 export interface PlayerMeshFactory {
-  create(player: Player, isLocal: boolean): THREE.Mesh;
+  create(entity: RenderableEntity, isLocal: boolean): THREE.Mesh;
 }
 
 /**
@@ -54,10 +57,7 @@ export function syncPlayerMeshes(
     seen.add(entity.id);
     let mesh = meshes.get(entity.id);
     if (!mesh) {
-      mesh = factory.create(
-        { id: entity.id, x: entity.x, y: entity.y },
-        entity.id === localPlayerId,
-      );
+      mesh = factory.create(entity, entity.id === localPlayerId);
       meshes.set(entity.id, mesh);
       parent.add(mesh);
     }

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { anarchy } from "../gen/anarchy.js";
 import {
+  DEFAULT_FACING,
+  Direction8,
   LocalPredictor,
   SnapshotBuffer,
   World,
@@ -56,8 +58,18 @@ describe("applyServerMessage", () => {
 
     expect(localCalls).toEqual([7]);
     expect(world.size()).toBe(2);
-    expect(world.getPlayer(7)).toEqual({ id: 7, x: 0, y: 0 });
-    expect(world.getPlayer(8)).toEqual({ id: 8, x: 3, y: -2 });
+    expect(world.getPlayer(7)).toEqual({
+      id: 7,
+      x: 0,
+      y: 0,
+      facing: DEFAULT_FACING,
+    });
+    expect(world.getPlayer(8)).toEqual({
+      id: 8,
+      x: 3,
+      y: -2,
+      facing: DEFAULT_FACING,
+    });
     expect(buffer.sample(7, 5_000)).toEqual({ x: 0, y: 0 });
     expect(buffer.sample(8, 5_000)).toEqual({ x: 3, y: -2 });
   });
@@ -88,7 +100,12 @@ describe("applyServerMessage", () => {
       deps,
     );
 
-    expect(world.getPlayer(1)).toEqual({ id: 1, x: 5, y: 0 });
+    expect(world.getPlayer(1)).toEqual({
+      id: 1,
+      x: 5,
+      y: 0,
+      facing: DEFAULT_FACING,
+    });
     // Midpoint between the two samples should lerp.
     const mid = buffer.sample(1, 1_050);
     expect(mid!.x).toBeCloseTo(2.5);
@@ -211,6 +228,46 @@ describe("applyServerMessage", () => {
     );
     // After reconcile, query at the same time as last advance -> snapped.
     expect(predictor.position(1_500)).toEqual({ x: 15, y: 0 });
+  });
+
+  it("StateUpdate carries each player's facing into World", () => {
+    const { world, deps } = makeFixture();
+    applyServerMessage(
+      decodeRoundtrip({
+        stateUpdate: {
+          snapshot: {
+            players: [
+              {
+                id: 1,
+                x: 0,
+                y: 0,
+                facing: anarchy.v1.Direction8.DIRECTION8_NE,
+              },
+              {
+                id: 2,
+                x: 1,
+                y: 1,
+                facing: anarchy.v1.Direction8.DIRECTION8_W,
+              },
+            ],
+          },
+        },
+      }),
+      deps,
+    );
+    expect(world.getPlayer(1)?.facing).toBe(Direction8.NE);
+    expect(world.getPlayer(2)?.facing).toBe(Direction8.W);
+  });
+
+  it("StateUpdate falls back to default facing when the field is unset (UNSPECIFIED)", () => {
+    const { world, deps } = makeFixture();
+    applyServerMessage(
+      decodeRoundtrip({
+        stateUpdate: { snapshot: { players: [{ id: 1, x: 0, y: 0 }] } },
+      }),
+      deps,
+    );
+    expect(world.getPlayer(1)?.facing).toBe(DEFAULT_FACING);
   });
 
   it("StateUpdate skips reconciliation when server hasn't acked the latest input", () => {

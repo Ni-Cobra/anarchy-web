@@ -1,5 +1,4 @@
 import { RECONCILE_SNAP_DISTANCE, SPEED } from "../config.js";
-import type { Player } from "./player.js";
 
 /**
  * Local-player position predictor. Replaces snapshot-buffer rendering for
@@ -92,15 +91,6 @@ export class LocalPredictor {
     if (Math.hypot(dx, dy) > this.snapDistance) {
       this.predicted = { x: serverX, y: serverY };
     }
-  }
-
-  /**
-   * Build a renderable view of the local player using the current predicted
-   * position. Convenience for the renderer's compose pass.
-   */
-  asPlayer(id: number, nowMs: number): Player {
-    const pos = this.position(nowMs);
-    return { id, x: pos.x, y: pos.y };
   }
 
   /** Test-only inspectors. */

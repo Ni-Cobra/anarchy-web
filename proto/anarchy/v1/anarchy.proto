@@ -111,6 +111,27 @@ message PlayerSnapshot {
   // Each client uses the value attached to its own `PlayerSnapshot` to drive
   // local prediction reconciliation (ADR 0001 amendment, 2026-05-01).
   uint64 acked_client_seq = 4;
+  // Direction the player is currently facing — sticky: the server snaps it
+  // to the nearest of 8 each tick the stored movement intent is non-zero,
+  // and leaves it alone when intent is zero so a stopped player keeps
+  // looking where they were going.
+  Direction8 facing = 5;
+}
+
+// 8-way facing for the sphere-with-eyes player model. Cardinal first, then
+// diagonals, in clockwise order starting from north. `UNSPECIFIED` is the
+// proto3 default sentinel and is never emitted by the server (a freshly
+// spawned player defaults to `S`); clients treat it as `S` defensively.
+enum Direction8 {
+  DIRECTION8_UNSPECIFIED = 0;
+  DIRECTION8_N = 1;
+  DIRECTION8_NE = 2;
+  DIRECTION8_E = 3;
+  DIRECTION8_SE = 4;
+  DIRECTION8_S = 5;
+  DIRECTION8_SW = 6;
+  DIRECTION8_W = 7;
+  DIRECTION8_NW = 8;
 }
 
 // Emitted when a player leaves the world.

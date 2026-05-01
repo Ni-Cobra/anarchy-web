@@ -1,10 +1,12 @@
 import { anarchy } from "../gen/anarchy.js";
-import type {
-  LocalPredictor,
-  Player,
-  PlayerId,
-  SnapshotBuffer,
-  World,
+import {
+  DEFAULT_FACING,
+  Direction8,
+  type LocalPredictor,
+  type Player,
+  type PlayerId,
+  type SnapshotBuffer,
+  type World,
 } from "../game/index.js";
 
 /**
@@ -138,6 +140,7 @@ function ingestSnapshot(
     id: toNumber(p.id),
     x: p.x ?? 0,
     y: p.y ?? 0,
+    facing: facingFromWire(p.facing),
   }));
   world.applySnapshot(players);
   for (const p of players) {
@@ -168,4 +171,34 @@ function toNumber(
   if (v == null) return 0;
   if (typeof v === "number") return v;
   return v.toNumber();
+}
+
+/**
+ * Translate the proto `Direction8` enum int into the client `Direction8`
+ * (whose numeric values intentionally match the wire). `UNSPECIFIED` and
+ * any unknown value fall back to [`DEFAULT_FACING`] — the server never
+ * emits `UNSPECIFIED`, but a defensive default keeps the client safe if the
+ * schema ever drifts ahead.
+ */
+function facingFromWire(facing: anarchy.v1.Direction8 | null | undefined): Direction8 {
+  switch (facing) {
+    case anarchy.v1.Direction8.DIRECTION8_N:
+      return Direction8.N;
+    case anarchy.v1.Direction8.DIRECTION8_NE:
+      return Direction8.NE;
+    case anarchy.v1.Direction8.DIRECTION8_E:
+      return Direction8.E;
+    case anarchy.v1.Direction8.DIRECTION8_SE:
+      return Direction8.SE;
+    case anarchy.v1.Direction8.DIRECTION8_S:
+      return Direction8.S;
+    case anarchy.v1.Direction8.DIRECTION8_SW:
+      return Direction8.SW;
+    case anarchy.v1.Direction8.DIRECTION8_W:
+      return Direction8.W;
+    case anarchy.v1.Direction8.DIRECTION8_NW:
+      return Direction8.NW;
+    default:
+      return DEFAULT_FACING;
+  }
 }

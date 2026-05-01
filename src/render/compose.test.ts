@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import { REMOTE_RENDER_DELAY_MS } from "../config.js";
-import { LocalPredictor, SnapshotBuffer, World } from "../game/index.js";
+import {
+  DEFAULT_FACING,
+  LocalPredictor,
+  SnapshotBuffer,
+  World,
+  type Player,
+} from "../game/index.js";
 import { composePlayerEntities } from "./compose.js";
 
 const LOCAL = 1;
 const REMOTE = 2;
+
+const player = (id: number, x: number, y: number): Player => ({
+  id,
+  x,
+  y,
+  facing: DEFAULT_FACING,
+});
 
 function setup() {
   const world = new World();
@@ -17,7 +30,7 @@ function setup() {
 describe("composePlayerEntities", () => {
   it("draws the local player from the predictor (no snapshot lag)", () => {
     const { world, buffer, predictor } = setup();
-    world.applySnapshot([{ id: LOCAL, x: 10, y: 0 }]);
+    world.applySnapshot([player(LOCAL, 10, 0)]);
     // The buffer says the latest server snapshot is at x=10 — but the
     // predictor is the source of truth for the local player. Anchor it,
     // start it advancing east, and assert the rendered position came from
@@ -38,7 +51,7 @@ describe("composePlayerEntities", () => {
 
   it("uses REMOTE_RENDER_DELAY_MS for non-local players", () => {
     const { world, buffer, predictor } = setup();
-    world.applySnapshot([{ id: REMOTE, x: 10, y: 0 }]);
+    world.applySnapshot([player(REMOTE, 10, 0)]);
     buffer.push(REMOTE, 0, 0, 1000);
     buffer.push(REMOTE, 10, 0, 1050);
 
@@ -50,10 +63,7 @@ describe("composePlayerEntities", () => {
 
   it("applies predictor for local + buffered delay for remote when both are present", () => {
     const { world, buffer, predictor } = setup();
-    world.applySnapshot([
-      { id: LOCAL, x: 0, y: 0 },
-      { id: REMOTE, x: 0, y: 0 },
-    ]);
+    world.applySnapshot([player(LOCAL, 0, 0), player(REMOTE, 0, 0)]);
     // Same trajectory in the buffer for both — but only REMOTE will use it.
     for (const id of [LOCAL, REMOTE]) {
       buffer.push(id, 0, 0, 1000);
@@ -76,7 +86,7 @@ describe("composePlayerEntities", () => {
 
   it("treats every player as remote when localPlayerId is null", () => {
     const { world, buffer, predictor } = setup();
-    world.applySnapshot([{ id: LOCAL, x: 0, y: 0 }]);
+    world.applySnapshot([player(LOCAL, 0, 0)]);
     buffer.push(LOCAL, 0, 0, 1000);
     buffer.push(LOCAL, 10, 0, 1050);
 
@@ -88,7 +98,7 @@ describe("composePlayerEntities", () => {
 
   it("treats the local player as remote when no predictor is supplied", () => {
     const { world, buffer } = setup();
-    world.applySnapshot([{ id: LOCAL, x: 10, y: 0 }]);
+    world.applySnapshot([player(LOCAL, 10, 0)]);
     buffer.push(LOCAL, 0, 0, 1000);
     buffer.push(LOCAL, 10, 0, 1050);
 
@@ -99,7 +109,7 @@ describe("composePlayerEntities", () => {
 
   it("falls back to the latest world position when the buffer has no samples (remote)", () => {
     const { world, buffer, predictor } = setup();
-    world.applySnapshot([{ id: REMOTE, x: 7, y: -3 }]);
+    world.applySnapshot([player(REMOTE, 7, -3)]);
     const out = composePlayerEntities(world, buffer, LOCAL, predictor, 1100);
     expect(out).toEqual([{ id: REMOTE, x: 7, y: -3 }]);
   });

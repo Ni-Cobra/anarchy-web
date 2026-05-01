@@ -19,7 +19,12 @@ export class World {
   applySnapshot(players: Iterable<Player>): void {
     this.playersById.clear();
     for (const p of players) {
-      this.playersById.set(p.id, { id: p.id, x: p.x, y: p.y });
+      this.playersById.set(p.id, {
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        facing: p.facing,
+      });
     }
   }
 

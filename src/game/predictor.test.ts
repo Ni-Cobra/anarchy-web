@@ -119,13 +119,4 @@ describe("LocalPredictor", () => {
     expect(Number.isFinite(RECONCILE_SNAP_DISTANCE)).toBe(true);
   });
 
-  it("asPlayer wraps position() into a Player record", () => {
-    const p = new LocalPredictor();
-    p.setIntent(1, 0, 1);
-    p.position(0);
-    const me = p.asPlayer(42, 1_000);
-    expect(me.id).toBe(42);
-    expect(me.x).toBeCloseTo(5);
-    expect(me.y).toBe(0);
-  });
 });
