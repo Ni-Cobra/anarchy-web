@@ -311,11 +311,13 @@ describe("applyServerMessage", () => {
     }
 
     function uniformWireChunk(cx: number, cy: number, kind: BlockType): anarchy.v1.IChunk {
-      // pbjs converts numeric BlockType enum values into wire ints directly,
-      // so the client BlockType numeric value (which intentionally matches
-      // the wire) doubles as the wire kind.
+      // The client `BlockType` and proto `anarchy.v1.BlockType` are distinct
+      // TypeScript enums but their numeric values match by design (ADR 0002),
+      // so `kind` rides through pbjs as the same wire int. The cast just
+      // satisfies the compiler — it doesn't change a byte.
+      const wireKind = kind as unknown as anarchy.v1.BlockType;
       const blocks: anarchy.v1.IBlock[] = new Array(LAYER_AREA);
-      for (let i = 0; i < LAYER_AREA; i++) blocks[i] = { kind };
+      for (let i = 0; i < LAYER_AREA; i++) blocks[i] = { kind: wireKind };
       return {
         x: cx,
         y: cy,
@@ -427,12 +429,16 @@ describe("applyServerMessage", () => {
       setBlock(c.top, 7, 7, { kind: BlockType.Wood });
 
       // Convert in-memory chunk → wire IChunk by mirroring layer_to_wire.
+      // The wire enum and the client enum carry identical numeric values
+      // (ADR 0002), so the cast is a compile-time formality.
       const groundBlocks: anarchy.v1.IBlock[] = new Array(LAYER_AREA);
       const topBlocks: anarchy.v1.IBlock[] = new Array(LAYER_AREA);
       for (let y = 0; y < CHUNK_SIZE; y++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
-          groundBlocks[y * CHUNK_SIZE + x] = { kind: getBlock(c.ground, x, y).kind };
-          topBlocks[y * CHUNK_SIZE + x] = { kind: getBlock(c.top, x, y).kind };
+          const g = getBlock(c.ground, x, y).kind as unknown as anarchy.v1.BlockType;
+          const t = getBlock(c.top, x, y).kind as unknown as anarchy.v1.BlockType;
+          groundBlocks[y * CHUNK_SIZE + x] = { kind: g };
+          topBlocks[y * CHUNK_SIZE + x] = { kind: t };
         }
       }
       applyServerMessage(
