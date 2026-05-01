@@ -94,8 +94,11 @@ message WorldSnapshot {
 
 message PlayerSnapshot {
   uint64 id = 1;
-  sint32 x = 2;
-  sint32 y = 3;
+  // Continuous world coordinates (+x = east, +y = north). Tile coordinates
+  // are no longer the wire format — positions advance by sub-tile amounts as
+  // movement intent and tick-based stepping land. See ADR 0001.
+  double x = 2;
+  double y = 3;
 }
 
 // Emitted when a player leaves the world.

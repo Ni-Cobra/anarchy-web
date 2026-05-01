@@ -23,9 +23,11 @@ export interface RenderableEntity {
 }
 
 /**
- * Map server tile coords (`+x = east`, `+y = north`) into Three.js scene
+ * Map server world coords (`+x = east`, `+y = north`) into Three.js scene
  * coords. The y axis in Three.js is "up", so server's planar y becomes
  * scene's `-z` and the cube sits on top of the ground plane (`y = 0.5`).
+ * Inputs are continuous floats — interpolated remote positions and (post
+ * intent migration) sub-tile local positions both flow through here.
  */
 export function tileToScene(x: number, y: number): THREE.Vector3 {
   return new THREE.Vector3(x, 0.5, -y);

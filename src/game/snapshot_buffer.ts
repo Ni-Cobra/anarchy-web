@@ -13,9 +13,9 @@ export interface Sample {
 const DEFAULT_CAPACITY = 16;
 
 /**
- * Per-player ring of recent positions for render-time interpolation. Tile
- * coordinates from the server are integers; samples are stored as numbers
- * because `sample()` returns interpolated floats between bracketing
+ * Per-player ring of recent positions for render-time interpolation.
+ * Coordinates from the server are continuous floats; samples are stored as
+ * numbers and `sample()` returns interpolated values between bracketing
  * observations.
  *
  * Per ADR 0001 there is no client-side prediction: `sample(t)` clamps to
