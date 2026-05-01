@@ -32,12 +32,12 @@ export function composePlayerEntities(
   for (const player of world.players()) {
     if (player.id === localPlayerId && predictor !== null) {
       const pos = predictor.position(nowMs);
-      out.push({ id: player.id, x: pos.x, y: pos.y });
+      out.push({ id: player.id, x: pos.x, y: pos.y, facing: player.facing });
       continue;
     }
     const interp = buffer.sample(player.id, nowMs - remoteDelayMs);
     const pos = interp ?? { x: player.x, y: player.y };
-    out.push({ id: player.id, x: pos.x, y: pos.y });
+    out.push({ id: player.id, x: pos.x, y: pos.y, facing: player.facing });
   }
   return out;
 }

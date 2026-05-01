@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { REMOTE_RENDER_DELAY_MS } from "../config.js";
 import {
   DEFAULT_FACING,
+  Direction8,
   LocalPredictor,
   SnapshotBuffer,
   World,
@@ -13,11 +14,16 @@ import { composePlayerEntities } from "./compose.js";
 const LOCAL = 1;
 const REMOTE = 2;
 
-const player = (id: number, x: number, y: number): Player => ({
+const player = (
+  id: number,
+  x: number,
+  y: number,
+  facing: Direction8 = DEFAULT_FACING,
+): Player => ({
   id,
   x,
   y,
-  facing: DEFAULT_FACING,
+  facing,
 });
 
 function setup() {
@@ -111,10 +117,27 @@ describe("composePlayerEntities", () => {
     const { world, buffer, predictor } = setup();
     world.applySnapshot([player(REMOTE, 7, -3)]);
     const out = composePlayerEntities(world, buffer, LOCAL, predictor, 1100);
-    expect(out).toEqual([{ id: REMOTE, x: 7, y: -3 }]);
+    expect(out).toEqual([{ id: REMOTE, x: 7, y: -3, facing: DEFAULT_FACING }]);
   });
 
   it("REMOTE_RENDER_DELAY_MS is positive and sized for one or two ticks", () => {
     expect(REMOTE_RENDER_DELAY_MS).toBeGreaterThan(0);
+  });
+
+  it("carries each player's facing through (no interpolation — server-authoritative)", () => {
+    const { world, buffer, predictor } = setup();
+    world.applySnapshot([
+      player(LOCAL, 0, 0, Direction8.E),
+      player(REMOTE, 0, 0, Direction8.NW),
+    ]);
+    buffer.push(REMOTE, 0, 0, 1000);
+    predictor.reset(0, 0);
+    predictor.position(1_000);
+
+    const out = composePlayerEntities(world, buffer, LOCAL, predictor, 1100);
+    const local = out.find((e) => e.id === LOCAL)!;
+    const remote = out.find((e) => e.id === REMOTE)!;
+    expect(local.facing).toBe(Direction8.E);
+    expect(remote.facing).toBe(Direction8.NW);
   });
 });

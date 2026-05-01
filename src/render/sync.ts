@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import type { PlayerId } from "../game/index.js";
+import { Direction8, type PlayerId } from "../game/index.js";
 
 /**
  * Builds a fresh `THREE.Mesh` for a player. `isLocal` lets the factory pick a
@@ -23,6 +23,7 @@ export interface RenderableEntity {
   readonly id: PlayerId;
   readonly x: number;
   readonly y: number;
+  readonly facing: Direction8;
 }
 
 /**
@@ -37,9 +38,39 @@ export function tileToScene(x: number, y: number): THREE.Vector3 {
 }
 
 /**
+ * Yaw (rotation around scene Y, in radians) that orients a mesh whose local
+ * "front" points along +X (east) so it instead points in `facing`'s direction
+ * once projected into the world XZ plane. Composed with the server↔scene
+ * mapping `(+x, +y) → (+x, -z)` so server N ends up at scene -Z, etc.
+ *
+ * Pure helper — doesn't depend on `THREE`. Lives here so `syncPlayerMeshes`
+ * and any future orientation-aware code share one source of truth.
+ */
+export function facingToYaw(facing: Direction8): number {
+  switch (facing) {
+    case Direction8.E:
+      return 0;
+    case Direction8.NE:
+      return Math.PI / 4;
+    case Direction8.N:
+      return Math.PI / 2;
+    case Direction8.NW:
+      return (3 * Math.PI) / 4;
+    case Direction8.W:
+      return Math.PI;
+    case Direction8.SW:
+      return -(3 * Math.PI) / 4;
+    case Direction8.S:
+      return -Math.PI / 2;
+    case Direction8.SE:
+      return -Math.PI / 4;
+  }
+}
+
+/**
  * Reconcile `meshes` and `parent` with `entities`:
  *   - new ids get a mesh built by `factory` and added,
- *   - existing meshes get their position synced,
+ *   - existing meshes get their position + facing yaw synced,
  *   - meshes whose id is no longer in `entities` are removed and disposed.
  *
  * Pure of any rendering-loop / WebGL state — safe to unit-test against a
@@ -62,6 +93,7 @@ export function syncPlayerMeshes(
       parent.add(mesh);
     }
     mesh.position.copy(tileToScene(entity.x, entity.y));
+    mesh.rotation.y = facingToYaw(entity.facing);
   }
   for (const id of [...meshes.keys()]) {
     if (seen.has(id)) continue;
@@ -71,17 +103,27 @@ export function syncPlayerMeshes(
 }
 
 /**
- * Detach `mesh` from `parent` and free its GPU-side geometry + material.
- * Exported so callers that drop a mesh outside the per-frame sync pass
- * (e.g. the renderer reassigning the local-player role) free the same
- * resources the same way.
+ * Detach `mesh` from `parent` and free its GPU-side geometry + material,
+ * including any child meshes parented to it (e.g. the eyes attached to the
+ * sphere body). Exported so callers that drop a mesh outside the per-frame
+ * sync pass (e.g. the renderer reassigning the local-player role) free the
+ * same resources the same way.
  */
 export function disposePlayerMesh(mesh: THREE.Mesh, parent: THREE.Object3D): void {
   parent.remove(mesh);
-  mesh.geometry.dispose();
-  if (Array.isArray(mesh.material)) {
-    for (const m of mesh.material) m.dispose();
-  } else {
-    mesh.material.dispose();
-  }
+  const seenGeoms = new Set<THREE.BufferGeometry>();
+  const seenMats = new Set<THREE.Material>();
+  mesh.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    if (!seenGeoms.has(obj.geometry)) {
+      seenGeoms.add(obj.geometry);
+      obj.geometry.dispose();
+    }
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) {
+      if (seenMats.has(m)) continue;
+      seenMats.add(m);
+      m.dispose();
+    }
+  });
 }

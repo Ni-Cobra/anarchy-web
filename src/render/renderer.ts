@@ -18,7 +18,21 @@ import {
 
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
-const CUBE_SIZE = 1;
+const EYE_COLOR = 0xffffff;
+// Body sphere fits inside one tile (radius 0.5, sphere bottom rests on the
+// y=0 ground plane via tileToScene's y=0.5).
+const BODY_RADIUS = 0.5;
+const BODY_SEGMENTS = 16;
+// Eye geometry is intentionally cheap — many players will be on screen
+// eventually, so each eye is a low-poly sphere parented to the body. The
+// front-facing offsets put the eyes on the +X hemisphere in local space;
+// `syncPlayerMeshes` rotates the body via `facingToYaw` to aim that
+// hemisphere along the player's `facing` direction.
+const EYE_RADIUS = 0.09;
+const EYE_SEGMENTS = 6;
+const EYE_FORWARD = 0.38;
+const EYE_UP = 0.18;
+const EYE_SIDE = 0.2;
 // Half-length of each ground axis line. Lines extend from -AXIS_HALF_LENGTH to
 // +AXIS_HALF_LENGTH along their respective axis; the camera-far clip (1000)
 // then bounds what's actually visible from the player's vantage point.
@@ -30,11 +44,29 @@ const AXIS_Y_COLOR = 0x60a0ff;
 
 const defaultFactory: PlayerMeshFactory = {
   create(_entity: RenderableEntity, isLocal: boolean) {
-    const geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
-    const material = new THREE.MeshLambertMaterial({
+    const bodyGeom = new THREE.SphereGeometry(
+      BODY_RADIUS,
+      BODY_SEGMENTS,
+      BODY_SEGMENTS,
+    );
+    const bodyMat = new THREE.MeshLambertMaterial({
       color: isLocal ? LOCAL_COLOR : REMOTE_COLOR,
     });
-    return new THREE.Mesh(geometry, material);
+    const body = new THREE.Mesh(bodyGeom, bodyMat);
+
+    const eyeGeom = new THREE.SphereGeometry(
+      EYE_RADIUS,
+      EYE_SEGMENTS,
+      EYE_SEGMENTS,
+    );
+    const eyeMat = new THREE.MeshLambertMaterial({ color: EYE_COLOR });
+    const leftEye = new THREE.Mesh(eyeGeom, eyeMat);
+    leftEye.position.set(EYE_FORWARD, EYE_UP, -EYE_SIDE);
+    const rightEye = new THREE.Mesh(eyeGeom, eyeMat);
+    rightEye.position.set(EYE_FORWARD, EYE_UP, EYE_SIDE);
+    body.add(leftEye, rightEye);
+
+    return body;
   },
 };
 

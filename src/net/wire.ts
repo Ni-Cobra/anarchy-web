@@ -60,7 +60,7 @@ interface LocalSnapshotEntry {
  *     entry.
  *   - `PlayerDespawned` removes the player from both stores immediately
  *     (the next tick wouldn't include them anyway, but acting on the
- *     explicit signal lets the cube vanish without waiting ~50 ms).
+ *     explicit signal lets the mesh vanish without waiting ~50 ms).
  *   - `Welcome` also clears the buffer and re-binds the local id, so
  *     reconnects start clean.
  *
