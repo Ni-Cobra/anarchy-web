@@ -1,8 +1,8 @@
 import { keyToDirection, SCROLL_KEY_CODES } from "./keymap.js";
 
 /**
- * Where the controller sends its current movement intent. The wire layer
- * (`net.ts`) supplies one of these so the controller stays protobuf/
+ * Where the controller sends its current movement intent. `main.ts` wires
+ * one of these to the network layer so the controller stays protobuf /
  * WebSocket-free. Intent is state-replacing: a single send tells the server
  * "this is the intent now"; the server keeps applying it every tick until
  * a new value arrives.

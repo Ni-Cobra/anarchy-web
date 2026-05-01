@@ -3,4 +3,4 @@
  * `MoveIntent` for the server. Stays free of WebSocket / protobuf wiring —
  * the caller supplies an `InputSink` that knows how to dispatch.
  */
-export { InputController, type InputSink } from "./controller.js";
+export { InputController } from "./controller.js";

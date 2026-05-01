@@ -6,10 +6,3 @@
  * and tells the renderer which player id is local.
  */
 export { Renderer } from "./renderer.js";
-export { composePlayerEntities, REMOTE_RENDER_DELAY_MS } from "./compose.js";
-export {
-  syncPlayerMeshes,
-  tileToScene,
-  type PlayerMeshFactory,
-  type RenderableEntity,
-} from "./sync.js";

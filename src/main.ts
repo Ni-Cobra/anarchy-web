@@ -6,7 +6,14 @@ import { Renderer } from "./render/index.js";
 const world = new World();
 const buffer = new SnapshotBuffer();
 const predictor = new LocalPredictor();
-const renderer = new Renderer(world, buffer, predictor);
+const renderer = new Renderer(world, buffer, predictor, document.body, {
+  width: window.innerWidth,
+  height: window.innerHeight,
+  pixelRatio: window.devicePixelRatio,
+});
+window.addEventListener("resize", () => {
+  renderer.resize(window.innerWidth, window.innerHeight);
+});
 
 let localPlayerId: number | null = null;
 // Per-client monotonic action sequence. Mirrored into every outbound

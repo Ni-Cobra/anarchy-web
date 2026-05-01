@@ -7,7 +7,7 @@ import type {
 import type { RenderableEntity } from "./sync.js";
 
 /**
- * Render-time delay applied to remote players. We draw remote spheres
+ * Render-time delay applied to remote players. We draw remote players
  * ~100 ms behind real time and lerp between bracketing snapshots, so a
  * typical jitter or a single dropped tick never produces a visible jump.
  */

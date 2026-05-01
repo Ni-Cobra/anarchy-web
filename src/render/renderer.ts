@@ -39,6 +39,16 @@ const defaultFactory: PlayerMeshFactory = {
 };
 
 /**
+ * Initial viewport state passed in from the caller. Keeps the renderer
+ * free of `window` queries so DOM access stays in `main.ts`.
+ */
+export interface Viewport {
+  readonly width: number;
+  readonly height: number;
+  readonly pixelRatio: number;
+}
+
+/**
  * Owns the Three.js scene + render loop. Each frame it composes a list of
  * renderable entities — remote players from the lerp output of
  * `SnapshotBuffer` (with `REMOTE_RENDER_DELAY_MS` of delay), the local
@@ -48,7 +58,9 @@ const defaultFactory: PlayerMeshFactory = {
  * the browser frame rate even though snapshots only land at the 20 Hz
  * server cadence.
  *
- * The renderer is networking-agnostic: a wire layer feeds `World` /
+ * The renderer is networking- and DOM-agnostic: the caller supplies a
+ * container element, an initial `Viewport`, and is responsible for
+ * forwarding window resizes via `resize()`. The wire layer feeds `World` /
  * `SnapshotBuffer` / `LocalPredictor` and tells us who we are with
  * `setLocalPlayerId`. Nothing here knows about WebSockets or protobuf.
  */
@@ -66,7 +78,8 @@ export class Renderer {
     private readonly world: World,
     private readonly buffer: SnapshotBuffer,
     private readonly predictor: LocalPredictor,
-    container: HTMLElement = document.body,
+    container: HTMLElement,
+    viewport: Viewport,
     factory: PlayerMeshFactory = defaultFactory,
     now: () => number = () => Date.now(),
   ) {
@@ -78,7 +91,7 @@ export class Renderer {
 
     this.camera = new THREE.PerspectiveCamera(
       60,
-      window.innerWidth / window.innerHeight,
+      viewport.width / viewport.height,
       0.1,
       1000,
     );
@@ -89,8 +102,8 @@ export class Renderer {
     this.camera.up.set(0, 0, -1);
 
     this.webgl = new THREE.WebGLRenderer({ antialias: true });
-    this.webgl.setPixelRatio(window.devicePixelRatio);
-    this.webgl.setSize(window.innerWidth, window.innerHeight);
+    this.webgl.setPixelRatio(viewport.pixelRatio);
+    this.webgl.setSize(viewport.width, viewport.height);
     container.appendChild(this.webgl.domElement);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -125,7 +138,6 @@ export class Renderer {
     this.playerGroup = new THREE.Group();
     this.scene.add(this.playerGroup);
 
-    window.addEventListener("resize", this.handleResize);
     this.webgl.setAnimationLoop(this.frame);
   }
 
@@ -149,10 +161,20 @@ export class Renderer {
     this.localPlayerId = id;
   }
 
-  /** Tear down listeners + GPU resources. Call when the page is leaving. */
+  /**
+   * Forward a viewport size change. The caller (typically `main.ts`)
+   * subscribes to `window.resize` and pipes the new dimensions through here
+   * — keeping this module free of direct `window` access.
+   */
+  resize(width: number, height: number): void {
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.webgl.setSize(width, height);
+  }
+
+  /** Tear down GPU resources. Call when the page is leaving. */
   dispose(): void {
     this.webgl.setAnimationLoop(null);
-    window.removeEventListener("resize", this.handleResize);
     for (const mesh of this.meshes.values()) {
       disposePlayerMesh(mesh, this.playerGroup);
     }
@@ -160,12 +182,6 @@ export class Renderer {
     this.webgl.dispose();
     this.webgl.domElement.remove();
   }
-
-  private handleResize = () => {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
-    this.camera.updateProjectionMatrix();
-    this.webgl.setSize(window.innerWidth, window.innerHeight);
-  };
 
   private frame = () => {
     const entities = composePlayerEntities(
