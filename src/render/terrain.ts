@@ -62,15 +62,16 @@ export function disposeTerrainMesh(
 // internal visual choices, not operator-tunable knobs) ----
 
 /**
- * Color for each block kind. Wood is the only kind that appears on the top
- * layer in the placeholder worldgen; the table covers the others so a future
- * worldgen that puts e.g. Stone on top still has a sensible color.
+ * Color for each block kind. Gold is the placeable kind today (builder
+ * mode); the rest cover ground tiles + a future worldgen that puts other
+ * kinds on top.
  */
 const BLOCK_COLOR: Record<BlockType, number> = {
   [BlockType.Air]: 0x000000,
   [BlockType.Grass]: 0x4a8c2a,
   [BlockType.Stone]: 0x808080,
   [BlockType.Wood]: 0x8b5a2b,
+  [BlockType.Gold]: 0xf5c542,
 };
 
 const GROUND_THICKNESS = 0.02;

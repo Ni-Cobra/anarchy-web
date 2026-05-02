@@ -20,6 +20,7 @@ message ClientMessage {
     Ping ping = 11;
     ClientAction action = 20;
     BreakBlock break_block = 21;
+    PlaceBlock place_block = 22;
   }
 }
 
@@ -104,6 +105,20 @@ message BreakBlock {
   // are validated server-side and silently dropped.
   uint32 local_x = 2;
   uint32 local_y = 3;
+}
+
+// Client→server intent to place a top-layer block at the given cell.
+// Today the only placeable kind is `BLOCK_TYPE_GOLD` (the builder-mode
+// affordance); the field is on the wire so future placeable kinds slot in
+// without a schema change. The server validates: chunk loaded, target cell's
+// top is currently Air, no player AABB overlaps the cell, and the player's
+// authoritative position is within `crate::config::REACH_BLOCKS` of the cell
+// center. Failures are silently dropped — same posture as `BreakBlock`.
+message PlaceBlock {
+  ChunkCoord chunk_coord = 1;
+  uint32 local_x = 2;
+  uint32 local_y = 3;
+  BlockType kind = 4;
 }
 
 // === Server -> client world state ===
@@ -195,6 +210,7 @@ enum BlockType {
   BLOCK_TYPE_GRASS = 1;
   BLOCK_TYPE_WOOD = 2;
   BLOCK_TYPE_STONE = 3;
+  BLOCK_TYPE_GOLD = 4;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper

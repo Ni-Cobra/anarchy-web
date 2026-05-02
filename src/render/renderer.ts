@@ -7,6 +7,7 @@ import type {
   Terrain,
   World,
 } from "../game/index.js";
+import { tileCenterToScene } from "./terrain.js";
 import { composePlayerEntities } from "./compose.js";
 import {
   disposePlayerMesh,
@@ -32,6 +33,14 @@ const AXIS_HALF_LENGTH = 10000;
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
 const AXIS_Y_COLOR = 0x60a0ff;
+
+// Builder-mode placement ghost: a semi-transparent unit-cube preview at the
+// targeted top-layer cell. Sized to match a real placed top-layer block
+// (`TOP_BOX_*` in `terrain.ts`) so what-you-see is what-you-get on click.
+const GHOST_COLOR = 0xf5c542;
+const GHOST_OPACITY = 0.45;
+const GHOST_BOX_SIZE = 1.0;
+const GHOST_BOX_Y = 0.025 + GHOST_BOX_SIZE / 2;
 
 const defaultFactory: PlayerMeshFactory = {
   create(_entity: RenderableEntity, isLocal: boolean) {
@@ -96,6 +105,7 @@ export class Renderer {
   private localPlayerId: PlayerId | null = null;
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
+  private ghostMesh: THREE.Mesh | null = null;
 
   constructor(
     private readonly world: World,
@@ -196,6 +206,42 @@ export class Renderer {
   }
 
   /**
+   * Show or hide the builder-mode placement ghost. Pass a tile address to
+   * pin a translucent gold preview at that cell, or `null` to hide it. The
+   * caller (input layer) is responsible for deciding whether the ghost
+   * should be visible — this method just paints the result. The underlying
+   * mesh is reused across calls (only `visible` and position change) so a
+   * fast-flapping ghost on a tight refresh loop doesn't churn GPU resources.
+   */
+  setGhostCell(
+    cell: readonly [number, number, number, number] | null,
+  ): void {
+    if (cell === null) {
+      if (this.ghostMesh) this.ghostMesh.visible = false;
+      return;
+    }
+    if (!this.ghostMesh) {
+      const geom = new THREE.BoxGeometry(
+        GHOST_BOX_SIZE,
+        GHOST_BOX_SIZE,
+        GHOST_BOX_SIZE,
+      );
+      const mat = new THREE.MeshLambertMaterial({
+        color: GHOST_COLOR,
+        transparent: true,
+        opacity: GHOST_OPACITY,
+        depthWrite: false,
+      });
+      this.ghostMesh = new THREE.Mesh(geom, mat);
+      this.scene.add(this.ghostMesh);
+    }
+    const [cx, cy, lx, ly] = cell;
+    const scene = tileCenterToScene(cx, cy, lx, ly);
+    this.ghostMesh.position.set(scene.x, GHOST_BOX_Y, scene.z);
+    this.ghostMesh.visible = true;
+  }
+
+  /**
    * The wire layer just inserted or replaced the chunk at `(cx, cy)`.
    * Replace just that chunk's sub-group inside the terrain mesh, leaving
    * neighbors untouched.
@@ -253,6 +299,12 @@ export class Renderer {
     if (this.terrainGroup) {
       disposeTerrainMesh(this.terrainGroup, this.scene);
       this.terrainGroup = null;
+    }
+    if (this.ghostMesh) {
+      this.scene.remove(this.ghostMesh);
+      this.ghostMesh.geometry.dispose();
+      (this.ghostMesh.material as THREE.Material).dispose();
+      this.ghostMesh = null;
     }
     this.webgl.dispose();
     this.webgl.domElement.remove();

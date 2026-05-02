@@ -23,6 +23,7 @@ export enum BlockType {
   Grass = 1,
   Wood = 2,
   Stone = 3,
+  Gold = 4,
 }
 
 /**

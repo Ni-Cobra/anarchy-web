@@ -1,7 +1,7 @@
 import { REACH_BLOCKS } from "./config.js";
-import { CHUNK_SIZE, SnapshotBuffer, Terrain, World } from "./game/index.js";
+import { BlockType, CHUNK_SIZE, SnapshotBuffer, Terrain, World } from "./game/index.js";
 import { InputController } from "./input/index.js";
-import { applyServerMessage, connect } from "./net/index.js";
+import { applyServerMessage, blockTypeToWire, connect } from "./net/index.js";
 import { Renderer } from "./render/index.js";
 
 // Test handle for browser-driven e2e (Playwright). Kept narrow on purpose:
@@ -14,6 +14,15 @@ declare global {
       getLocalPlayerId: () => number | null;
       sendMoveIntent: (dx: number, dy: number) => void;
       sendBreakBlock: (cx: number, cy: number, lx: number, ly: number) => void;
+      sendPlaceBlock: (
+        cx: number,
+        cy: number,
+        lx: number,
+        ly: number,
+        kind: BlockType,
+      ) => void;
+      isBuilderMode: () => boolean;
+      setBuilderMode: (on: boolean) => void;
     };
   }
 }
@@ -85,32 +94,122 @@ function runMain(): void {
     conn.send({ breakBlock: { chunkCoord: { cx, cy }, localX: lx, localY: ly } });
   }
 
+  function sendPlaceBlock(
+    cx: number,
+    cy: number,
+    lx: number,
+    ly: number,
+    kind: BlockType,
+  ): void {
+    conn.send({
+      placeBlock: {
+        chunkCoord: { cx, cy },
+        localX: lx,
+        localY: ly,
+        kind: blockTypeToWire(kind),
+      },
+    });
+  }
+
   const input = new InputController({ sendMoveIntent });
   input.start(window);
 
-  // Left-click to destroy the top-layer block under the cursor, gated by
-  // the same reach the server enforces (REACH_BLOCKS, Euclidean from player
-  // center to tile center). The server re-validates everything; this gate
-  // just keeps obviously-out-of-reach clicks off the wire.
-  window.addEventListener("mousedown", (ev) => {
-    if (ev.button !== 0) return;
-    if (localPlayerId === null) return;
-    const ndc = {
-      x: (ev.clientX / window.innerWidth) * 2 - 1,
-      y: -(ev.clientY / window.innerHeight) * 2 + 1,
-    };
-    const pick = renderer.pickAtCursor(ndc);
-    if (!pick || pick.layer !== "top") return;
+  // Builder mode (toggled with `E`): while on, the cell under the cursor is
+  // previewed as a translucent gold ghost — but only when (a) within reach,
+  // (b) top-layer empty, (c) no player AABB overlaps the cell. Right-click
+  // sends a `PlaceBlock` for that cell. Outside builder mode right-click
+  // does nothing; left-click always destroys (the two flows live on
+  // separate buttons so they never conflict).
+  let builderMode = false;
+  let cursorNdc: { x: number; y: number } | null = null;
+
+  function pickGhostCell(): readonly [number, number, number, number] | null {
+    if (!builderMode || cursorNdc === null || localPlayerId === null) return null;
     const me = world.getPlayer(localPlayerId);
-    if (!me) return;
+    if (!me) return null;
+    const pick = renderer.pickAtCursor(cursorNdc);
+    if (!pick) return null;
+    if (pick.layer !== "ground") return null;
     const [cx, cy] = pick.chunkCoord;
     const [lx, ly] = pick.localXY;
     const tileCenterX = cx * CHUNK_SIZE + lx + 0.5;
     const tileCenterY = cy * CHUNK_SIZE + ly + 0.5;
     const dx = tileCenterX - me.x;
     const dy = tileCenterY - me.y;
-    if (dx * dx + dy * dy > REACH_BLOCKS * REACH_BLOCKS) return;
-    sendBreakBlock(cx, cy, lx, ly);
+    if (dx * dx + dy * dy > REACH_BLOCKS * REACH_BLOCKS) return null;
+    // Strict overlap matches `World::try_place_top_block`: any player AABB
+    // (unit square) overlapping the target cell hides the ghost.
+    for (const p of world.players()) {
+      if (
+        Math.abs(p.x - tileCenterX) < 1.0 &&
+        Math.abs(p.y - tileCenterY) < 1.0
+      ) {
+        return null;
+      }
+    }
+    return [cx, cy, lx, ly] as const;
+  }
+
+  function refreshGhost(): void {
+    renderer.setGhostCell(pickGhostCell());
+  }
+
+  // Refresh the ghost every animation frame so a remote player walking onto
+  // the targeted cell hides the preview without waiting for a mousemove.
+  // Cheap: a single raycast + a few players per frame.
+  function ghostTick(): void {
+    refreshGhost();
+    requestAnimationFrame(ghostTick);
+  }
+  requestAnimationFrame(ghostTick);
+
+  window.addEventListener("keydown", (ev) => {
+    if (ev.code !== "KeyE") return;
+    if (ev.repeat) return;
+    builderMode = !builderMode;
+    refreshGhost();
+  });
+
+  window.addEventListener("mousemove", (ev) => {
+    cursorNdc = {
+      x: (ev.clientX / window.innerWidth) * 2 - 1,
+      y: -(ev.clientY / window.innerHeight) * 2 + 1,
+    };
+  });
+
+  // Suppress the browser context menu so right-click is available for placement.
+  window.addEventListener("contextmenu", (ev) => ev.preventDefault());
+
+  window.addEventListener("mousedown", (ev) => {
+    if (localPlayerId === null) return;
+    const ndc = {
+      x: (ev.clientX / window.innerWidth) * 2 - 1,
+      y: -(ev.clientY / window.innerHeight) * 2 + 1,
+    };
+    if (ev.button === 0) {
+      // Left-click → destroy the top-layer block under the cursor.
+      const pick = renderer.pickAtCursor(ndc);
+      if (!pick || pick.layer !== "top") return;
+      const me = world.getPlayer(localPlayerId);
+      if (!me) return;
+      const [cx, cy] = pick.chunkCoord;
+      const [lx, ly] = pick.localXY;
+      const tileCenterX = cx * CHUNK_SIZE + lx + 0.5;
+      const tileCenterY = cy * CHUNK_SIZE + ly + 0.5;
+      const dx = tileCenterX - me.x;
+      const dy = tileCenterY - me.y;
+      if (dx * dx + dy * dy > REACH_BLOCKS * REACH_BLOCKS) return;
+      sendBreakBlock(cx, cy, lx, ly);
+      return;
+    }
+    if (ev.button === 2 && builderMode) {
+      // Right-click in builder mode → place gold at the ghost cell.
+      cursorNdc = ndc;
+      const cell = pickGhostCell();
+      if (!cell) return;
+      const [cx, cy, lx, ly] = cell;
+      sendPlaceBlock(cx, cy, lx, ly, BlockType.Gold);
+    }
   });
 
   window.__anarchy = {
@@ -119,5 +218,11 @@ function runMain(): void {
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,
     sendBreakBlock,
+    sendPlaceBlock,
+    isBuilderMode: () => builderMode,
+    setBuilderMode: (on) => {
+      builderMode = on;
+      refreshGhost();
+    },
   };
 }
