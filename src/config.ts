@@ -29,6 +29,15 @@ export const SPEED = 5.0;
  */
 export const REACH_BLOCKS = 4.0;
 
+/**
+ * Radius of a player's collision circle (the authoritative hitbox). Mirrors
+ * `crate::game::player::PLAYER_RADIUS` on the server — must stay equal so
+ * the client's place / interaction gates agree with the server's validator.
+ * The renderer's player sphere uses the same radius so visuals and
+ * authority agree on what "touching" looks like.
+ */
+export const PLAYER_RADIUS = 0.35;
+
 // ---- Render ----
 
 /**

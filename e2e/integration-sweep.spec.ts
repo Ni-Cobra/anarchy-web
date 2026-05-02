@@ -116,13 +116,12 @@ async function clearTopBlock(
 test("place blocks B's path: B walks east into the new block and stops flush against it", async ({
   browser,
 }) => {
-  // Setup: both clients spawn at origin; the player↔player push leaves
-  // A (lower id) at (-0.5, 0) and B (higher id) at (0.5, 0). A places
-  // gold at world tile (2, 0) — center (2.5, 0.5). A's reach distance
-  // √(3² + 0.5²) ≈ 3.04 — well under REACH_BLOCKS. The block's left edge
-  // sits at world x=2, so B walking east stops with center at x=1.5
-  // (right edge flush against the block: strict-overlap convention lets
-  // the AABB rest exactly on the boundary).
+  // Setup: both clients spawn at origin; the circle-circle push leaves
+  // A (lower id) at (-r, 0) and B (higher id) at (+r, 0) where
+  // r = PLAYER_RADIUS = 0.35. A places gold at world tile (2, 0) —
+  // center (2.5, 0.5) — comfortably within reach. The block's left edge
+  // sits at world x=2, so B walking east stops with center tangent to
+  // it: x = 2 - r = 1.65.
   test.setTimeout(15_000);
   const cx = 0,
     cy = 0,
@@ -151,14 +150,14 @@ test("place blocks B's path: B walks east into the new block and stops flush aga
     // changed; one send is enough.
     await b.evaluate(() => window.__anarchy!.sendMoveIntent(1, 0));
 
-    // B must end up clamped at center x ≤ 1.5 + ε. We wait for the
-    // collision-clamped state, then assert the position is stable across
-    // a few ticks (~150 ms ≈ 3 ticks at 20 Hz) so a transient mid-step
-    // sample doesn't pass falsely.
+    // B must end up clamped at center x ≈ 1.65 (= 2 - PLAYER_RADIUS) ± ε.
+    // We wait for the collision-clamped state, then assert the position is
+    // stable across a few ticks (~150 ms ≈ 3 ticks at 20 Hz) so a
+    // transient mid-step sample doesn't pass falsely.
     await b.waitForFunction(
       (peerId) => {
         const me = window.__anarchy?.world.getPlayer(peerId);
-        return me !== undefined && me.x <= 1.55 && me.x >= 1.45;
+        return me !== undefined && me.x <= 1.7 && me.x >= 1.6;
       },
       meB.id,
       { timeout: 8_000 },
@@ -172,10 +171,10 @@ test("place blocks B's path: B walks east into the new block and stops flush aga
       return window.__anarchy!.world.getPlayer(peerId)!.x;
     }, meB.id);
     // Stable within a tiny tolerance — the server should be repeatedly
-    // dropping the eastward step once the AABB is flush.
+    // dropping the eastward step once the circle is tangent.
     expect(Math.abs(x2 - x1)).toBeLessThan(0.05);
-    expect(x2).toBeLessThanOrEqual(1.55);
-    expect(x2).toBeGreaterThanOrEqual(1.45);
+    expect(x2).toBeLessThanOrEqual(1.7);
+    expect(x2).toBeGreaterThanOrEqual(1.6);
 
     // A's view of B should agree (ignore exact equality — the snapshot
     // buffer interpolates — but the world-mirror should be in the same
@@ -184,7 +183,7 @@ test("place blocks B's path: B walks east into the new block and stops flush aga
       return window.__anarchy!.world.getPlayer(peerId)?.x ?? null;
     }, meB.id);
     expect(aSeesB).not.toBeNull();
-    expect(aSeesB!).toBeLessThanOrEqual(1.6);
+    expect(aSeesB!).toBeLessThanOrEqual(1.75);
   } finally {
     // Stop B before leaving so the next test starts from rest.
     await b.evaluate(() => window.__anarchy?.sendMoveIntent(0, 0)).catch(() => {});
@@ -197,13 +196,15 @@ test("place blocks B's path: B walks east into the new block and stops flush aga
 test("ghost gate + server agree: B on cell forbids place; B walks off, place lands", async ({
   browser,
 }) => {
-  // Both clients spawn at origin; the push lands A at (-0.5, 0), B at
-  // (0.5, 0). The world tile (0, 0) — center (0.5, 0.5) — is fully
-  // overlapped by B's AABB (centered at (0.5, 0), unit square covers
-  // y∈[-0.5, 0.5], x∈[0, 1]). A's distance to that cell is ≈ 1.12 — well
-  // within reach. The server must reject A's place; the client `canPlaceAt`
-  // gate must return false for the same reason. Once B walks east past
-  // x=1.5 (AABB clear of cell (0, 0)), both flip to allowed.
+  // Both clients spawn at origin; the push lands A at (-r, 0), B at
+  // (+r, 0) where r = PLAYER_RADIUS = 0.35. B's circle (center (0.35, 0),
+  // radius 0.35) overlaps cell (0, 0) [0,1]×[0,1]: the nearest point on
+  // the cell to B's center is the center itself, distance 0 < r. A is
+  // tangent to the cell (nearest point (0, 0), distance r) and so does
+  // not block placement. The server must reject A's place; the client
+  // `canPlaceAt` gate must return false for the same reason. Once B
+  // walks east past x = 1 + r = 1.35, B's circle clears cell (0, 0) and
+  // both flip to allowed.
   test.setTimeout(15_000);
   const cx = 0,
     cy = 0,
@@ -222,11 +223,11 @@ test("ghost gate + server agree: B on cell forbids place; B walks off, place lan
     const meB = await waitForSelfSpawn(b);
 
     // Wait for the post-push positions to be reflected in A's world so
-    // canPlaceAt's overlap check sees B at (0.5, 0).
+    // canPlaceAt's overlap check sees B at (+r, 0). r = PLAYER_RADIUS = 0.35.
     await a.waitForFunction(
       (peerId) => {
         const p = window.__anarchy?.world.getPlayer(peerId);
-        return p !== undefined && p.x > 0.4;
+        return p !== undefined && p.x > 0.3;
       },
       meB.id,
     );
@@ -242,7 +243,9 @@ test("ghost gate + server agree: B on cell forbids place; B walks off, place lan
     expect(await readTopBlockKind(a, cx, cy, lx, ly)).toBe(0); // Air
     expect(await readTopBlockKind(b, cx, cy, lx, ly)).toBe(0);
 
-    // Step 3: B walks east until past x=1.5, clearing the AABB from cell (0, 0).
+    // Step 3: B walks east until past x = 1 + PLAYER_RADIUS = 1.35,
+    // clearing B's circle from cell (0, 0). We wait a bit further (1.55)
+    // for headroom against snapshot interpolation.
     await b.evaluate(() => window.__anarchy!.sendMoveIntent(1, 0));
     await a.waitForFunction(
       (peerId) => {
@@ -363,11 +366,12 @@ test("PlaceBlock issued right after a fresh reconnect Welcome is processed corre
 
     // Wait until A's world reflects B (so `canPlaceAt`'s overlap check has
     // a current view). When the post-reload A spawns at origin a fresh push
-    // pass nudges the two apart along x. B was left at (-0.5, 0) by the
-    // earlier push (it never moved); A spawns at (0, 0). The penetration on
-    // x is 0.5; with both stationary the share is 50/50, so each is shoved
-    // 0.25 — A ends at (0.25, 0), B at (-0.75, 0). Both clear of the
-    // target cell (1, 1) (center (1.5, 1.5)).
+    // pass nudges the two apart along x. B was left at (-r, 0) by the
+    // earlier push (B has the lower id and goes -x; r = PLAYER_RADIUS =
+    // 0.35); A spawns at (0, 0). Centers 0.35 apart, circle penetration
+    // 2r - 0.35 = 0.35; with both stationary the share is 50/50, so each
+    // is shoved r/2 = 0.175 — A ends at (0.175, 0), B at (-0.525, 0).
+    // Both clear of the target cell (1, 1) (nearest distance ≥ 1).
     await a.waitForFunction(
       (peerId) => {
         return window.__anarchy?.world.getPlayer(peerId) !== undefined;
@@ -376,9 +380,10 @@ test("PlaceBlock issued right after a fresh reconnect Welcome is processed corre
     );
 
     // Toggle builder + place at chunk (0, 0) local (1, 1) — center
-    // (1.5, 1.5). From A at ~(0.5, 0): distance √(1 + 2.25) ≈ 1.80 — in
-    // reach. No player AABB on this cell (B at (-0.5, 0); A at (0.5, 0)
-    // overlaps cell (0, 0) but not (1, 1)).
+    // (1.5, 1.5). From A at ~(0.175, 0): distance ≈ √(1.756 + 2.25) ≈ 2.00
+    // — in reach. No player circle overlaps cell (1, 1): B at (-0.525, 0)
+    // is √((1+0.525)² + 1²) ≈ 1.83 from the nearest cell point, A at
+    // (0.175, 0) is √(0.825² + 1²) ≈ 1.30 — both well past PLAYER_RADIUS.
     await a.evaluate(() => window.__anarchy!.setBuilderMode(true));
     await a.waitForFunction(() => window.__anarchy!.canPlaceAt(0, 0, 1, 1));
     await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 1, 1, 4));

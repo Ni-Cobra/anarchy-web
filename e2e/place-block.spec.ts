@@ -91,9 +91,12 @@ test("place: A toggles builder + sends → both clients see gold", async ({
   const b = await ctxB.newPage();
 
   // Target chunk (0, 0), local (2, 0) — center (2.5, 0.5). With two clients
-  // spawning at origin the player↔player push shoves the lower-id placer A
-  // to (-0.5, 0); reach to the target is √(3² + 0.5²) ≈ 3.04 — comfortably
-  // in. (Tile (3, 0) is *just* out of reach: √(4² + 0.5²) ≈ 4.03 > 4.0.)
+  // spawning at origin the player↔player push (circle-circle, radius
+  // PLAYER_RADIUS = 0.35) shoves the lower-id placer A to (-0.35, 0);
+  // reach to the target is √(2.85² + 0.5²) ≈ 2.89 — comfortably in. (Tile
+  // (3, 0) is also in reach now from this slightly-closer post-push spot:
+  // √(3.85² + 0.5²) ≈ 3.88 < 4.0; the 4.0 reach bound is independent of
+  // the hitbox size.)
   const cx = 0,
     cy = 0,
     lx = 2,
@@ -177,9 +180,10 @@ test("place: server silently drops PlaceBlock on a cell occupied by a player", a
   const a = await ctxA.newPage();
   const b = await ctxB.newPage();
 
-  // Both clients spawn at origin; the player↔player push pass shoves the
-  // lower-id (A) to (-0.5, 0) and the higher-id (B) to (0.5, 0). The cell
-  // at world tile (0, 0) (center (0.5, 0.5)) is occupied by B's AABB.
+  // Both clients spawn at origin; the circle-circle push shoves the
+  // lower-id (A) to (-0.35, 0) and the higher-id (B) to (+0.35, 0). The
+  // cell at world tile (0, 0) ([0,1]×[0,1]) is overlapped by B's circle
+  // (B's center sits exactly on the cell's south edge, distance 0 < r).
   // Placing into it must be rejected by the server.
   const cx = 0,
     cy = 0,

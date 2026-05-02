@@ -90,10 +90,10 @@ test("destroy: A clicks → block disappears for both A and B on the next tick",
   // against late connects).
   //
   // Block at world tile (1, 0) — chunk (0, 0) local (1, 0). With two
-  // clients spawning at origin the player↔player push pass shoves the
-  // lower-id player to (-0.5, 0) on the first joint tick, so the chosen
-  // block must stay in reach from there: distance from (-0.5, 0) to tile
-  // center (1.5, 0.5) is √(2² + 0.5²) ≈ 2.06 — comfortably under 4.0.
+  // clients spawning at origin the circle-circle push shoves the lower-id
+  // player to (-0.35, 0) on the first joint tick, so the chosen block
+  // must stay in reach from there: distance from (-0.35, 0) to tile
+  // center (1.5, 0.5) is √(1.85² + 0.5²) ≈ 1.92 — comfortably under 4.0.
   await seedTopBlock(0, 0, 1, 0, "wood");
 
   const ctxA = await browser.newContext();
@@ -136,7 +136,7 @@ test("destroy: server silently drops out-of-reach BreakBlock", async ({
   // (0, 0) so it's always loaded (view-radius and the four startup defaults
   // both keep this chunk loaded regardless of which clients are around).
   // World tile (10, 0) center (10.5, 0.5) → distance ≈ 10 from any
-  // post-push player position (worst case ±0.5). Way outside reach.
+  // post-push player position (worst case ±PLAYER_RADIUS). Way outside reach.
   await seedTopBlock(0, 0, 10, 0, "wood");
 
   const ctxA = await browser.newContext();

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { CAMERA_HEIGHT } from "../config.js";
+import { CAMERA_HEIGHT, PLAYER_RADIUS } from "../config.js";
 import type {
   PlayerId,
   SnapshotBuffer,
@@ -22,13 +22,18 @@ import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
 const EYE_COLOR = 0xffffff;
-const BODY_RADIUS = 0.5;
+// The player's body sphere mirrors the authoritative collision radius
+// (`PLAYER_RADIUS` in `config.ts`, `crate::game::player::PLAYER_RADIUS`
+// on the server) so visuals and authority agree on what "touching" means.
+const BODY_RADIUS = PLAYER_RADIUS;
 const BODY_SEGMENTS = 16;
-const EYE_RADIUS = 0.09;
+// Eye geometry + offsets scale with the body so the face stays in
+// proportion (0.7 of the old AABB-era values).
+const EYE_RADIUS = 0.063;
 const EYE_SEGMENTS = 6;
-const EYE_FORWARD = 0.38;
-const EYE_UP = 0.18;
-const EYE_SIDE = 0.2;
+const EYE_FORWARD = 0.266;
+const EYE_UP = 0.126;
+const EYE_SIDE = 0.14;
 const AXIS_HALF_LENGTH = 10000;
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
