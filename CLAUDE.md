@@ -73,37 +73,48 @@ regenerates `src/gen/anarchy.{js,d.ts}` (also runs automatically via
 
 - **Unit (`vitest`):** `*.test.ts` co-located next to source, run with
   `npm test`. Use these for pure logic — `World`, `SnapshotBuffer`,
-  `LocalPredictor`, `keymap`, wire conversions, render `compose`.
+  `keymap`, wire conversions, render `compose`. (Prediction was retired
+  with ADR 0003 §7; both local and remote players flow through
+  `SnapshotBuffer`.)
 - **End-to-end (`@playwright/test`):** `e2e/*.spec.ts`, run with
   `npm run test:e2e` (or the project-root `./run-e2e.sh`). Playwright auto-
   starts the Rust server (`cargo run`) and Vite dev server. Browser system
   deps must be present — see `BLOCKERS.md` history if Chromium fails to
   launch.
 - **Cross-cutting changes** (anything touching networking, snapshot wiring,
-  prediction, or the wire format) require `./run-e2e.sh` to pass before
-  commit. Definition-of-done in the project charter is the source of truth.
+  or the wire format) require `./run-e2e.sh` to pass before commit.
+  Definition-of-done in the project charter is the source of truth.
 - New protocol-level invariants pin in Node-side specs
   (`connection.spec.ts`, `spawn-despawn.spec.ts`, `tick-loop.spec.ts`,
-  `validation.spec.ts`, `prediction.spec.ts`, `heartbeat.spec.ts`).
-  `client-app.spec.ts` exists to exercise the real browser entry path —
-  index.html + main.ts + wire bridge end-to-end.
+  `validation.spec.ts`, `heartbeat.spec.ts`,
+  `advanced-networking.spec.ts`). `client-app.spec.ts` exercises the
+  real browser entry path — index.html + main.ts + wire bridge end-to-end.
+  `terrain.spec.ts` covers chunk-load/unload over the wire.
 
 ## State-sync model (cheat sheet)
 
-The full design is in `anarchy-server/docs/decisions/0001-state-sync-model.md`.
-Practical implications for client-side work:
+The full design is in `anarchy-server/docs/decisions/0001-state-sync-model.md`,
+amended by `0003-chunk-centric-networking.md`. Practical implications for
+client-side work today:
 
-- **Local player** is rendered from `LocalPredictor`. Inputs land on the
-  next frame; the predictor advances at `SPEED * dt` and reconciles on
-  divergence > `RECONCILE_SNAP_DISTANCE`. Do **not** route the local
-  player through `SnapshotBuffer`.
-- **Remote players** are rendered from `SnapshotBuffer` with
-  `REMOTE_RENDER_DELAY_MS = 100` interpolation. No prediction.
+- **All players** (local and remote) are rendered from `SnapshotBuffer`
+  with `REMOTE_RENDER_DELAY_MS = 100` ms interpolation. ADR 0003 §7
+  retired `LocalPredictor`, so local input feels the server tick — the
+  known regression until prediction is reintroduced as a future task.
+- **`TickUpdate` ingest** lives in `net/wire.ts` (`applyTickUpdate`).
+  Each tick the server ships a per-client message carrying
+  `full_state_chunks` (chunks newly in view or dirtied this tick) and
+  `unmodifiedChunks` (still-in-view, unchanged). Anything previously
+  known and absent from both is implicitly unloaded; the wire bridge
+  reconciles `Terrain` and rebuilds the `World` player set as the union
+  across the post-tick chunks.
+- **Renderer hooks** wire `applyChunkLoaded` / `applyChunkUnloaded` from
+  the bridge so per-chunk Three.js sub-groups rebuild without touching
+  the rest of the terrain mesh.
 - **`client_seq`** is a per-client monotonic action counter; every
-  outbound `ClientAction` carries it, and the server's `acked_client_seq`
-  echo drives reconciliation. `main.ts` increments it; the predictor
-  must be informed via `setIntent(dx, dy, seq)` so prediction stays in
-  lock-step with the wire.
+  outbound `ClientAction` carries it. The server still ratchets
+  `acked_client_seq`, but with prediction retired the client no longer
+  reconciles against it — `main.ts` just increments and ships.
 
 ## Build commands
 

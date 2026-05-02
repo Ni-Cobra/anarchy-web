@@ -3,30 +3,21 @@
  * and (eventually) loadable from a build-time env. Until then, these are
  * compile-time `const`s.
  *
- * What lives here: knobs that affect rendering cadence, prediction, or
- * networking heartbeats — things a tuning pass might touch. What does *not*
- * live here: visual constants that belong with their owning module
- * (mesh sizes, colors, axis line lengths) and anything specific to one test.
+ * What lives here: knobs that affect rendering cadence or networking
+ * heartbeats — things a tuning pass might touch. What does *not* live here:
+ * visual constants that belong with their owning module (mesh sizes,
+ * colors, axis line lengths) and anything specific to one test.
  */
 
 // ---- Game ----
 
 /**
  * World units per second. Mirrors `crate::config::SPEED` on the server — the
- * two must stay equal so that predicted client motion converges with the
- * authoritative server tick. See ADR 0001 (movement-intent amendment).
+ * two must stay equal so the snapshot-buffer interpolation cadence on the
+ * client matches the authoritative tick advance. See ADR 0001 (movement-
+ * intent amendment).
  */
 export const SPEED = 5.0;
-
-/**
- * If predicted position diverges from the latest reconcilable server
- * snapshot by more than this many world units, snap to the server. Picked to
- * be larger than the typical server-vs-client lag distance for a player
- * moving at full speed (`|intent| * SPEED * RTT/2` is well under 1.0 on a
- * sub-100 ms link) but small enough that an actual override (collision,
- * future anti-cheat) gets corrected within a single tick.
- */
-export const RECONCILE_SNAP_DISTANCE = 1.5;
 
 // ---- Render ----
 
