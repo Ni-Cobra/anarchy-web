@@ -91,4 +91,13 @@ export class SnapshotBuffer {
   samplesOf(id: PlayerId): readonly Sample[] {
     return this.samplesById.get(id) ?? [];
   }
+
+  /**
+   * Iterate over every player id with at least one sample in the buffer.
+   * Returned as an array snapshot so the caller can mutate the buffer
+   * (drop entries, etc.) while iterating without observing aliasing.
+   */
+  knownIds(): PlayerId[] {
+    return [...this.samplesById.keys()];
+  }
 }

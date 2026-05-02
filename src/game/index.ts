@@ -9,7 +9,6 @@ export type { Player, PlayerId } from "./player.js";
 export { Direction8, DEFAULT_FACING } from "./player.js";
 export { World } from "./world.js";
 export { SnapshotBuffer } from "./snapshot_buffer.js";
-export { LocalPredictor } from "./predictor.js";
 export type { Block, Chunk, Layer } from "./terrain.js";
 export {
   BlockType,

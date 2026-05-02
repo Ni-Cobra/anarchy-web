@@ -1,14 +1,17 @@
 /**
  * Client-side mirror of the server's `game::terrain` data model. Pure data +
- * math; no networking. The shape (block kinds, layer size, two-layer chunks,
- * sparse `Terrain` map) tracks ADR 0002 in the server repo — see
- * `anarchy-server/docs/decisions/0002-terrain-model.md` — so the proto
- * payloads ingested in `net/wire.ts` map 1:1 onto these types.
+ * math; no networking. The shape (block kinds, layer size, two-layer chunks
+ * carrying their players, sparse `Terrain` map) tracks ADR 0002 (terrain
+ * model) and ADR 0003 (chunk-centric networking — players live in chunks)
+ * in the server repo, so the proto payloads ingested in `net/wire.ts` map
+ * 1:1 onto these types.
  *
  * The `Terrain` map is keyed by a `"cx,cy"` string under the hood (ES Maps
  * compare object keys by reference, so a tuple key would be useless); the
  * public API takes plain `(cx, cy)` numbers and never exposes the string.
  */
+
+import type { Player, PlayerId } from "./player.js";
 
 /**
  * Kind of a single block. Numeric values match the planned proto enum
@@ -61,11 +64,6 @@ export function layerIdx(x: number, y: number): number {
   return y * LAYER_SIZE + x;
 }
 
-/**
- * One horizontal slab of blocks. A `Chunk` is two stacked `Layer`s
- * (`ground` + `top`). The flat array (rather than nested arrays) matches
- * the server's `[Block; LAYER_AREA]` layout 1:1.
- */
 export interface Layer {
   readonly blocks: Block[];
 }
@@ -92,24 +90,20 @@ export function setBlock(layer: Layer, x: number, y: number, block: Block): void
 }
 
 /**
- * One chunk: walkable `ground` floor + sparse `top` standing geometry.
- * Naming mirrors the server `Chunk { ground, top }`.
+ * One chunk: walkable `ground` floor + sparse `top` standing geometry +
+ * the players whose center currently falls inside the chunk. Naming
+ * mirrors the server `Chunk { ground, top, players }`.
  */
 export interface Chunk {
   readonly ground: Layer;
   readonly top: Layer;
+  readonly players: ReadonlyMap<PlayerId, Player>;
 }
 
 export function emptyChunk(): Chunk {
-  return { ground: emptyLayer(), top: emptyLayer() };
+  return { ground: emptyLayer(), top: emptyLayer(), players: new Map() };
 }
 
-/**
- * Stable string key for a chunk-coord pair. Pinned format `"cx,cy"` so
- * round-tripping through `parseChunkKey` is exact. ES `Map` compares object
- * keys by identity, so a tuple key wouldn't share storage between two
- * `[cx, cy]` arrays — a string key is the lowest-friction option.
- */
 export function chunkKey(cx: number, cy: number): string {
   if (!Number.isInteger(cx) || !Number.isInteger(cy)) {
     throw new RangeError(`chunk coord must be integer: (${cx}, ${cy})`);
@@ -145,17 +139,14 @@ export function chunkCoordForWorldPos(
 
 /**
  * Authoritative collection of loaded chunks, keyed by `(chunk_x, chunk_y)`.
- * Iteration order is insertion order (ES `Map` semantics) — callers that
- * need a specific order should sort.
- *
- * Mirrors `game::Terrain` on the server. The wire layer (`net/wire.ts`)
- * mutates this in place when `TerrainSnapshot` / `ChunkLoaded` /
- * `ChunkUnloaded` arrive; the server alone decides the loaded set.
+ * Per ADR 0003 the chunk owns the players whose center falls inside it; the
+ * wire layer (`net/wire.ts`) overwrites entries when a `TickUpdate` carries
+ * a chunk in `full_state_chunks`, leaves `unmodified_chunks` alone, and
+ * implicitly unloads anything missing from both.
  */
 export class Terrain {
   private readonly chunks = new Map<string, Chunk>();
 
-  /** Insert or replace the chunk at `(cx, cy)`. Returns the previous chunk. */
   insert(cx: number, cy: number, chunk: Chunk): Chunk | undefined {
     const k = chunkKey(cx, cy);
     const prev = this.chunks.get(k);

@@ -65,21 +65,6 @@ describe("World", () => {
     });
   });
 
-  it("removePlayer reports whether the id was present", () => {
-    const w = new World();
-    w.applySnapshot([p(1), p(2)]);
-    expect(w.removePlayer(1)).toBe(true);
-    expect(w.removePlayer(1)).toBe(false);
-    expect(w.removePlayer(999)).toBe(false);
-    expect(w.size()).toBe(1);
-    expect(w.getPlayer(2)).toEqual({
-      id: 2,
-      x: 0,
-      y: 0,
-      facing: DEFAULT_FACING,
-    });
-  });
-
   it("players() yields every current player", () => {
     const w = new World();
     w.applySnapshot([p(3), p(1), p(2)]);

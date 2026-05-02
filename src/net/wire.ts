@@ -7,7 +7,6 @@ import {
   Direction8,
   LAYER_AREA,
   type Layer,
-  type LocalPredictor,
   type Player,
   type PlayerId,
   type SnapshotBuffer,
@@ -18,10 +17,8 @@ import {
 /**
  * The bridge through which the wire layer publishes (and reads back) the
  * local player id. The renderer needs to know which player is the local
- * one for color + camera; the predictor reconciliation needs to look up
- * the local player's entry inside each snapshot. The wire layer stays
- * networking-agnostic by funneling both through this hook rather than
- * holding state itself.
+ * one for color + camera; nothing else outside the wire layer reads the id
+ * back, but the hook keeps this module networking-agnostic.
  */
 export interface LocalPlayerSink {
   setLocalPlayerId(id: PlayerId | null): void;
@@ -29,19 +26,16 @@ export interface LocalPlayerSink {
 }
 
 /**
- * Notifications for the renderer (or any other observer) when the
- * `Terrain` map mutates from the wire side. The wire layer mutates
- * `Terrain` first, then calls the matching hook so the renderer can
- * rebuild the affected sub-mesh. All hooks are optional — tests that
- * don't render can omit them.
+ * Notifications for the renderer (or any other observer) when chunks
+ * mutate from the wire side. Per ADR 0003 every per-tick update may
+ * insert new chunks (full state), keep some unchanged, or implicitly
+ * unload chunks that fell out of view; the renderer rebuilds the affected
+ * sub-meshes after each tick.
  */
 export interface TerrainSink {
-  /** A bulk `TerrainSnapshot` was applied; the renderer should rebuild
-   * its terrain mesh wholesale from the current `Terrain` contents. */
-  onSnapshot?(): void;
-  /** A single chunk at `(cx, cy)` was inserted or replaced. */
+  /** A chunk at `(cx, cy)` was inserted or replaced (full state). */
   onChunkLoaded?(cx: number, cy: number): void;
-  /** A single chunk at `(cx, cy)` was removed. */
+  /** A chunk at `(cx, cy)` was implicitly unloaded (fell out of view). */
   onChunkUnloaded?(cx: number, cy: number): void;
 }
 
@@ -50,19 +44,9 @@ export interface WireDeps {
   readonly buffer: SnapshotBuffer;
   readonly local: LocalPlayerSink;
   /**
-   * Local-player position predictor. The wire layer:
-   *   - calls `reset(x, y)` from `ServerWelcome.snapshot` so prediction
-   *     starts at the authoritative spawn position;
-   *   - on every `StateUpdate`, hands the local player's snapshot entry
-   *     (position + `acked_client_seq`) to `reconcile` so divergence with
-   *     a server override gets snapped back.
-   * Optional so existing tests that don't exercise prediction can omit it.
-   */
-  readonly predictor?: LocalPredictor;
-  /**
    * Authoritative client-side mirror of the loaded chunk set. The wire
-   * layer mutates this in place when terrain messages arrive. Optional
-   * for tests that don't exercise terrain.
+   * layer mutates this in place when `TickUpdate` arrives. Optional for
+   * tests that don't exercise terrain.
    */
   readonly terrain?: Terrain;
   /** Renderer notification hooks; see `TerrainSink`. */
@@ -71,32 +55,26 @@ export interface WireDeps {
   readonly now?: () => number;
 }
 
-interface LocalSnapshotEntry {
-  readonly x: number;
-  readonly y: number;
-  readonly ackedClientSeq: number;
-}
-
 /**
  * Translate one decoded `ServerMessage` into mutations on the game-state
  * mirror. This is the only place protobuf types touch `World` /
- * `SnapshotBuffer` / `LocalPredictor` / `LocalPlayerSink`.
+ * `SnapshotBuffer` / `Terrain` / `LocalPlayerSink`.
  *
- * Per ADR 0001 every tick carries a full `WorldSnapshot`, so:
- *   - `ServerWelcome.snapshot` and `StateUpdate.snapshot` both feed
- *     `World.applySnapshot` (a full replace) and append one sample per
- *     player to the per-id history in `SnapshotBuffer`. Welcome also
- *     resets the predictor to the spawn position; subsequent state updates
- *     reconcile the predictor against the local player's authoritative
- *     entry.
- *   - `PlayerDespawned` removes the player from both stores immediately
- *     (the next tick wouldn't include them anyway, but acting on the
- *     explicit signal lets the mesh vanish without waiting ~50 ms).
- *   - `Welcome` also clears the buffer and re-binds the local id, so
- *     reconnects start clean.
+ * Per ADR 0003 the steady-state wire shape is `TickUpdate`:
+ *   - `full_state_chunks` carries chunks newly entering the view window
+ *     OR known chunks whose state changed this tick. Each chunk includes
+ *     its terrain layers AND the players whose center currently falls
+ *     inside it. The wire layer overwrites the matching `Terrain` entry
+ *     and pushes one snapshot-buffer sample per player in the chunk.
+ *   - `unmodified_chunks` is an explicit list of "still in view, no
+ *     state change this tick"; receivers leave these alone.
+ *   - Implicit unload: any chunk in the receiver's last-known view that
+ *     does not appear in either field is dropped.
  *
- * Other payloads (Pong, unknown oneof) are no-ops here — the connection
- * layer handles transport-level concerns like heartbeats.
+ * After applying the tick, the World is replaced wholesale with the union
+ * of players across the post-tick terrain, so any player whose chunk
+ * dropped out of view (or who left the chunk to a neighbor we've also
+ * dropped) disappears the same way.
  */
 export function applyServerMessage(
   msg: anarchy.v1.IServerMessage,
@@ -105,114 +83,125 @@ export function applyServerMessage(
   const now = deps.now ?? Date.now;
 
   if (msg.welcome) {
-    const w = msg.welcome;
-    deps.buffer.clear();
-    const localId = toNumber(w.playerId);
+    const localId = toNumber(msg.welcome.playerId);
     deps.local.setLocalPlayerId(localId);
-    if (w.snapshot) {
-      const localEntry = ingestSnapshot(
-        w.snapshot,
-        deps.world,
-        deps.buffer,
-        localId,
-        now(),
-      );
-      // Reset predictor to authoritative spawn (origin today, but cheap to
-      // anchor on whatever the welcome snapshot says).
-      if (deps.predictor) {
-        deps.predictor.reset(localEntry?.x ?? 0, localEntry?.y ?? 0);
+    deps.buffer.clear();
+    if (deps.terrain) {
+      // Reconnects start from an empty known set; clear any leftover
+      // chunks from a previous session.
+      const stale: Array<readonly [number, number]> = [];
+      for (const [coord] of deps.terrain.iter()) stale.push(coord);
+      for (const [cx, cy] of stale) {
+        deps.terrain.remove(cx, cy);
+        deps.terrainSink?.onChunkUnloaded?.(cx, cy);
       }
-    } else if (deps.predictor) {
-      deps.predictor.reset(0, 0);
     }
+    deps.world.applySnapshot([]);
     return;
   }
 
-  if (msg.stateUpdate?.snapshot) {
-    const localId = deps.local.getLocalPlayerId();
-    const localEntry = ingestSnapshot(
-      msg.stateUpdate.snapshot,
-      deps.world,
-      deps.buffer,
-      localId,
-      now(),
-    );
-    if (deps.predictor && localEntry) {
-      deps.predictor.reconcile(
-        localEntry.x,
-        localEntry.y,
-        localEntry.ackedClientSeq,
-      );
-    }
-    return;
-  }
-
-  if (msg.playerDespawned) {
-    const id = toNumber(msg.playerDespawned.playerId);
-    deps.world.removePlayer(id);
-    deps.buffer.drop(id);
-    return;
-  }
-
-  if (msg.terrainSnapshot) {
-    if (!deps.terrain) return;
-    // Bulk replace: clear out anything currently loaded (defends against
-    // reconnect leaving stale chunks) and ingest every chunk in the snapshot.
-    // Iter() yields a live view, so collect coords first to avoid mutating
-    // during iteration.
-    const existing: Array<readonly [number, number]> = [];
-    for (const [coord] of deps.terrain.iter()) existing.push(coord);
-    for (const [cx, cy] of existing) deps.terrain.remove(cx, cy);
-    for (const wireChunk of msg.terrainSnapshot.chunks ?? []) {
-      const decoded = chunkFromWire(wireChunk);
-      if (!decoded) continue;
-      const [[cx, cy], chunk] = decoded;
-      deps.terrain.insert(cx, cy, chunk);
-    }
-    deps.terrainSink?.onSnapshot?.();
-    return;
-  }
-
-  if (msg.chunkLoaded?.chunk) {
-    if (!deps.terrain) return;
-    const decoded = chunkFromWire(msg.chunkLoaded.chunk);
-    if (!decoded) return;
-    const [[cx, cy], chunk] = decoded;
-    deps.terrain.insert(cx, cy, chunk);
-    deps.terrainSink?.onChunkLoaded?.(cx, cy);
-    return;
-  }
-
-  if (msg.chunkUnloaded) {
-    if (!deps.terrain) return;
-    const cx = msg.chunkUnloaded.x ?? 0;
-    const cy = msg.chunkUnloaded.y ?? 0;
-    // `remove` is idempotent — safe to call for a chunk we never had
-    // (e.g. an unload broadcast received before the joining `TerrainSnapshot`
-    // landed, or a duplicate during a reconnect).
-    deps.terrain.remove(cx, cy);
-    deps.terrainSink?.onChunkUnloaded?.(cx, cy);
+  if (msg.tickUpdate) {
+    applyTickUpdate(msg.tickUpdate, deps, now());
     return;
   }
 }
 
-/**
- * Decode one wire `Chunk` into game-side `(coord, Chunk)`. Returns `null`
- * if the wire chunk is malformed (missing layer or wrong block count) —
- * the server is canonical, but proto3 has no fixed-size repeated, so the
- * length is enforced here. A receiver that crashed on a bad message would
- * be a denial-of-service vector if we ever federated.
- */
+function applyTickUpdate(
+  tick: anarchy.v1.ITickUpdate,
+  deps: WireDeps,
+  timeMs: number,
+): void {
+  const fullStateChunks = tick.fullStateChunks ?? [];
+  const unmodifiedChunks = tick.unmodifiedChunks ?? [];
+
+  // Compute the new known window (full + unmodified). Anything in the
+  // current terrain that's not in the window will be implicitly unloaded.
+  const newWindow = new Set<string>();
+  for (const wireChunk of fullStateChunks) {
+    const c = wireChunk.coord;
+    if (!c) continue;
+    newWindow.add(coordKey(c.cx ?? 0, c.cy ?? 0));
+  }
+  for (const c of unmodifiedChunks) {
+    newWindow.add(coordKey(c.cx ?? 0, c.cy ?? 0));
+  }
+
+  if (deps.terrain) {
+    // Implicit unload: drop chunks no longer in view.
+    const stale: Array<readonly [number, number]> = [];
+    for (const [coord] of deps.terrain.iter()) {
+      const [cx, cy] = coord;
+      if (!newWindow.has(coordKey(cx, cy))) stale.push([cx, cy]);
+    }
+    for (const [cx, cy] of stale) {
+      deps.terrain.remove(cx, cy);
+      deps.terrainSink?.onChunkUnloaded?.(cx, cy);
+    }
+  }
+
+  // Apply each full-state chunk and push samples for its players.
+  for (const wireChunk of fullStateChunks) {
+    const decoded = chunkFromWire(wireChunk);
+    if (!decoded) continue;
+    const [[cx, cy], chunk] = decoded;
+    if (deps.terrain) {
+      deps.terrain.insert(cx, cy, chunk);
+      deps.terrainSink?.onChunkLoaded?.(cx, cy);
+    }
+    for (const p of chunk.players.values()) {
+      deps.buffer.push(p.id, p.x, p.y, timeMs);
+    }
+  }
+
+  // Rebuild the World player set from the union across post-tick terrain.
+  // Players whose chunk fell out of view (or whose chunk no longer
+  // references them) drop out automatically.
+  const players: Player[] = [];
+  if (deps.terrain) {
+    for (const [, chunk] of deps.terrain.iter()) {
+      for (const p of chunk.players.values()) players.push(p);
+    }
+  } else {
+    // Without a terrain reference, fall back to just the players in this
+    // tick's full-state chunks. Tests that don't exercise terrain hit
+    // this path.
+    for (const wireChunk of fullStateChunks) {
+      const decoded = chunkFromWire(wireChunk);
+      if (!decoded) continue;
+      for (const p of decoded[1].players.values()) players.push(p);
+    }
+  }
+  deps.world.applySnapshot(players);
+
+  // Drop buffer entries for ids no longer in view.
+  const visible = new Set(players.map((p) => p.id));
+  for (const id of deps.buffer.knownIds()) {
+    if (!visible.has(id)) deps.buffer.drop(id);
+  }
+}
+
 function chunkFromWire(
   wire: anarchy.v1.IChunk,
 ): readonly [readonly [number, number], Chunk] | null {
-  const cx = wire.x ?? 0;
-  const cy = wire.y ?? 0;
+  const coord = wire.coord;
+  if (!coord) return null;
+  const cx = coord.cx ?? 0;
+  const cy = coord.cy ?? 0;
   if (!wire.ground || !wire.top) return null;
   const ground = layerFromWire(wire.ground);
   const top = layerFromWire(wire.top);
   if (!ground || !top) return null;
-  return [[cx, cy] as const, { ground, top }];
+  const players = new Map<PlayerId, Player>();
+  for (const p of wire.players ?? []) {
+    const id = toNumber(p.id);
+    players.set(id, {
+      id,
+      x: p.x ?? 0,
+      y: p.y ?? 0,
+      facing: facingFromWire(p.facing),
+    });
+  }
+  return [[cx, cy] as const, { ground, top, players }];
 }
 
 function layerFromWire(wire: anarchy.v1.ILayer): Layer | null {
@@ -241,55 +230,14 @@ function blockTypeFromWire(
       return BlockType.Stone;
     case anarchy.v1.BlockType.BLOCK_TYPE_AIR:
     default:
-      // AIR is the proto3 default and the natural identity element. Any
-      // unknown future variant decays to AIR rather than crashing — the
-      // chunk still renders (as a hole), and the user-visible failure mode
-      // is "missing tile" rather than "blank screen".
       return BlockType.Air;
   }
 }
 
-/**
- * Ingest a snapshot into world + buffer, returning the local player's
- * entry (if `localId` is provided and present in the snapshot) so the
- * caller can drive reconciliation without re-walking the snapshot.
- */
-function ingestSnapshot(
-  snapshot: anarchy.v1.IWorldSnapshot,
-  world: World,
-  buffer: SnapshotBuffer,
-  localId: PlayerId | null,
-  timeMs: number,
-): LocalSnapshotEntry | null {
-  const players: Player[] = (snapshot.players ?? []).map((p) => ({
-    id: toNumber(p.id),
-    x: p.x ?? 0,
-    y: p.y ?? 0,
-    facing: facingFromWire(p.facing),
-  }));
-  world.applySnapshot(players);
-  for (const p of players) {
-    buffer.push(p.id, p.x, p.y, timeMs);
-  }
-  if (localId === null) return null;
-  for (const p of snapshot.players ?? []) {
-    if (toNumber(p.id) === localId) {
-      return {
-        x: p.x ?? 0,
-        y: p.y ?? 0,
-        ackedClientSeq: toNumber(p.ackedClientSeq),
-      };
-    }
-  }
-  return null;
+function coordKey(cx: number, cy: number): string {
+  return `${cx},${cy}`;
 }
 
-
-/**
- * Coerce a protobuf uint64 field (number | Long | null | undefined) into a
- * plain JS number. Player ids and seq numbers fit comfortably in 53 bits in
- * practice, so the truncation isn't a real concern at our scale.
- */
 function toNumber(
   v: number | { toNumber(): number } | null | undefined,
 ): number {
@@ -298,13 +246,6 @@ function toNumber(
   return v.toNumber();
 }
 
-/**
- * Translate the proto `Direction8` enum int into the client `Direction8`
- * (whose numeric values intentionally match the wire). `UNSPECIFIED` and
- * any unknown value fall back to [`DEFAULT_FACING`] — the server never
- * emits `UNSPECIFIED`, but a defensive default keeps the client safe if the
- * schema ever drifts ahead.
- */
 function facingFromWire(facing: anarchy.v1.Direction8 | null | undefined): Direction8 {
   switch (facing) {
     case anarchy.v1.Direction8.DIRECTION8_N:

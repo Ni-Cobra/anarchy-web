@@ -1,4 +1,4 @@
-import { LocalPredictor, SnapshotBuffer, Terrain, World } from "./game/index.js";
+import { SnapshotBuffer, Terrain, World } from "./game/index.js";
 import { InputController } from "./input/index.js";
 import { applyServerMessage, connect } from "./net/index.js";
 import { Renderer } from "./render/index.js";
@@ -9,7 +9,6 @@ declare global {
   interface Window {
     __anarchy?: {
       world: World;
-      predictor: LocalPredictor;
       terrain: Terrain;
       getLocalPlayerId: () => number | null;
       sendMoveIntent: (dx: number, dy: number) => void;
@@ -33,12 +32,10 @@ if (params.get("stub-terrain") === "1") {
 function runMain(): void {
   const world = new World();
   const buffer = new SnapshotBuffer();
-  const predictor = new LocalPredictor();
   const terrain = new Terrain();
   const renderer = new Renderer(
     world,
     buffer,
-    predictor,
     document.body,
     {
       width: window.innerWidth,
@@ -53,18 +50,17 @@ function runMain(): void {
 
   let localPlayerId: number | null = null;
   // Per-client monotonic action sequence. Mirrored into every outbound
-  // `ClientAction.client_seq` so the server's `PlayerSnapshot.acked_client_seq`
-  // echo can drive reconciliation.
+  // `ClientAction.client_seq`. Per ADR 0003 prediction is removed; the
+  // client no longer reconciles against the seq, but the server still
+  // expects a monotonic counter and may surface it again later.
   let actionSeq = 0;
 
   const conn = connect("ws://localhost:8080/ws", (msg) => {
     applyServerMessage(msg, {
       world,
       buffer,
-      predictor,
       terrain,
       terrainSink: {
-        onSnapshot: () => renderer.applyTerrainSnapshot(),
         onChunkLoaded: (cx, cy) => renderer.applyChunkLoaded(cx, cy),
         onChunkUnloaded: (cx, cy) => renderer.applyChunkUnloaded(cx, cy),
       },
@@ -81,7 +77,6 @@ function runMain(): void {
   function sendMoveIntent(dx: number, dy: number): void {
     const seq = ++actionSeq;
     conn.send({ action: { moveIntent: { dx, dy }, clientSeq: seq } });
-    predictor.setIntent(dx, dy, seq);
   }
 
   const input = new InputController({ sendMoveIntent });
@@ -89,7 +84,6 @@ function runMain(): void {
 
   window.__anarchy = {
     world,
-    predictor,
     terrain,
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,

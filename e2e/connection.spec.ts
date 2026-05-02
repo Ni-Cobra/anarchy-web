@@ -69,7 +69,7 @@ test("websocket endpoint accepts a connection", async () => {
   ws.close();
 });
 
-test("server sends a ServerWelcome with assigned player id and self in snapshot", async () => {
+test("server sends a ServerWelcome with assigned player id and view radius", async () => {
   const { ws, next } = await openSocket();
 
   const frame = (await next((f) => f.kind === "msg")) as Extract<Frame, { kind: "msg" }>;
@@ -77,7 +77,8 @@ test("server sends a ServerWelcome with assigned player id and self in snapshot"
     welcome?: {
       serverVersion?: string;
       playerId?: string | number;
-      snapshot?: { players?: { id?: string | number; x?: number; y?: number }[] };
+      viewRadiusChunks?: number;
+      tickRateHz?: number;
     };
   };
   expect(msg.welcome).toBeTruthy();
@@ -86,11 +87,10 @@ test("server sends a ServerWelcome with assigned player id and self in snapshot"
 
   const playerId = Number(msg.welcome!.playerId);
   expect(playerId).toBeGreaterThan(0);
-
-  // Snapshot must contain the joining player so the client view is correct
-  // from frame zero, with no need to wait for the next tick.
-  const players = msg.welcome!.snapshot!.players ?? [];
-  expect(players.some((p) => Number(p.id) === playerId)).toBe(true);
+  expect(Number(msg.welcome!.tickRateHz)).toBe(20);
+  // Per ADR 0003 the welcome includes the per-client view-window radius
+  // so the client can size buffers and validate the windows it receives.
+  expect(Number(msg.welcome!.viewRadiusChunks)).toBeGreaterThan(0);
 
   ws.close();
 });
@@ -98,7 +98,6 @@ test("server sends a ServerWelcome with assigned player id and self in snapshot"
 test("Hello → Action → Ping: connection survives a multi-message handshake", async () => {
   const { ws, next, frames } = await openSocket();
 
-  // Drain the unsolicited Welcome the server sends on connect.
   await next((f) => f.kind === "msg");
 
   const hello = ClientMessage.encode(
@@ -109,18 +108,14 @@ test("Hello → Action → Ping: connection survives a multi-message handshake",
   ).finish();
   ws.send(hello);
 
-  // ClientAction is fire-and-forget today; the network module + tick loop
-  // will pick this up later. We just need the socket to keep eating bytes.
   const action = ClientMessage.encode(
     ClientMessage.create({
       seq: 2,
-      action: { moveIntent: { dx: 0.0, dy: 1.0 } },
+      action: { moveIntent: { dx: 0.0, dy: 1.0 }, clientSeq: 1 },
     }),
   ).finish();
   ws.send(action);
 
-  // Pong is the cheapest reply we can demand to prove the server is still
-  // processing this connection's frames in order after the silent Hello/Action.
   const ping = ClientMessage.encode(
     ClientMessage.create({
       seq: 3,
@@ -141,7 +136,6 @@ test("Hello → Action → Ping: connection survives a multi-message handshake",
   expect(Number(pong.pong!.clientTimeMs)).toBe(999);
   expect(Number(pong.ackSeq)).toBe(3);
 
-  // No close frames observed during the exchange.
   expect(frames.some((f) => f.kind === "close")).toBe(false);
 
   ws.close();

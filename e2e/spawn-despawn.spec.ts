@@ -3,6 +3,12 @@ import protobuf from "protobufjs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
+// Per ADR 0003 the gameplay wire shape is per-tick `TickUpdate`s; there is
+// no `WorldSnapshot` in `Welcome` and no explicit `PlayerDespawned`. The
+// player set lives inside chunks delivered by `TickUpdate.full_state_chunks`,
+// and a player whose chunk falls out of view (or whose chunk no longer
+// references them) disappears via the same chunk-diff mechanism.
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROTO_PATH = resolve(__dirname, "../proto/anarchy/v1/anarchy.proto");
 
@@ -65,64 +71,122 @@ async function openSocket(timeoutMs = 5_000): Promise<Socket> {
 
 interface DecodedWelcome {
   playerId: number;
-  playerIds: number[];
 }
 
 async function readWelcome(s: Socket): Promise<DecodedWelcome> {
-  const frame = (await s.next((f) => f.kind === "msg")) as Extract<Frame, { kind: "msg" }>;
+  const frame = (await s.next((f) => {
+    if (f.kind !== "msg") return false;
+    const m = ServerMessage.decode(f.data).toJSON() as { welcome?: unknown };
+    return m.welcome !== undefined;
+  })) as Extract<Frame, { kind: "msg" }>;
   const msg = ServerMessage.decode(frame.data).toJSON() as {
-    welcome?: {
-      playerId?: string | number;
-      snapshot?: { players?: { id?: string | number }[] };
-    };
+    welcome?: { playerId?: string | number };
   };
-  if (!msg.welcome) throw new Error("first frame was not a Welcome");
-  const players = msg.welcome.snapshot?.players ?? [];
-  return {
-    playerId: Number(msg.welcome.playerId),
-    playerIds: players.map((p) => Number(p.id)),
-  };
+  return { playerId: Number(msg.welcome!.playerId) };
 }
 
-test("a second client's Welcome snapshot includes the first client", async () => {
+interface PlayerInTick {
+  id: number;
+  x: number;
+  y: number;
+}
+
+function readTickPlayers(frame: Extract<Frame, { kind: "msg" }>): PlayerInTick[] | null {
+  const msg = ServerMessage.decode(frame.data).toJSON() as {
+    tickUpdate?: {
+      fullStateChunks?: {
+        players?: { id?: string | number; x?: number; y?: number }[];
+      }[];
+    };
+  };
+  if (!msg.tickUpdate) return null;
+  const players: PlayerInTick[] = [];
+  for (const c of msg.tickUpdate.fullStateChunks ?? []) {
+    for (const p of c.players ?? []) {
+      players.push({
+        id: Number(p.id),
+        x: Number(p.x ?? 0),
+        y: Number(p.y ?? 0),
+      });
+    }
+  }
+  return players;
+}
+
+test("a second client's first TickUpdate includes the first client", async () => {
+  // Player A spawns. Player B spawns later — B's chunk window covers
+  // origin and overlaps A's, so B's first TickUpdate must carry the chunk
+  // containing A.
   const a = await openSocket();
   const wa = await readWelcome(a);
-  expect(wa.playerId).toBeGreaterThan(0);
-  expect(wa.playerIds).toContain(wa.playerId);
 
   const b = await openSocket();
   const wb = await readWelcome(b);
-  expect(wb.playerId).toBeGreaterThan(0);
+
   expect(wb.playerId).not.toBe(wa.playerId);
-  // B must see A in its initial snapshot — late joiners are correct from frame 0.
-  expect(wb.playerIds).toContain(wa.playerId);
-  expect(wb.playerIds).toContain(wb.playerId);
+
+  // The first TickUpdate B receives must carry both ids (A and B sit at
+  // origin so their chunks overlap inside B's view window).
+  await b.next((f) => {
+    if (f.kind !== "msg") return false;
+    const players = readTickPlayers(f as Extract<Frame, { kind: "msg" }>);
+    if (!players) return false;
+    const ids = new Set(players.map((p) => p.id));
+    return ids.has(wa.playerId) && ids.has(wb.playerId);
+  }, 5_000);
 
   a.ws.close();
   b.ws.close();
 });
 
-test("when one client disconnects, others receive a PlayerDespawned event", async () => {
+test("when one client disconnects, others see them removed via the chunk diff", async () => {
+  // Per ADR 0003 there is no PlayerDespawned message. A disappears via the
+  // next tick: their chunk's player set no longer references them, so the
+  // chunk is dirty and B receives full-state for that chunk minus A.
   const a = await openSocket();
   const wa = await readWelcome(a);
 
   const b = await openSocket();
   await readWelcome(b);
 
-  // Close A and verify B sees the despawn event for A's id.
+  // Wait for B to see A in some tick first.
+  await b.next((f) => {
+    if (f.kind !== "msg") return false;
+    const players = readTickPlayers(f as Extract<Frame, { kind: "msg" }>);
+    if (!players) return false;
+    return players.some((p) => p.id === wa.playerId);
+  }, 5_000);
+
+  // Drop A. The tick following the despawn marks A's chunk dirty; B
+  // receives a TickUpdate where the chunk's player set no longer carries A.
   a.ws.close();
 
-  const event = (await b.next((f) => {
+  await b.next((f) => {
     if (f.kind !== "msg") return false;
-    const decoded = ServerMessage.decode(f.data).toJSON() as {
-      playerDespawned?: { playerId?: string | number };
+    const msg = ServerMessage.decode(f.data).toJSON() as {
+      tickUpdate?: {
+        fullStateChunks?: {
+          players?: { id?: string | number }[];
+        }[];
+      };
     };
-    return decoded.playerDespawned !== undefined;
-  })) as Extract<Frame, { kind: "msg" }>;
-  const decoded = ServerMessage.decode(event.data).toJSON() as {
-    playerDespawned?: { playerId?: string | number };
-  };
-  expect(Number(decoded.playerDespawned!.playerId)).toBe(wa.playerId);
+    if (!msg.tickUpdate) return false;
+    // Must carry at least one full-state chunk that does NOT contain A's id.
+    // Using the negation: the union of player ids in this tick's full-state
+    // chunks does not contain wa.playerId — but this tick must be one that
+    // touches origin (the chunk that used to contain A).
+    let touchedOrigin = false;
+    let mentionsA = false;
+    for (const c of msg.tickUpdate.fullStateChunks ?? []) {
+      // Origin chunk is (0, 0); we don't know which chunk A was in but it
+      // started at origin so chunk (0, 0) is the one that flips here.
+      touchedOrigin = true;
+      for (const p of c.players ?? []) {
+        if (Number(p.id) === wa.playerId) mentionsA = true;
+      }
+    }
+    return touchedOrigin && !mentionsA;
+  }, 5_000);
 
   b.ws.close();
 });

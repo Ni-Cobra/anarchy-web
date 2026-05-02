@@ -2,7 +2,6 @@ import * as THREE from "three";
 
 import { CAMERA_HEIGHT } from "../config.js";
 import type {
-  LocalPredictor,
   PlayerId,
   SnapshotBuffer,
   Terrain,
@@ -21,25 +20,14 @@ import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.
 const LOCAL_COLOR = 0xff3030;
 const REMOTE_COLOR = 0x1e90ff;
 const EYE_COLOR = 0xffffff;
-// Body sphere fits inside one tile (radius 0.5, sphere bottom rests on the
-// y=0 ground plane via tileToScene's y=0.5).
 const BODY_RADIUS = 0.5;
 const BODY_SEGMENTS = 16;
-// Eye geometry is intentionally cheap — many players will be on screen
-// eventually, so each eye is a low-poly sphere parented to the body. The
-// front-facing offsets put the eyes on the +X hemisphere in local space;
-// `syncPlayerMeshes` rotates the body via `facingToYaw` to aim that
-// hemisphere along the player's `facing` direction.
 const EYE_RADIUS = 0.09;
 const EYE_SEGMENTS = 6;
 const EYE_FORWARD = 0.38;
 const EYE_UP = 0.18;
 const EYE_SIDE = 0.2;
-// Half-length of each ground axis line. Lines extend from -AXIS_HALF_LENGTH to
-// +AXIS_HALF_LENGTH along their respective axis; the camera-far clip (1000)
-// then bounds what's actually visible from the player's vantage point.
 const AXIS_HALF_LENGTH = 10000;
-// Tiny lift off the ground plane so axis lines aren't z-fought to death.
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
 const AXIS_Y_COLOR = 0x60a0ff;
@@ -83,20 +71,18 @@ export interface Viewport {
 }
 
 /**
- * Owns the Three.js scene + render loop. Each frame it composes a list of
- * renderable entities — remote players from the lerp output of
- * `SnapshotBuffer` (with `REMOTE_RENDER_DELAY_MS` of delay), the local
- * player from `LocalPredictor` (advancing at `SPEED * dt` so input feels
- * immediate) — and reconciles meshes against it. The camera tracks the
- * local player at its predicted position so the follow stays smooth at
- * the browser frame rate even though snapshots only land at the 20 Hz
- * server cadence.
+ * Owns the Three.js scene + render loop. Per ADR 0003 every player —
+ * local and remote — renders from `SnapshotBuffer` with the same
+ * `REMOTE_RENDER_DELAY_MS` interpolation delay; `LocalPredictor` was
+ * retired with the chunk-centric refactor. Local input now feels the
+ * server tick, which is the known regression until a future task
+ * reintroduces prediction.
  *
  * The renderer is networking- and DOM-agnostic: the caller supplies a
  * container element, an initial `Viewport`, and is responsible for
- * forwarding window resizes via `resize()`. The wire layer feeds `World` /
- * `SnapshotBuffer` / `LocalPredictor` and tells us who we are with
- * `setLocalPlayerId`. Nothing here knows about WebSockets or protobuf.
+ * forwarding window resizes via `resize()`. The wire layer feeds `World`
+ * / `SnapshotBuffer` / `Terrain` and tells us who we are with
+ * `setLocalPlayerId`.
  */
 export class Renderer {
   private readonly scene: THREE.Scene;
@@ -113,7 +99,6 @@ export class Renderer {
   constructor(
     private readonly world: World,
     private readonly buffer: SnapshotBuffer,
-    private readonly predictor: LocalPredictor,
     container: HTMLElement,
     viewport: Viewport,
     terrain: Terrain | null = null,
@@ -133,10 +118,6 @@ export class Renderer {
       0.1,
       1000,
     );
-    // Top-down view: camera looks straight down +y axis. Force the camera's
-    // own "up" to point along -z so server north (which we map to scene -z)
-    // renders as screen up — without this, lookAt is degenerate when the
-    // look direction is parallel to the default up vector.
     this.camera.up.set(0, 0, -1);
 
     this.webgl = new THREE.WebGLRenderer({ antialias: true });
@@ -156,8 +137,6 @@ export class Renderer {
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    // Reference axis lines through the world origin. Server +x (east) runs
-    // along scene +x; server +y (north) maps to scene -z (see tileToScene).
     this.scene.add(
       buildAxisLine(
         new THREE.Vector3(-AXIS_HALF_LENGTH, AXIS_Y_OFFSET, 0),
@@ -180,18 +159,10 @@ export class Renderer {
       this.terrainGroup = buildTerrainMesh(terrain);
       this.scene.add(this.terrainGroup);
     }
-    // Even if the caller passed `null`, the wire layer may swap a Terrain in
-    // later via `setTerrain`; the empty group is allocated lazily then.
 
     this.webgl.setAnimationLoop(this.frame);
   }
 
-  /**
-   * Tell the renderer which player id is "us". Affects mesh color and the
-   * camera-follow target. Pass `null` to clear (e.g. on disconnect). If the
-   * id changes, any mesh already built under the old role is dropped so the
-   * next frame rebuilds it with the right color.
-   */
   setLocalPlayerId(id: PlayerId | null): void {
     if (this.localPlayerId === id) return;
     const affected = [this.localPlayerId, id].filter(
@@ -206,29 +177,8 @@ export class Renderer {
     this.localPlayerId = id;
   }
 
-  /**
-   * Bind a `Terrain` reference for chunk-level refresh. `main.ts` calls
-   * this once at startup with the same `Terrain` the wire layer mutates.
-   * The renderer never mutates `Terrain` itself — it just reads from it
-   * when the wire layer signals a change via the chunk-refresh hooks.
-   */
   setTerrain(terrain: Terrain): void {
     this.terrain = terrain;
-  }
-
-  /**
-   * The wire layer just applied a bulk `TerrainSnapshot` to the bound
-   * `Terrain`. Dispose the existing terrain mesh and rebuild it from
-   * scratch.
-   */
-  applyTerrainSnapshot(): void {
-    if (!this.terrain) return;
-    if (this.terrainGroup) {
-      disposeTerrainMesh(this.terrainGroup, this.scene);
-      this.terrainGroup = null;
-    }
-    this.terrainGroup = buildTerrainMesh(this.terrain);
-    this.scene.add(this.terrainGroup);
   }
 
   /**
@@ -274,18 +224,12 @@ export class Renderer {
     disposeTerrainMesh(existing, root);
   }
 
-  /**
-   * Forward a viewport size change. The caller (typically `main.ts`)
-   * subscribes to `window.resize` and pipes the new dimensions through here
-   * — keeping this module free of direct `window` access.
-   */
   resize(width: number, height: number): void {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.webgl.setSize(width, height);
   }
 
-  /** Tear down GPU resources. Call when the page is leaving. */
   dispose(): void {
     this.webgl.setAnimationLoop(null);
     for (const mesh of this.meshes.values()) {
@@ -304,8 +248,6 @@ export class Renderer {
     const entities = composePlayerEntities(
       this.world,
       this.buffer,
-      this.localPlayerId,
-      this.localPlayerId !== null ? this.predictor : null,
       this.now(),
     );
     syncPlayerMeshes(
@@ -320,8 +262,9 @@ export class Renderer {
   };
 
   private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {
-    // Follow the *predicted* local position so the camera moves at the
-    // browser frame rate rather than stepping at the 20 Hz snapshot cadence.
+    // Follow the local player's interpolated position. With prediction
+    // removed (ADR 0003 §7) this advances at the snapshot cadence — local
+    // input feels the server tick.
     const local =
       this.localPlayerId !== null
         ? entities.find((e) => e.id === this.localPlayerId)

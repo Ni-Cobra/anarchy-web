@@ -8,8 +8,7 @@ package anarchy.v1;
 //
 // Payload field-number convention inside the envelope oneofs:
 //   10-19 : connection lifecycle (handshake, heartbeat)
-//   20-29 : per-tick state and intent
-//   30-39 : terrain (bulk + per-chunk load / unload)
+//   20-29 : per-tick world state (chunk-centric — see ADR 0003)
 // New payloads slot into the matching range so wire numbers stay grouped.
 
 // === Envelopes ===
@@ -29,11 +28,7 @@ message ServerMessage {
   oneof payload {
     ServerWelcome welcome = 10;
     Pong pong = 11;
-    StateUpdate state_update = 20;
-    PlayerDespawned player_despawned = 21;
-    TerrainSnapshot terrain_snapshot = 30;
-    ChunkLoaded chunk_loaded = 31;
-    ChunkUnloaded chunk_unloaded = 32;
+    TickUpdate tick_update = 20;
   }
 }
 
@@ -48,8 +43,11 @@ message ServerWelcome {
   uint32 tick_rate_hz = 2;
   // The id the server has assigned to this connection's player.
   uint64 player_id = 3;
-  // Initial world state so a late joiner is correct from frame zero.
-  WorldSnapshot snapshot = 4;
+  // Chebyshev radius (in chunks) of the per-client view window. The window is
+  // a (2r+1)² square of chunks centered on the player's chunk; chunks within
+  // the window are eligible for full-state delivery and chunks outside are
+  // dropped from the client's known set. ADR 0003 §3.
+  int32 view_radius_chunks = 4;
 }
 
 // === Heartbeat ===
@@ -77,8 +75,7 @@ message Pong {
 // `client_seq` is a per-client monotonic action counter. The server stores
 // the largest seq it has applied for each player and echoes it back in the
 // player's `PlayerSnapshot.acked_client_seq` field, so the client knows
-// which of its inputs the server has integrated. Used by client-side
-// prediction + reconciliation (see ADR 0001 amendment, 2026-05-01).
+// which of its inputs the server has integrated.
 message ClientAction {
   MoveIntent move_intent = 1;
   uint64 client_seq = 2;
@@ -93,27 +90,47 @@ message MoveIntent {
 }
 
 // === Server -> client world state ===
+//
+// The server emits one `TickUpdate` per tick per client (see ADR 0003 — the
+// chunk-centric networking model). Each client has a "view window" — the
+// (2r+1)² square of chunks within `view_radius_chunks` of their own chunk —
+// and the tick-update tells the client:
+//
+//   1. `full_state_chunks` — chunks that need to be (re)installed wholesale,
+//      including their player set. These are chunks the client didn't
+//      previously have in its known set, OR chunks it had that changed this
+//      tick (any player moved within / into / out of the chunk).
+//   2. `unmodified_chunks` — chunks the client still has and that didn't
+//      change. The list is explicit so the client can distinguish "still in
+//      view, no update needed" from "fell out of view" (implicit unload).
+//
+// Implicit-unload rule: anything in the client's last-known view window
+// that does not appear in either field of this `TickUpdate` is dropped. A
+// player that simply walks out of the receiver's view window disappears the
+// same way — the chunk that contained them is no longer in the client's
+// view, so the implicit-unload rule retires the player along with it.
+//
+// The first `TickUpdate` after `ServerWelcome` carries every chunk in the
+// new player's view window as full-state (the client's known set is empty
+// on connect and on reconnect).
 
-// Periodic full-world broadcast emitted by the server tick loop.
-message StateUpdate {
-  WorldSnapshot snapshot = 1;
+message TickUpdate {
+  repeated Chunk full_state_chunks = 1;
+  repeated ChunkCoord unmodified_chunks = 2;
 }
 
-message WorldSnapshot {
-  repeated PlayerSnapshot players = 1;
+message ChunkCoord {
+  int32 cx = 1;
+  int32 cy = 2;
 }
 
 message PlayerSnapshot {
   uint64 id = 1;
-  // Continuous world coordinates (+x = east, +y = north). Tile coordinates
-  // are no longer the wire format — positions advance by sub-tile amounts as
-  // movement intent and tick-based stepping land. See ADR 0001.
+  // Continuous world coordinates (+x = east, +y = north).
   double x = 2;
   double y = 3;
   // Largest `ClientAction.client_seq` from this player that the server has
   // integrated. Always present; zero before the player has sent any action.
-  // Each client uses the value attached to its own `PlayerSnapshot` to drive
-  // local prediction reconciliation (ADR 0001 amendment, 2026-05-01).
   uint64 acked_client_seq = 4;
   // Direction the player is currently facing — sticky: the server snaps it
   // to the nearest of 8 each tick the stored movement intent is non-zero,
@@ -138,11 +155,6 @@ enum Direction8 {
   DIRECTION8_NW = 8;
 }
 
-// Emitted when a player leaves the world.
-message PlayerDespawned {
-  uint64 player_id = 1;
-}
-
 // === Terrain ===
 //
 // Mirrors the in-memory model fixed by ADR 0002 (anarchy-server/docs/
@@ -157,13 +169,9 @@ message PlayerDespawned {
 // `Direction8` has no natural identity element, but `BlockType` does,
 // so a separate sentinel would just collapse into AIR anyway.
 //
-// On a successful join the server sends one `TerrainSnapshot` carrying
-// every currently-loaded chunk before the first `StateUpdate`. While the
-// session runs, the radius-based loader broadcasts a `ChunkLoaded` when
-// it generates a new chunk and a `ChunkUnloaded` when one drops out of
-// every connected player's neighborhood. This is the naive shape; a
-// proper streaming/diffing protocol is a future task — the schema here
-// is intentionally a 1:1 dump of the in-memory model.
+// Per ADR 0003 the chunk also carries the set of players whose centers
+// currently fall inside it — chunk delivery is the unit of player
+// delivery, not just terrain.
 
 enum BlockType {
   BLOCK_TYPE_AIR = 0;
@@ -189,34 +197,16 @@ message Layer {
   repeated Block blocks = 1;
 }
 
-// One 16×16 chunk at chunk-coord `(x, y)`. Chunk-coord `(cx, cy)` covers
+// One 16×16 chunk at chunk-coord `(cx, cy)`. Chunk-coord `(cx, cy)` covers
 // world tiles `cx*16 .. (cx+1)*16` along both axes — see ADR 0002 §5.
+//
+// Per ADR 0003 chunks carry the players whose center currently falls
+// within them: the chunk is the unit of player delivery as well as
+// terrain delivery. `players` is sorted by `PlayerSnapshot.id` so the
+// wire form is deterministic for tests.
 message Chunk {
-  int32 x = 1;
-  int32 y = 2;
-  Layer ground = 3;
-  Layer top = 4;
-}
-
-// Bulk terrain dump sent to a joining client before its first
-// `StateUpdate`, carrying every chunk the server currently has loaded.
-// Late arrivals (chunks loaded after join) come through `ChunkLoaded`.
-message TerrainSnapshot {
-  repeated Chunk chunks = 1;
-}
-
-// Broadcast when the radius-based loader generates a new chunk. Every
-// connected client should ingest it into its local `Terrain` map; a
-// receiver that already has the chunk replaces it (the server is the
-// authority on chunk contents).
-message ChunkLoaded {
-  Chunk chunk = 1;
-}
-
-// Broadcast when a chunk drops out of every connected player's
-// neighborhood and is no longer authoritative on the server. Clients
-// should remove `(x, y)` from their local `Terrain` map.
-message ChunkUnloaded {
-  int32 x = 1;
-  int32 y = 2;
+  ChunkCoord coord = 1;
+  Layer ground = 2;
+  Layer top = 3;
+  repeated PlayerSnapshot players = 4;
 }

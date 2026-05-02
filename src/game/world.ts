@@ -1,13 +1,16 @@
 import type { Player, PlayerId } from "./player.js";
 
 /**
- * Client-side mirror of the server's `game::World`. Holds the latest
- * server-authoritative view of every player.
+ * Client-side mirror of the visible-to-this-client subset of the server's
+ * world. Holds the latest server-authoritative view of every player whose
+ * chunk currently sits in the client's view window.
  *
- * Per ADR 0001 the server broadcasts a full snapshot every tick, so the
- * full-replace `applySnapshot` is the only update path needed here;
- * `removePlayer` exists so an explicit despawn can drop a player without
- * waiting for the next tick.
+ * Per ADR 0003 the chunk is the unit of delivery: each `TickUpdate` carries
+ * a set of chunks (full state or unmodified) and the wire layer rebuilds
+ * this map from the union of players across the post-tick terrain. The
+ * full-replace `applySnapshot` is the only update path; players that are
+ * implicitly unloaded (their chunk fell out of view, or their chunk no
+ * longer references them) drop out on the next replace.
  */
 export class World {
   private readonly playersById = new Map<PlayerId, Player>();
@@ -26,11 +29,6 @@ export class World {
         facing: p.facing,
       });
     }
-  }
-
-  /** Remove `id` from the world. Returns `true` if the player was present. */
-  removePlayer(id: PlayerId): boolean {
-    return this.playersById.delete(id);
   }
 
   getPlayer(id: PlayerId): Player | undefined {
