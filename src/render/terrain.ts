@@ -78,7 +78,10 @@ const GROUND_THICKNESS = 0.02;
 // with the renderer's flat ground rectangle. Half-thickness centers the slab
 // such that its top sits at GROUND_Y + GROUND_THICKNESS/2 ≈ 0.02.
 const GROUND_Y = GROUND_THICKNESS / 2 + 0.005;
-const TOP_BOX_WIDTH = 0.7;
+// Top-layer blocks occupy the full unit-cell footprint — identical XZ extent
+// to a ground tile — so a top block visually fills the cell. Only their
+// vertical extent and layer differ from a ground tile.
+const TOP_BOX_WIDTH = 1.0;
 const TOP_BOX_HEIGHT = 1.0;
 // Place the top-block box so its bottom rests on the ground tile (above
 // the ground-slab top), centered at half-height above that surface.

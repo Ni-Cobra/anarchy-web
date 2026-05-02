@@ -105,6 +105,26 @@ describe("buildTerrainMesh", () => {
     disposeTerrainMesh(g);
   });
 
+  it("top-layer blocks share the full unit-cell XZ footprint with ground tiles", () => {
+    // A top block must occupy the same XZ extent as a ground tile so it
+    // visually fills the cell — only vertical extent and layer differ.
+    const c = emptyChunk();
+    setBlock(c.ground, 2, 3, { kind: BlockType.Grass });
+    setBlock(c.top, 4, 5, { kind: BlockType.Wood });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    expect(meshes).toHaveLength(2);
+    const groundMesh = meshes.find((m) => m.position.y < 0.5)!;
+    const topMesh = meshes.find((m) => m.position.y >= 0.5)!;
+    const groundParams = (groundMesh.geometry as THREE.BoxGeometry).parameters;
+    const topParams = (topMesh.geometry as THREE.BoxGeometry).parameters;
+    expect(topParams.width).toBeCloseTo(groundParams.width);
+    expect(topParams.depth).toBeCloseTo(groundParams.depth);
+    disposeTerrainMesh(g);
+  });
+
   it("blocks of the same kind in one chunk share their material", () => {
     // Material cache is per-chunk; pin the dedupe so a future change
     // doesn't accidentally allocate one material per tile.
