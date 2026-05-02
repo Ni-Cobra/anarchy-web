@@ -23,6 +23,10 @@ declare global {
       ) => void;
       isBuilderMode: () => boolean;
       setBuilderMode: (on: boolean) => void;
+      // Same gate the builder-mode ghost preview uses (reach + AABB
+      // overlap + top-Air). Exposed for e2e specs that need to assert
+      // ghost-visibility behavior without driving the camera/cursor.
+      canPlaceAt: (cx: number, cy: number, lx: number, ly: number) => boolean;
     };
   }
 }
@@ -123,31 +127,49 @@ function runMain(): void {
   let builderMode = false;
   let cursorNdc: { x: number; y: number } | null = null;
 
-  function pickGhostCell(): readonly [number, number, number, number] | null {
-    if (!builderMode || cursorNdc === null || localPlayerId === null) return null;
+  // Mirrors `World::try_place_top_block`'s validation in the client UI: top
+  // cell empty, target in reach, no player AABB overlapping the cell. The
+  // ghost preview and the right-click handler both gate on this so the UI
+  // never invites a click the server will silently drop. Strict-overlap
+  // (axis distance < 1.0) matches the server's check, including the
+  // "flush against the cell" exception.
+  function canPlaceAt(
+    cx: number,
+    cy: number,
+    lx: number,
+    ly: number,
+  ): boolean {
+    if (localPlayerId === null) return false;
     const me = world.getPlayer(localPlayerId);
-    if (!me) return null;
-    const pick = renderer.pickAtCursor(cursorNdc);
-    if (!pick) return null;
-    if (pick.layer !== "ground") return null;
-    const [cx, cy] = pick.chunkCoord;
-    const [lx, ly] = pick.localXY;
+    if (!me) return false;
+    const chunk = terrain.get(cx, cy);
+    if (!chunk) return false;
+    const top = chunk.top.blocks[ly * CHUNK_SIZE + lx];
+    if (!top || top.kind !== BlockType.Air) return false;
     const tileCenterX = cx * CHUNK_SIZE + lx + 0.5;
     const tileCenterY = cy * CHUNK_SIZE + ly + 0.5;
     const dx = tileCenterX - me.x;
     const dy = tileCenterY - me.y;
-    if (dx * dx + dy * dy > REACH_BLOCKS * REACH_BLOCKS) return null;
-    // Strict overlap matches `World::try_place_top_block`: any player AABB
-    // (unit square) overlapping the target cell hides the ghost.
+    if (dx * dx + dy * dy > REACH_BLOCKS * REACH_BLOCKS) return false;
     for (const p of world.players()) {
       if (
         Math.abs(p.x - tileCenterX) < 1.0 &&
         Math.abs(p.y - tileCenterY) < 1.0
       ) {
-        return null;
+        return false;
       }
     }
-    return [cx, cy, lx, ly] as const;
+    return true;
+  }
+
+  function pickGhostCell(): readonly [number, number, number, number] | null {
+    if (!builderMode || cursorNdc === null) return null;
+    const pick = renderer.pickAtCursor(cursorNdc);
+    if (!pick) return null;
+    if (pick.layer !== "ground") return null;
+    const [cx, cy] = pick.chunkCoord;
+    const [lx, ly] = pick.localXY;
+    return canPlaceAt(cx, cy, lx, ly) ? [cx, cy, lx, ly] : null;
   }
 
   function refreshGhost(): void {
@@ -224,5 +246,6 @@ function runMain(): void {
       builderMode = on;
       refreshGhost();
     },
+    canPlaceAt,
   };
 }
