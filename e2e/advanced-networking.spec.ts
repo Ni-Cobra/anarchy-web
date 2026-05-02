@@ -196,10 +196,24 @@ test("two clients walking apart see each other appear and then implicitly unload
   expect(aId).not.toBe(bId);
 
   // Both must show each other in some tick before they separate.
+  // Capture each player's post-spawn position from that tick — both
+  // spawn at origin and the player↔player push pass shoves them apart
+  // along x, so we send each one further along the side they were
+  // pushed to. (Walking *into* each other from the same spawn would
+  // just oscillate against the push.)
+  let posA: { x: number; y: number } | null = null;
+  let posB: { x: number; y: number } | null = null;
   await a.next((f) => {
     if (f.kind !== "msg") return false;
     const t = decodeTickUpdate(f.data);
-    return !!t && t.fullStateChunks.some((c) => c.playerIds.includes(bId));
+    if (!t) return false;
+    for (const c of t.fullStateChunks) {
+      for (const p of c.players) {
+        if (p.id === aId) posA = { x: p.x, y: p.y };
+        if (p.id === bId) posB = { x: p.x, y: p.y };
+      }
+    }
+    return posA !== null && posB !== null;
   }, 5_000);
   await b.next((f) => {
     if (f.kind !== "msg") return false;
@@ -207,30 +221,33 @@ test("two clients walking apart see each other appear and then implicitly unload
     return !!t && t.fullStateChunks.some((c) => c.playerIds.includes(aId));
   }, 5_000);
 
-  // Now walk apart. A east, B west. Separation grows at 2*SPEED = 10 u/s.
-  // After ~8s their chunks (cx≈±3) sit outside each other's
-  // (2r+1)=5-wide windows.
-  sendIntent(a, 1, 1.0, 0.0);
-  sendIntent(b, 1, -1.0, 0.0);
+  // Walk each player further along its post-push side. Separation grows
+  // at 2*SPEED = 10 u/s. After ~8s their chunks (cx≈±3) sit outside
+  // each other's (2r+1)=5-wide windows.
+  const aDir = posA!.x <= posB!.x ? -1 : 1;
+  const bDir = -aDir;
+  sendIntent(a, 1, aDir, 0.0);
+  sendIntent(b, 1, bDir, 0.0);
+  const aChunkPast = aDir > 0 ? 3 : -3;
+  const bChunkPast = bDir > 0 ? 3 : -3;
 
   // Wait for B to drop out of A's stream. Past separation, every
-  // TickUpdate to A contains only A's window (cx around +cx_A) and B's
-  // chunk no longer fits.
+  // TickUpdate to A contains only A's window and B's chunk no longer fits.
   await a.next((f) => {
     if (f.kind !== "msg") return false;
     const t = decodeTickUpdate(f.data);
     if (!t) return false;
     // A "post-separation" tick: B not present anywhere AND A's center
-    // chunk is past cx=2 (so windows really are disjoint, not just an
-    // unmodified-chunk tick that happens not to mention B).
+    // chunk is past the threshold (so windows really are disjoint, not
+    // just an unmodified-chunk tick that happens not to mention B).
     const carriesA = t.fullStateChunks.find((c) => c.playerIds.includes(aId));
     const carriesB = t.fullStateChunks.some((c) => c.playerIds.includes(bId));
     if (carriesB) return false;
     if (!carriesA) return false;
-    return carriesA.cx >= 3;
+    return aDir > 0 ? carriesA.cx >= aChunkPast : carriesA.cx <= aChunkPast;
   }, 18_000);
 
-  // Symmetrically: A out of B's stream once B's chunk has slid west.
+  // Symmetrically: A out of B's stream once B's chunk has slid the other way.
   await b.next((f) => {
     if (f.kind !== "msg") return false;
     const t = decodeTickUpdate(f.data);
@@ -239,7 +256,7 @@ test("two clients walking apart see each other appear and then implicitly unload
     const carriesA = t.fullStateChunks.some((c) => c.playerIds.includes(aId));
     if (carriesA) return false;
     if (!carriesB) return false;
-    return carriesB.cx <= -3;
+    return bDir > 0 ? carriesB.cx >= bChunkPast : carriesB.cx <= bChunkPast;
   }, 18_000);
 
   a.ws.close();

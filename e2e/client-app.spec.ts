@@ -79,11 +79,20 @@ test("one client moves and the other observes the move", async ({ browser }) => 
     await openClient(b);
     await waitForSelfSpawn(b);
 
-    // Wait for B to see A at the origin first, so we know the two worlds
-    // are in sync before A moves.
+    // Wait for B to see A first, so we know the two worlds are in sync
+    // before A moves. We don't pin A to (0, 0) here: both clients spawn
+    // at origin and the player↔player push pass shoves them apart on the
+    // first joint tick, so A's "pre-move" position is not the origin.
     await b.waitForFunction((peerId) => {
       const p = window.__anarchy?.world.getPlayer(peerId);
-      return p !== undefined && p.x === 0 && p.y === 0;
+      return p !== undefined;
+    }, meA.id);
+
+    // Snapshot A's position now so the post-move check has something to
+    // compare against — A will walk east from wherever the push left it.
+    const aBefore = await b.evaluate((peerId) => {
+      const p = window.__anarchy!.world.getPlayer(peerId)!;
+      return { x: p.x, y: p.y };
     }, meA.id);
 
     // A pushes a single MoveIntent east. The server stores it and starts
@@ -91,10 +100,13 @@ test("one client moves and the other observes the move", async ({ browser }) => 
     // the StateUpdate broadcasts.
     await a.evaluate(() => window.__anarchy!.sendMoveIntent(1, 0));
 
-    await b.waitForFunction((peerId) => {
-      const p = window.__anarchy?.world.getPlayer(peerId);
-      return p !== undefined && p.x > 0 && p.y === 0;
-    }, meA.id);
+    await b.waitForFunction(
+      ({ peerId, startX }) => {
+        const p = window.__anarchy?.world.getPlayer(peerId);
+        return p !== undefined && p.x > startX;
+      },
+      { peerId: meA.id, startX: aBefore.x },
+    );
   } finally {
     await ctxA.close();
     await ctxB.close();
