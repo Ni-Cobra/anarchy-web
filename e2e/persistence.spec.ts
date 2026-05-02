@@ -21,9 +21,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // the server's rustyline prompt cleanly (the BACKLOG entry calls this out
 // explicitly), so the HTTP shim stands in for the CLI `save` command.
 //
-// `--port` was added to `main.rs` precisely so this spec can manage its
-// own server lifecycle without taking down the Playwright-managed one;
-// the binary listens on `0.0.0.0:<port>` so a parallel default server on
+// `--port` is part of the server's operator-facing CLI surface (see
+// `cargo run -- --help`); we use it here so this spec can manage its own
+// server lifecycle without taking down the Playwright-managed one — the
+// binary listens on `0.0.0.0:<port>` so a parallel default server on
 // :8080 stays untouched.
 
 const TEST_PORT = 8091;
