@@ -19,6 +19,7 @@ message ClientMessage {
     ClientHello hello = 10;
     Ping ping = 11;
     ClientAction action = 20;
+    BreakBlock break_block = 21;
   }
 }
 
@@ -87,6 +88,22 @@ message ClientAction {
 message MoveIntent {
   double dx = 1;
   double dy = 2;
+}
+
+// Client→server intent to destroy the top-layer block at the given cell.
+// The server validates the player exists, the targeted cell holds a non-Air
+// top-layer block, and the player's authoritative position is within reach
+// (see `crate::config::REACH_BLOCKS` — Euclidean distance from player center
+// to block center). On success the cell is cleared and the chunk marked
+// dirty so the next `TickUpdate` ships the change. Validation failures are
+// silently dropped: a misbehaving client cannot tell whether it lost a race
+// or sent a malformed message.
+message BreakBlock {
+  ChunkCoord chunk_coord = 1;
+  // Local cell within the chunk, in `[0, LAYER_SIZE)`. Out-of-range values
+  // are validated server-side and silently dropped.
+  uint32 local_x = 2;
+  uint32 local_y = 3;
 }
 
 // === Server -> client world state ===

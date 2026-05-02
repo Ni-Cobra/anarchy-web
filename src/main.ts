@@ -1,4 +1,5 @@
-import { SnapshotBuffer, Terrain, World } from "./game/index.js";
+import { REACH_BLOCKS } from "./config.js";
+import { CHUNK_SIZE, SnapshotBuffer, Terrain, World } from "./game/index.js";
 import { InputController } from "./input/index.js";
 import { applyServerMessage, connect } from "./net/index.js";
 import { Renderer } from "./render/index.js";
@@ -12,6 +13,7 @@ declare global {
       terrain: Terrain;
       getLocalPlayerId: () => number | null;
       sendMoveIntent: (dx: number, dy: number) => void;
+      sendBreakBlock: (cx: number, cy: number, lx: number, ly: number) => void;
     };
   }
 }
@@ -79,13 +81,43 @@ function runMain(): void {
     conn.send({ action: { moveIntent: { dx, dy }, clientSeq: seq } });
   }
 
+  function sendBreakBlock(cx: number, cy: number, lx: number, ly: number): void {
+    conn.send({ breakBlock: { chunkCoord: { cx, cy }, localX: lx, localY: ly } });
+  }
+
   const input = new InputController({ sendMoveIntent });
   input.start(window);
+
+  // Left-click to destroy the top-layer block under the cursor, gated by
+  // the same reach the server enforces (REACH_BLOCKS, Euclidean from player
+  // center to tile center). The server re-validates everything; this gate
+  // just keeps obviously-out-of-reach clicks off the wire.
+  window.addEventListener("mousedown", (ev) => {
+    if (ev.button !== 0) return;
+    if (localPlayerId === null) return;
+    const ndc = {
+      x: (ev.clientX / window.innerWidth) * 2 - 1,
+      y: -(ev.clientY / window.innerHeight) * 2 + 1,
+    };
+    const pick = renderer.pickAtCursor(ndc);
+    if (!pick || pick.layer !== "top") return;
+    const me = world.getPlayer(localPlayerId);
+    if (!me) return;
+    const [cx, cy] = pick.chunkCoord;
+    const [lx, ly] = pick.localXY;
+    const tileCenterX = cx * CHUNK_SIZE + lx + 0.5;
+    const tileCenterY = cy * CHUNK_SIZE + ly + 0.5;
+    const dx = tileCenterX - me.x;
+    const dy = tileCenterY - me.y;
+    if (dx * dx + dy * dy > REACH_BLOCKS * REACH_BLOCKS) return;
+    sendBreakBlock(cx, cy, lx, ly);
+  });
 
   window.__anarchy = {
     world,
     terrain,
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,
+    sendBreakBlock,
   };
 }

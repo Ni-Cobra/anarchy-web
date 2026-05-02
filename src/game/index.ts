@@ -16,6 +16,7 @@ export {
   LAYER_AREA,
   LAYER_SIZE,
   Terrain,
+  chunkCoordForWorldPos,
   emptyChunk,
   getBlock,
   setBlock,

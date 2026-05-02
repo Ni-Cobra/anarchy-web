@@ -19,6 +19,16 @@
  */
 export const SPEED = 5.0;
 
+/**
+ * Maximum Euclidean distance (world units) between the local player's
+ * center and the center of a tile they may interact with (today: top-layer
+ * block destroy / place). Mirrors `crate::config::REACH_BLOCKS` on the
+ * server. The client gates outbound break / place actions against this so
+ * the UI agrees with the authoritative validator and out-of-reach clicks
+ * never round-trip.
+ */
+export const REACH_BLOCKS = 4.0;
+
 // ---- Render ----
 
 /**
