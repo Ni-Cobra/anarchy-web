@@ -16,10 +16,11 @@ import {
   emptyChunk,
   setBlock,
   type Chunk,
+  type ChunkCoord,
 } from "../game/index.js";
 import { Renderer } from "../render/index.js";
 
-const DEFAULT_CHUNK_COORDS: ReadonlyArray<readonly [number, number]> = [
+const DEFAULT_CHUNK_COORDS: readonly ChunkCoord[] = [
   [-1, -1],
   [-1, 0],
   [0, -1],

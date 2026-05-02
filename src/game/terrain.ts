@@ -50,6 +50,13 @@ export const LAYER_AREA = LAYER_SIZE * LAYER_SIZE;
 export const CHUNK_SIZE = LAYER_SIZE;
 
 /**
+ * Spatial address of a chunk, `[chunk_x, chunk_y]`. Mirrors the server's
+ * `game::ChunkCoord` (`(i32, i32)`). The proto layer in `net/wire.ts` is the
+ * only place this alias is unwrapped to/from the wire `ChunkCoord` message.
+ */
+export type ChunkCoord = readonly [number, number];
+
+/**
  * Map a local 2D layer coordinate to a flat-array index. The layer has
  * fixed dimensions, so out-of-range coords are a programmer error and
  * throw — mirrors the server `Layer::idx` panic.
@@ -111,7 +118,7 @@ export function chunkKey(cx: number, cy: number): string {
   return `${cx},${cy}`;
 }
 
-export function parseChunkKey(key: string): readonly [number, number] {
+export function parseChunkKey(key: string): ChunkCoord {
   const comma = key.indexOf(",");
   if (comma <= 0 || comma === key.length - 1) {
     throw new RangeError(`malformed chunk key: ${key}`);
@@ -130,10 +137,7 @@ export function parseChunkKey(key: string): readonly [number, number] {
  * chunk to the south-west of origin (e.g. `(-0.5, -0.5)` → `(-1, -1)`).
  * Mirrors the server's `chunk_coord_for_world_pos`.
  */
-export function chunkCoordForWorldPos(
-  x: number,
-  y: number,
-): readonly [number, number] {
+export function chunkCoordForWorldPos(x: number, y: number): ChunkCoord {
   return [Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)];
 }
 
@@ -179,7 +183,7 @@ export class Terrain {
   }
 
   /** Iterate over every loaded chunk and its coord. */
-  *iter(): IterableIterator<readonly [readonly [number, number], Chunk]> {
+  *iter(): IterableIterator<readonly [ChunkCoord, Chunk]> {
     for (const [k, chunk] of this.chunks) {
       yield [parseChunkKey(k), chunk] as const;
     }

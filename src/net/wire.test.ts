@@ -12,6 +12,7 @@ import {
   emptyChunk,
   setBlock,
   type Chunk,
+  type ChunkCoord,
   type PlayerId,
 } from "../game/index.js";
 import {
@@ -42,8 +43,8 @@ function makeFixture(now = () => 1_000) {
 function makeTerrainFixture(now = () => 1_000) {
   const base = makeFixture(now);
   const terrain = new Terrain();
-  const onChunkLoaded: Array<readonly [number, number]> = [];
-  const onChunkUnloaded: Array<readonly [number, number]> = [];
+  const onChunkLoaded: ChunkCoord[] = [];
+  const onChunkUnloaded: ChunkCoord[] = [];
   const sink: TerrainSink = {
     onChunkLoaded(cx, cy) {
       onChunkLoaded.push([cx, cy]);

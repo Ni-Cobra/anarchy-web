@@ -3,6 +3,7 @@ import {
   type Block,
   BlockType,
   type Chunk,
+  type ChunkCoord,
   DEFAULT_FACING,
   Direction8,
   LAYER_AREA,
@@ -89,7 +90,7 @@ export function applyServerMessage(
     if (deps.terrain) {
       // Reconnects start from an empty known set; clear any leftover
       // chunks from a previous session.
-      const stale: Array<readonly [number, number]> = [];
+      const stale: ChunkCoord[] = [];
       for (const [coord] of deps.terrain.iter()) stale.push(coord);
       for (const [cx, cy] of stale) {
         deps.terrain.remove(cx, cy);
@@ -128,7 +129,7 @@ function applyTickUpdate(
 
   if (deps.terrain) {
     // Implicit unload: drop chunks no longer in view.
-    const stale: Array<readonly [number, number]> = [];
+    const stale: ChunkCoord[] = [];
     for (const [coord] of deps.terrain.iter()) {
       const [cx, cy] = coord;
       if (!newWindow.has(coordKey(cx, cy))) stale.push([cx, cy]);
@@ -182,7 +183,7 @@ function applyTickUpdate(
 
 function chunkFromWire(
   wire: anarchy.v1.IChunk,
-): readonly [readonly [number, number], Chunk] | null {
+): readonly [ChunkCoord, Chunk] | null {
   const coord = wire.coord;
   if (!coord) return null;
   const cx = coord.cx ?? 0;
