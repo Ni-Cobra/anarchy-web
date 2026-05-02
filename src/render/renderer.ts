@@ -15,6 +15,7 @@ import {
   type PlayerMeshFactory,
   type RenderableEntity,
 } from "./sync.js";
+import { pickBlockUnderCursor, type PickResult } from "./picker.js";
 import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 
 const LOCAL_COLOR = 0xff3030;
@@ -179,6 +180,19 @@ export class Renderer {
 
   setTerrain(terrain: Terrain): void {
     this.terrain = terrain;
+  }
+
+  /**
+   * Cursor-driven world pick. `cursorNdc` is normalized device coords
+   * (`x`, `y` ∈ [-1, 1]); the renderer owns the camera, so this method
+   * keeps callers out of `three`. Returns `null` if no terrain is loaded
+   * or the cursor falls outside any loaded chunk — see `picker.ts`.
+   */
+  pickAtCursor(
+    cursorNdc: { readonly x: number; readonly y: number },
+  ): PickResult | null {
+    if (!this.terrain) return null;
+    return pickBlockUnderCursor(cursorNdc, this.camera, this.terrain);
   }
 
   /**
