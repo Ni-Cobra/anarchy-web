@@ -7,7 +7,7 @@ import {
   emptyChunk,
   setBlock,
 } from "../game/index.js";
-import { pickBlockUnderCursor } from "./picker.js";
+import { pickBlockUnderCursor, pickPlayerUnderCursor } from "./picker.js";
 
 /**
  * Top-down perspective camera positioned so NDC `(0, 0)` points straight
@@ -231,5 +231,79 @@ describe("pickBlockUnderCursor", () => {
     expect(result).not.toBeNull();
     expect(result!.localXY).toEqual([10, 5]);
     expect(result!.block.kind).toBe(BlockType.Stone);
+  });
+});
+
+describe("pickPlayerUnderCursor", () => {
+  // Build a sphere positioned at the world tile center matching `tileToScene`
+  // (`+y_world → -z_scene`, body at scene y = 0.5). Mirrors what the
+  // renderer's default factory produces so the picker sees the same shape.
+  function bodyAt(worldX: number, worldY: number): THREE.Mesh {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 8, 8),
+      new THREE.MeshBasicMaterial(),
+    );
+    mesh.position.set(worldX, 0.5, -worldY);
+    mesh.updateMatrixWorld();
+    return mesh;
+  }
+
+  it("returns null when no players are loaded", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    const result = pickPlayerUnderCursor(
+      NDC_CENTER,
+      topDownCameraAt(0, 0),
+      meshes,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns the player id whose body sits under the cursor", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    meshes.set(7, bodyAt(2, 3));
+    meshes.set(8, bodyAt(10, 0));
+
+    const result = pickPlayerUnderCursor(
+      NDC_CENTER,
+      topDownCameraAt(2, 3),
+      meshes,
+    );
+    expect(result).toBe(7);
+  });
+
+  it("returns null when the cursor misses every body", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    meshes.set(1, bodyAt(0, 0));
+
+    const result = pickPlayerUnderCursor(
+      NDC_CENTER,
+      topDownCameraAt(20, 20),
+      meshes,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("ignores child meshes (eyes / billboards never claim a hit on the parent's behalf)", () => {
+    const body = bodyAt(0, 0);
+    // Add a giant child mesh that, if intersected recursively, would catch
+    // a far-away ray. With non-recursive intersection the picker only sees
+    // the body sphere.
+    const huge = new THREE.Mesh(
+      new THREE.BoxGeometry(100, 100, 100),
+      new THREE.MeshBasicMaterial(),
+    );
+    huge.position.set(20, 0, 0);
+    body.add(huge);
+    body.updateMatrixWorld(true);
+
+    const meshes = new Map<number, THREE.Mesh>();
+    meshes.set(1, body);
+
+    const result = pickPlayerUnderCursor(
+      NDC_CENTER,
+      topDownCameraAt(20, 0),
+      meshes,
+    );
+    expect(result).toBeNull();
   });
 });

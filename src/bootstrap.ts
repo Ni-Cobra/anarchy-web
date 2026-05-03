@@ -179,6 +179,11 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
       x: (ev.clientX / window.innerWidth) * 2 - 1,
       y: -(ev.clientY / window.innerHeight) * 2 + 1,
     };
+    // Renderer drives the per-frame hover billboard from this NDC, so
+    // every cursor sample needs to flow through. Same picker pipeline
+    // backs both the builder-mode block ghost and the player hover
+    // (see `picker.ts`).
+    renderer.setCursorNdc(cursorNdc);
   });
 
   // Suppress the browser context menu so right-click is available for placement.

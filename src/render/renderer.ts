@@ -17,7 +17,11 @@ import {
   type PlayerMeshFactory,
   type RenderableEntity,
 } from "./sync.js";
-import { pickBlockUnderCursor, type PickResult } from "./picker.js";
+import {
+  pickBlockUnderCursor,
+  pickPlayerUnderCursor,
+  type PickResult,
+} from "./picker.js";
 import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 
 const EYE_COLOR = 0xffffff;
@@ -40,13 +44,25 @@ const EYE_SIDE = 0.14;
 // font + outline + size without depending on a Three.js-side font loader.
 // The sprite size is sized in world units so it stays readable at default
 // camera zoom; sprites by definition always face the camera.
-const BILLBOARD_HEIGHT_OFFSET = BODY_RADIUS + 0.4;
+//
+// The offset puts the *bottom* of the sprite just above the sphere top:
+// sphere top sits at `BODY_RADIUS` above the body center, the sprite is
+// anchored at its center with height `BILLBOARD_WORLD_HEIGHT`, so its
+// bottom is at `BILLBOARD_HEIGHT_OFFSET - BILLBOARD_WORLD_HEIGHT/2`. We
+// keep ~0.025 of clearance so the label feels attached without floating.
+const BILLBOARD_WORLD_HEIGHT = 0.45;
+const BILLBOARD_HEIGHT_OFFSET = BODY_RADIUS + BILLBOARD_WORLD_HEIGHT / 2 + 0.025;
 const BILLBOARD_FONT_PX = 56;
 const BILLBOARD_PAD_PX = 12;
-const BILLBOARD_WORLD_HEIGHT = 0.45;
 const BILLBOARD_TEXT_COLOR = "#ffffff";
 const BILLBOARD_OUTLINE_COLOR = "#000000";
 const BILLBOARD_OUTLINE_WIDTH = 6;
+// Property key on `mesh.userData` where the per-player billboard sprite is
+// stashed at create time. The frame loop reads this to toggle visibility
+// against the hovered-player id from the cursor picker; gating it through a
+// single key lets the sprite stay parented to the body (so it follows
+// movement automatically) without exposing a parallel sprite map.
+const BILLBOARD_USERDATA_KEY = "usernameBillboard";
 const AXIS_HALF_LENGTH = 10000;
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
@@ -88,7 +104,12 @@ const defaultFactory: PlayerMeshFactory = {
     body.add(leftEye, rightEye);
 
     if (entity.username.length > 0) {
-      body.add(buildUsernameBillboard(entity.username));
+      const billboard = buildUsernameBillboard(entity.username);
+      // Hidden by default — the renderer's per-frame hover pass flips
+      // `visible` for whichever body is under the cursor.
+      billboard.visible = false;
+      body.userData[BILLBOARD_USERDATA_KEY] = billboard;
+      body.add(billboard);
     }
 
     return body;
@@ -197,6 +218,11 @@ export class Renderer {
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
   private ghostMesh: THREE.Mesh | null = null;
+  // Last NDC the input layer reported. `null` means the cursor is not over
+  // the canvas (or hasn't moved yet) — no player is considered hovered.
+  // Re-evaluated every frame against current mesh positions so a player
+  // walking under a stationary cursor still triggers the hover-billboard.
+  private cursorNdc: { x: number; y: number } | null = null;
 
   constructor(
     private readonly world: World,
@@ -294,6 +320,18 @@ export class Renderer {
   ): PickResult | null {
     if (!this.terrain) return null;
     return pickBlockUnderCursor(cursorNdc, this.camera, this.terrain);
+  }
+
+  /**
+   * Tell the renderer where the cursor currently is in NDC, or `null` to
+   * clear (cursor left the canvas). Drives hover-only username billboards:
+   * the per-frame loop re-runs `pickPlayerUnderCursor` against this NDC and
+   * toggles each player's billboard sprite.
+   */
+  setCursorNdc(
+    cursorNdc: { readonly x: number; readonly y: number } | null,
+  ): void {
+    this.cursorNdc = cursorNdc === null ? null : { x: cursorNdc.x, y: cursorNdc.y };
   }
 
   /**
@@ -415,8 +453,26 @@ export class Renderer {
       this.factory,
     );
     this.updateCamera(entities);
+    this.refreshHoverBillboards();
     this.webgl.render(this.scene, this.camera);
   };
+
+  private refreshHoverBillboards(): void {
+    // The picker uses `Raycaster.intersectObjects` which respects camera
+    // matrices computed during the previous render — `updateCamera` has
+    // already run this frame, so the picker sees the current view.
+    const hoveredId =
+      this.cursorNdc === null
+        ? null
+        : pickPlayerUnderCursor(this.cursorNdc, this.camera, this.meshes);
+    for (const [id, mesh] of this.meshes) {
+      const billboard = mesh.userData[BILLBOARD_USERDATA_KEY] as
+        | THREE.Object3D
+        | undefined;
+      if (!billboard) continue;
+      billboard.visible = id === hoveredId;
+    }
+  }
 
   private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {
     // Follow the local player's interpolated position. With prediction

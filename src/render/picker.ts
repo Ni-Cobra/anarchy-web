@@ -5,6 +5,7 @@ import {
   CHUNK_SIZE,
   type Block,
   type ChunkCoord,
+  type PlayerId,
   type Terrain,
   getBlock,
 } from "../game/index.js";
@@ -28,6 +29,10 @@ import {
  * imperceptible; if a future low-angle camera or a "click on the side of a
  * top block" requirement makes that approximation visible, this is the file
  * to lift to mesh-intersection raycasting.
+ *
+ * `pickPlayerUnderCursor` shares the same NDC → raycaster pipeline (via
+ * `raycasterFromCursor`) so block-pick and player-pick stay one cursor-side
+ * concern.
  */
 export type PickLayer = "top" | "ground";
 
@@ -38,16 +43,24 @@ export interface PickResult {
   readonly block: Block;
 }
 
-export function pickBlockUnderCursor(
+function raycasterFromCursor(
   cursorNdc: { readonly x: number; readonly y: number },
   camera: THREE.Camera,
-  terrain: Terrain,
-): PickResult | null {
+): THREE.Raycaster {
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(
     new THREE.Vector2(cursorNdc.x, cursorNdc.y),
     camera,
   );
+  return raycaster;
+}
+
+export function pickBlockUnderCursor(
+  cursorNdc: { readonly x: number; readonly y: number },
+  camera: THREE.Camera,
+  terrain: Terrain,
+): PickResult | null {
+  const raycaster = raycasterFromCursor(cursorNdc, camera);
 
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const hit = raycaster.ray.intersectPlane(groundPlane, new THREE.Vector3());
@@ -81,4 +94,29 @@ export function pickBlockUnderCursor(
     layer: "ground",
     block: getBlock(chunk.ground, lx, ly),
   };
+}
+
+/**
+ * Cursor-driven player picker. Returns the `PlayerId` of the player whose
+ * body mesh is currently under the cursor, or `null` if no body is hit.
+ * Non-recursive intersection: only the top-level body meshes are tested,
+ * so child meshes (eyes, billboard sprites) never claim a hit on their
+ * parent's behalf and the result is unambiguous even when the billboard
+ * is visible.
+ */
+export function pickPlayerUnderCursor(
+  cursorNdc: { readonly x: number; readonly y: number },
+  camera: THREE.Camera,
+  meshes: ReadonlyMap<PlayerId, THREE.Mesh>,
+): PlayerId | null {
+  if (meshes.size === 0) return null;
+  const raycaster = raycasterFromCursor(cursorNdc, camera);
+  const candidates = [...meshes.values()];
+  const hits = raycaster.intersectObjects(candidates, false);
+  if (hits.length === 0) return null;
+  const top = hits[0].object;
+  for (const [id, mesh] of meshes) {
+    if (mesh === top) return id;
+  }
+  return null;
 }
