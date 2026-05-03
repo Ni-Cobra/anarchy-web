@@ -25,7 +25,14 @@ export function composePlayerEntities(
   for (const player of world.players()) {
     const interp = buffer.sample(player.id, nowMs - remoteDelayMs);
     const pos = interp ?? { x: player.x, y: player.y };
-    out.push({ id: player.id, x: pos.x, y: pos.y, facing: player.facing });
+    out.push({
+      id: player.id,
+      x: pos.x,
+      y: pos.y,
+      facing: player.facing,
+      username: player.username,
+      colorIndex: player.colorIndex,
+    });
   }
   return out;
 }

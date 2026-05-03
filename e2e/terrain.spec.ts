@@ -118,7 +118,20 @@ async function readWelcome(s: Socket): Promise<number> {
     if (f.kind !== "msg") return false;
     return decodeServerMessage(f.data).welcome !== undefined;
   })) as Extract<Frame, { kind: "msg" }>;
-  return Number(decodeServerMessage(frame.data).welcome!.playerId);
+  const id = Number(decodeServerMessage(frame.data).welcome!.playerId);
+  await sendHello(s);
+  return id;
+}
+
+let helloSeq = 100;
+async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+  const bytes = ClientMessage.encode(
+    ClientMessage.create({
+      seq: helloSeq++,
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+    }),
+  ).finish();
+  s.ws.send(bytes);
 }
 
 async function readTick(s: Socket, timeout = 5_000): Promise<DecodedTick> {

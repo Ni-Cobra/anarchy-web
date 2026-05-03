@@ -8,7 +8,7 @@ const p = (
   x = 0,
   y = 0,
   facing: Direction8 = DEFAULT_FACING,
-): Player => ({ id, x, y, facing });
+): Player => ({ id, x, y, facing, username: "", colorIndex: 0 });
 
 describe("World", () => {
   it("starts empty", () => {
@@ -27,12 +27,16 @@ describe("World", () => {
       x: 2,
       y: 3,
       facing: Direction8.E,
+      username: "",
+      colorIndex: 0,
     });
     expect(w.getPlayer(2)).toEqual({
       id: 2,
       x: -4,
       y: 5,
       facing: Direction8.N,
+      username: "",
+      colorIndex: 0,
     });
   });
 
@@ -47,6 +51,8 @@ describe("World", () => {
       x: 7,
       y: 7,
       facing: DEFAULT_FACING,
+      username: "",
+      colorIndex: 0,
     });
     expect(w.getPlayer(3)).toBeUndefined();
   });
@@ -62,6 +68,8 @@ describe("World", () => {
       x: 4,
       y: 4,
       facing: Direction8.NE,
+      username: "",
+      colorIndex: 0,
     });
   });
 

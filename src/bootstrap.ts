@@ -23,7 +23,12 @@ import {
   canPlaceTopBlock,
 } from "./game/index.js";
 import { InputController } from "./input/index.js";
-import { applyServerMessage, blockTypeToWire, connect } from "./net/index.js";
+import {
+  applyServerMessage,
+  blockTypeToWire,
+  connect,
+  type LobbyIdentity,
+} from "./net/index.js";
 import { Renderer } from "./render/index.js";
 
 /**
@@ -53,7 +58,7 @@ export interface AnarchyHandle {
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
 
-export function runMain(): AnarchyHandle {
+export function runMain(identity: LobbyIdentity): AnarchyHandle {
   const world = new World();
   const buffer = new SnapshotBuffer();
   const terrain = new Terrain();
@@ -79,7 +84,7 @@ export function runMain(): AnarchyHandle {
   // expects a monotonic counter and may surface it again later.
   let actionSeq = 0;
 
-  const conn = connect("ws://localhost:8080/ws", (msg) => {
+  const conn = connect("ws://localhost:8080/ws", identity, (msg) => {
     applyServerMessage(msg, {
       world,
       buffer,

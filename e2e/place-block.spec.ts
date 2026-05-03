@@ -20,7 +20,7 @@ interface SelfView {
 }
 
 async function openClient(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/?username=tester&color=0");
   await page.waitForFunction(() => window.__anarchy !== undefined);
 }
 

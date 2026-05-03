@@ -1,11 +1,12 @@
 import * as THREE from "three";
 
 import { CAMERA_HEIGHT, PLAYER_RADIUS } from "../config.js";
-import type {
-  PlayerId,
-  SnapshotBuffer,
-  Terrain,
-  World,
+import {
+  paletteColorHex,
+  type PlayerId,
+  type SnapshotBuffer,
+  type Terrain,
+  type World,
 } from "../game/index.js";
 import { tileCenterToScene } from "./terrain.js";
 import { composePlayerEntities } from "./compose.js";
@@ -19,8 +20,6 @@ import {
 import { pickBlockUnderCursor, type PickResult } from "./picker.js";
 import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 
-const LOCAL_COLOR = 0xff3030;
-const REMOTE_COLOR = 0x1e90ff;
 const EYE_COLOR = 0xffffff;
 // The player's body sphere mirrors the authoritative collision radius
 // (`PLAYER_RADIUS` in `config.ts`, `crate::game::player::PLAYER_RADIUS`
@@ -34,6 +33,20 @@ const EYE_SEGMENTS = 6;
 const EYE_FORWARD = 0.266;
 const EYE_UP = 0.126;
 const EYE_SIDE = 0.14;
+
+// Username billboard. `BILLBOARD_HEIGHT_OFFSET` is in scene units (Three.js
+// Y-up); the sprite parents to the body mesh so it follows the player. The
+// sprite uses a `CanvasTexture` of the rendered name so we can choose
+// font + outline + size without depending on a Three.js-side font loader.
+// The sprite size is sized in world units so it stays readable at default
+// camera zoom; sprites by definition always face the camera.
+const BILLBOARD_HEIGHT_OFFSET = BODY_RADIUS + 0.4;
+const BILLBOARD_FONT_PX = 56;
+const BILLBOARD_PAD_PX = 12;
+const BILLBOARD_WORLD_HEIGHT = 0.45;
+const BILLBOARD_TEXT_COLOR = "#ffffff";
+const BILLBOARD_OUTLINE_COLOR = "#000000";
+const BILLBOARD_OUTLINE_WIDTH = 6;
 const AXIS_HALF_LENGTH = 10000;
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
@@ -48,14 +61,17 @@ const GHOST_BOX_SIZE = 1.0;
 const GHOST_BOX_Y = 0.025 + GHOST_BOX_SIZE / 2;
 
 const defaultFactory: PlayerMeshFactory = {
-  create(_entity: RenderableEntity, isLocal: boolean) {
+  create(entity: RenderableEntity, _isLocal: boolean) {
     const bodyGeom = new THREE.SphereGeometry(
       BODY_RADIUS,
       BODY_SEGMENTS,
       BODY_SEGMENTS,
     );
+    // The body color is the player's lobby palette pick; both local and
+    // remote players are tinted the same way (the local player is
+    // distinguishable by camera follow + their own billboard).
     const bodyMat = new THREE.MeshLambertMaterial({
-      color: isLocal ? LOCAL_COLOR : REMOTE_COLOR,
+      color: paletteColorHex(entity.colorIndex),
     });
     const body = new THREE.Mesh(bodyGeom, bodyMat);
 
@@ -71,9 +87,79 @@ const defaultFactory: PlayerMeshFactory = {
     rightEye.position.set(EYE_FORWARD, EYE_UP, EYE_SIDE);
     body.add(leftEye, rightEye);
 
+    if (entity.username.length > 0) {
+      body.add(buildUsernameBillboard(entity.username));
+    }
+
     return body;
   },
 };
+
+/**
+ * Render the username into an offscreen 2D canvas and wrap it as a
+ * `THREE.Sprite` so it always faces the camera. The sprite parents to the
+ * body so it follows the player; world height is fixed in scene units so
+ * the label stays readable at default zoom regardless of canvas pixel
+ * density. The body mesh is yawed each frame to track the player's facing,
+ * so the sprite is parented to a wrapper that we counter-rotate inverse to
+ * the body — without that, the billboard would orbit the body whenever the
+ * player turned. Sprites already cancel rotation against the camera, but
+ * the parent transform applies before that, hence the wrapper.
+ */
+function buildUsernameBillboard(username: string): THREE.Object3D {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    // Headless / no-2d-canvas fallback — return an empty group rather
+    // than crashing. The renderer-level tests stub `THREE` and never see
+    // this path, but defensive rendering keeps a missing 2d ctx visible
+    // as "no name above head" rather than a thrown exception.
+    return new THREE.Group();
+  }
+  ctx.font = `${BILLBOARD_FONT_PX}px system-ui, sans-serif`;
+  const metrics = ctx.measureText(username);
+  const textWidth = Math.ceil(metrics.width);
+  const textHeight = BILLBOARD_FONT_PX;
+  canvas.width = textWidth + BILLBOARD_PAD_PX * 2;
+  canvas.height = textHeight + BILLBOARD_PAD_PX * 2;
+  // Re-set font after the canvas resize (mutating width/height resets ctx).
+  ctx.font = `${BILLBOARD_FONT_PX}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = BILLBOARD_OUTLINE_WIDTH;
+  ctx.strokeStyle = BILLBOARD_OUTLINE_COLOR;
+  ctx.fillStyle = BILLBOARD_TEXT_COLOR;
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  ctx.strokeText(username, cx, cy);
+  ctx.fillText(username, cx, cy);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  // The body counter-rotates with facing (see `syncPlayerMeshes`); wrap the
+  // sprite in a group so we can compensate for the body's local Y rotation
+  // each frame in `Renderer.frame` if needed. Today the sprite parent is
+  // the body itself, but Sprite always faces the camera in world space, so
+  // the body's yaw is irrelevant for the sprite's orientation — the offset
+  // position is what we care about, and that's a Z-up offset in body-local
+  // space that we set once.
+  const aspect = canvas.width / canvas.height;
+  sprite.scale.set(BILLBOARD_WORLD_HEIGHT * aspect, BILLBOARD_WORLD_HEIGHT, 1);
+  sprite.position.set(0, BILLBOARD_HEIGHT_OFFSET, 0);
+  // Render on top so the label isn't hidden by the body sphere when the
+  // player is partially behind a top-layer block.
+  sprite.renderOrder = 999;
+  return sprite;
+}
 
 /**
  * Initial viewport state passed in from the caller. Keeps the renderer

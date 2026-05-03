@@ -23,6 +23,8 @@ const player = (
   x,
   y,
   facing,
+  username: "",
+  colorIndex: 0,
 });
 
 function setup() {
@@ -65,7 +67,19 @@ describe("composePlayerEntities", () => {
     const { world, buffer } = setup();
     world.applySnapshot([player(ID_A, 7, -3)]);
     const out = composePlayerEntities(world, buffer, 1100);
-    expect(out).toEqual([{ id: ID_A, x: 7, y: -3, facing: DEFAULT_FACING }]);
+    // username + colorIndex pass through the per-frame compose so the
+    // mesh factory has them on first render — they ride along on the
+    // `RenderableEntity` even though they don't change frame-to-frame.
+    expect(out).toEqual([
+      {
+        id: ID_A,
+        x: 7,
+        y: -3,
+        facing: DEFAULT_FACING,
+        username: "",
+        colorIndex: 0,
+      },
+    ]);
   });
 
   it("REMOTE_RENDER_DELAY_MS is positive and sized for one or two ticks", () => {

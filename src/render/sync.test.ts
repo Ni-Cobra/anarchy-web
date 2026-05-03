@@ -16,7 +16,7 @@ const e = (
   x = 0,
   y = 0,
   facing: Direction8 = Direction8.S,
-): RenderableEntity => ({ id, x, y, facing });
+): RenderableEntity => ({ id, x, y, facing, username: "", colorIndex: 0 });
 
 interface FactoryCall {
   id: number;

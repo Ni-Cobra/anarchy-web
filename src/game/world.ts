@@ -27,6 +27,8 @@ export class World {
         x: p.x,
         y: p.y,
         facing: p.facing,
+        username: p.username,
+        colorIndex: p.colorIndex,
       });
     }
   }

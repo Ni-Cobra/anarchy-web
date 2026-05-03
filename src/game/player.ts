@@ -39,4 +39,19 @@ export interface Player {
   x: number;
   y: number;
   facing: Direction8;
+  /**
+   * Per-session display name from the player's lobby submit. Already
+   * trimmed + validated server-side (see `anarchy-server/src/game/
+   * lobby.rs`), so the client renders it directly. Empty string only on
+   * placeholder snapshots that predate admission — production never emits
+   * an empty username.
+   */
+  username: string;
+  /**
+   * Index into `PALETTE` (see `./palette.ts`). The renderer tints the
+   * player body by this entry. Defaults to `0` if the wire field is
+   * missing (forwards-compat against an older server, though the schemas
+   * are synced today).
+   */
+  colorIndex: number;
 }

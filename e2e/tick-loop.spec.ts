@@ -92,11 +92,23 @@ async function readWelcome(s: Socket): Promise<DecodedWelcome> {
     };
   };
   if (!msg.welcome) throw new Error("first frame was not a Welcome");
+  await sendHello(s);
   return {
     playerId: Number(msg.welcome.playerId),
     tickRateHz: Number(msg.welcome.tickRateHz ?? 0),
     viewRadiusChunks: Number(msg.welcome.viewRadiusChunks ?? 0),
   };
+}
+
+let helloSeq = 100;
+async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+  const bytes = ClientMessage.encode(
+    ClientMessage.create({
+      seq: helloSeq++,
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+    }),
+  ).finish();
+  s.ws.send(bytes);
 }
 
 function sendIntent(s: Socket, seq: number, dx: number, dy: number) {

@@ -200,6 +200,8 @@ function chunkFromWire(
       x: p.x ?? 0,
       y: p.y ?? 0,
       facing: facingFromWire(p.facing),
+      username: p.username ?? "",
+      colorIndex: p.colorIndex ?? 0,
     });
   }
   return [[cx, cy] as const, { ground, top, players }];

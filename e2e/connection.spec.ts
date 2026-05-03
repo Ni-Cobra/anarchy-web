@@ -103,7 +103,11 @@ test("Hello → Action → Ping: connection survives a multi-message handshake",
   const hello = ClientMessage.encode(
     ClientMessage.create({
       seq: 1,
-      hello: { clientVersion: "anarchy-client/e2e" },
+      hello: {
+        clientVersion: "anarchy-client/e2e",
+        username: "tester",
+        colorIndex: 0,
+      },
     }),
   ).finish();
   ws.send(hello);

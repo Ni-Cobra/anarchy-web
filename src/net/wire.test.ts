@@ -94,6 +94,8 @@ function chunkFromGameWire(cx: number, cy: number, src: Chunk): anarchy.v1.IChun
     x: p.x,
     y: p.y,
     facing: p.facing as number as anarchy.v1.Direction8,
+    username: p.username,
+    colorIndex: p.colorIndex,
   }));
   return { coord: { cx, cy }, ground: layer(src.ground), top: layer(src.top), players };
 }
@@ -101,7 +103,9 @@ function chunkFromGameWire(cx: number, cy: number, src: Chunk): anarchy.v1.IChun
 describe("applyServerMessage — Welcome", () => {
   it("publishes the local player id and clears any prior state", () => {
     const { deps, world, buffer, localCalls } = makeFixture();
-    world.applySnapshot([{ id: 99, x: 5, y: 5, facing: DEFAULT_FACING }]);
+    world.applySnapshot([
+      { id: 99, x: 5, y: 5, facing: DEFAULT_FACING, username: "", colorIndex: 0 },
+    ]);
     buffer.push(99, 5, 5, 100);
 
     const msg = decodeRoundtrip({
@@ -174,7 +178,14 @@ describe("applyServerMessage — TickUpdate", () => {
 
     const ids = [...world.players()].map((p) => p.id).sort();
     expect(ids).toEqual([1, 2]);
-    expect(world.getPlayer(1)).toEqual({ id: 1, x: 1.5, y: 2.5, facing: Direction8.E });
+    expect(world.getPlayer(1)).toEqual({
+      id: 1,
+      x: 1.5,
+      y: 2.5,
+      facing: Direction8.E,
+      username: "",
+      colorIndex: 0,
+    });
     expect(buffer.samplesOf(1)).toHaveLength(1);
     expect(buffer.samplesOf(1)[0]).toMatchObject({ x: 1.5, y: 2.5, timeMs: 5_000 });
   });
@@ -314,7 +325,14 @@ describe("applyServerMessage — TickUpdate", () => {
     });
     applyServerMessage(tick2, deps);
 
-    expect(world.getPlayer(1)).toEqual({ id: 1, x: 5, y: 0, facing: Direction8.E });
+    expect(world.getPlayer(1)).toEqual({
+      id: 1,
+      x: 5,
+      y: 0,
+      facing: Direction8.E,
+      username: "",
+      colorIndex: 0,
+    });
     expect(terrain.size()).toBe(1);
   });
 
@@ -349,7 +367,14 @@ describe("applyServerMessage — TickUpdate", () => {
     });
     applyServerMessage(msg, deps);
 
-    expect(world.getPlayer(1)).toEqual({ id: 1, x: 1, y: 1, facing: Direction8.S });
+    expect(world.getPlayer(1)).toEqual({
+      id: 1,
+      x: 1,
+      y: 1,
+      facing: Direction8.S,
+      username: "",
+      colorIndex: 0,
+    });
   });
 
   it("decodes default facing (UNSPECIFIED → DEFAULT_FACING)", () => {

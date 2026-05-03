@@ -21,3 +21,13 @@ export {
   setBlock,
 } from "./terrain.js";
 export { canPlaceTopBlock } from "./place_validation.js";
+export {
+  MAX_USERNAME_LEN,
+  MIN_USERNAME_LEN,
+  PALETTE,
+  isValidColorIndex,
+  paletteColorCss,
+  paletteColorHex,
+  validateUsername,
+} from "./palette.js";
+export type { PaletteColor } from "./palette.js";

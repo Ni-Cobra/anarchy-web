@@ -157,7 +157,19 @@ async function readWelcomePlayerId(s: Socket): Promise<number> {
   const msg = ServerMessage.decode(frame.data).toJSON() as {
     welcome?: { playerId?: string | number };
   };
+  await sendHello(s);
   return Number(msg.welcome!.playerId);
+}
+
+let helloSeq = 100;
+async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+  const bytes = ClientMessage.encode(
+    ClientMessage.create({
+      seq: helloSeq++,
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+    }),
+  ).finish();
+  s.ws.send(bytes);
 }
 
 function sendIntent(s: Socket, seq: number, dx: number, dy: number) {

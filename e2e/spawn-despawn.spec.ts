@@ -14,6 +14,7 @@ const PROTO_PATH = resolve(__dirname, "../proto/anarchy/v1/anarchy.proto");
 
 const root = await protobuf.load(PROTO_PATH);
 const ServerMessage = root.lookupType("anarchy.v1.ServerMessage");
+const ClientMessage = root.lookupType("anarchy.v1.ClientMessage");
 
 const WS_URL = "ws://localhost:8080/ws";
 
@@ -82,7 +83,22 @@ async function readWelcome(s: Socket): Promise<DecodedWelcome> {
   const msg = ServerMessage.decode(frame.data).toJSON() as {
     welcome?: { playerId?: string | number };
   };
+  // The lobby gate requires a valid `ClientHello` before the server admits
+  // the player to the world. Send one immediately on every readWelcome so
+  // tests can proceed as if admission were implicit.
+  await sendHello(s);
   return { playerId: Number(msg.welcome!.playerId) };
+}
+
+let helloSeq = 100;
+async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+  const bytes = ClientMessage.encode(
+    ClientMessage.create({
+      seq: helloSeq++,
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+    }),
+  ).finish();
+  s.ws.send(bytes);
 }
 
 interface PlayerInTick {

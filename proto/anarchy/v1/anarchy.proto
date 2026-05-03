@@ -36,8 +36,17 @@ message ServerMessage {
 
 // === Handshake ===
 
+// First frame on every connection. Carries the lobby choices the client
+// collected before opening the WebSocket: a per-session display `username`
+// and an index into the shared color palette (`game::lobby::PALETTE` on the
+// server, the same table mirrored client-side). The server validates length,
+// charset, and palette range — see `game::lobby::validate_username` /
+// `validate_color_index` — and only admits the player to the world once a
+// well-formed Hello has landed. Repeat Hello frames are ignored.
 message ClientHello {
   string client_version = 1;
+  string username = 2;
+  uint32 color_index = 3;
 }
 
 message ServerWelcome {
@@ -169,6 +178,13 @@ message PlayerSnapshot {
   // and leaves it alone when intent is zero so a stopped player keeps
   // looking where they were going.
   Direction8 facing = 5;
+  // Lobby-chosen display name (already trimmed + validated server-side per
+  // `game::lobby::validate_username`). Per-session only — not persisted, not
+  // unique across players.
+  string username = 6;
+  // Index into the shared lobby palette (`game::lobby::PALETTE`). Validated
+  // server-side; the renderer tints the player body by this entry.
+  uint32 color_index = 7;
 }
 
 // 8-way facing for the sphere-with-eyes player model. Cardinal first, then

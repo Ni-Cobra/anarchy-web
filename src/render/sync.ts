@@ -18,12 +18,20 @@ export interface PlayerMeshFactory {
  * world state for the local player and from the interpolation buffer for
  * remote players, but `syncPlayerMeshes` doesn't care which path produced
  * each entry — it just reconciles meshes against the iterable.
+ *
+ * `username` and `colorIndex` ride along on the entity so the mesh factory
+ * can paint the body color and the name billboard at create time. They
+ * never change for an admitted player (lobby identity is immutable
+ * server-side), so reading them once per mesh is fine — the per-frame
+ * sync only updates position + facing.
  */
 export interface RenderableEntity {
   readonly id: PlayerId;
   readonly x: number;
   readonly y: number;
   readonly facing: Direction8;
+  readonly username: string;
+  readonly colorIndex: number;
 }
 
 /**

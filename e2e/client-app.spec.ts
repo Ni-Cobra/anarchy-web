@@ -15,8 +15,12 @@ interface SelfView {
   y: number;
 }
 
-async function openClient(page: Page): Promise<void> {
-  await page.goto("/");
+async function openClient(page: Page, username = "tester"): Promise<void> {
+  // Skip the lobby UI via the `?username=&color=` bypass — `main.ts`
+  // routes straight into `runMain` when both query params validate, so
+  // the browser e2e doesn't need to script the lobby form.
+  const url = `/?username=${encodeURIComponent(username)}&color=0`;
+  await page.goto(url);
   await page.waitForFunction(() => window.__anarchy !== undefined);
 }
 

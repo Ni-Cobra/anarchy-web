@@ -10,7 +10,23 @@ export interface Connection {
   close(): void;
 }
 
-export function connect(url: string, onMessage: ServerHandler): Connection {
+/**
+ * Lobby-collected identity shipped as the first frame on every
+ * connection. `username` must be non-empty after trim and within the
+ * server's allow-list charset; `colorIndex` must address an entry of
+ * `PALETTE`. The client validates these in the lobby submit handler so a
+ * legitimate run never sees a mid-session disconnect for malformed Hello.
+ */
+export interface LobbyIdentity {
+  readonly username: string;
+  readonly colorIndex: number;
+}
+
+export function connect(
+  url: string,
+  identity: LobbyIdentity,
+  onMessage: ServerHandler,
+): Connection {
   const ws = new WebSocket(url);
   ws.binaryType = "arraybuffer";
 
@@ -31,7 +47,11 @@ export function connect(url: string, onMessage: ServerHandler): Connection {
     console.log("[net] open", url);
     sendInternal({
       seq: nextSeq(),
-      hello: { clientVersion: "anarchy-client/0.1.0" },
+      hello: {
+        clientVersion: "anarchy-client/0.1.0",
+        username: identity.username,
+        colorIndex: identity.colorIndex,
+      },
     });
 
     lastRecvAt = Date.now();

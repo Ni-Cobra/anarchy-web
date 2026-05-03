@@ -16,7 +16,7 @@ const me = (
   x: number,
   y: number,
   facing: Direction8 = DEFAULT_FACING,
-): Player => ({ id, x, y, facing });
+): Player => ({ id, x, y, facing, username: "", colorIndex: 0 });
 
 function setup(local: Player, others: Player[] = []): { world: World; terrain: Terrain } {
   const world = new World();
