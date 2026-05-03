@@ -27,9 +27,15 @@ Boundaries have been audited; new code must respect them.
   pumps DOM events. Don't reintroduce window listeners inside the renderer.
 - **`src/input/`** — keyboard → `MoveIntent`. Free of WebSocket / proto
   wiring; the caller passes an `InputSink`.
-- **`src/main.ts`** — the only module that touches `window` / `document` /
-  the renderer constructor. Owns the per-client monotonic `actionSeq` and
-  exposes the narrow `window.__anarchy` test handle for Playwright.
+- **`src/main.ts`** — thin entry. Parses the `?stub-terrain` flag, calls
+  `bootstrap.runMain()` (or routes to the dev terrain stub), and publishes
+  the returned `AnarchyHandle` on `window.__anarchy` for Playwright.
+- **`src/bootstrap.ts`** — sibling of `main.ts`. Constructs the world /
+  buffer / terrain / renderer / connection / input controller, owns the
+  per-client monotonic `actionSeq`, and registers the keydown / mousemove
+  / mousedown / contextmenu listeners that drive builder mode + destroy.
+  Together with `main.ts` and `dev/terrain_stub.ts`, the only modules
+  allowed to touch `window` / `document` directly.
 - **`src/config.ts`** — operator-tunable constants (speeds, intervals,
   reconciliation distance, render delays). Values mirrored from server's
   `crate::config` where they must agree (notably `SPEED`).

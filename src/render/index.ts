@@ -7,4 +7,3 @@
  * and tells the renderer which player id is local.
  */
 export { Renderer } from "./renderer.js";
-export type { PickLayer, PickResult } from "./picker.js";

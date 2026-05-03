@@ -16,8 +16,8 @@ export {
   LAYER_AREA,
   LAYER_SIZE,
   Terrain,
-  chunkCoordForWorldPos,
   emptyChunk,
   getBlock,
   setBlock,
 } from "./terrain.js";
+export { canPlaceTopBlock } from "./place_validation.js";
