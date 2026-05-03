@@ -3,9 +3,10 @@
  * the network connection, the keyboard input controller, and the builder-
  * mode mouse handlers, and registers the DOM listeners they share.
  *
- * Returns the narrow handle that `main.ts` exposes on `window.__anarchy`
- * for Playwright. `main.ts` stays intentionally thin: it parses the URL,
- * picks an entry, and publishes the handle.
+ * `runMain` brings up a single session and returns an `AnarchyHandle` that
+ * carries a `stop()` to tear everything back down. `runApp` owns the
+ * lobby ↔ game lifecycle loop: show the lobby, hand the chosen identity
+ * to `runMain`, await a Disconnect, then re-show the lobby and repeat.
  *
  * Lives at the same layer as `main.ts` — both modules are allowed to touch
  * `window` / `document` directly. Per the project charter this is the only
@@ -30,10 +31,16 @@ import {
   type LobbyIdentity,
 } from "./net/index.js";
 import { Renderer } from "./render/index.js";
+import { mountSidePanel, type SidePanelAction } from "./ui/index.js";
 
 /**
  * Test handle exposed on `window.__anarchy`. Kept narrow on purpose: only
  * the seams Playwright needs to drive the app without poking internals.
+ *
+ * `stop()` tears down the whole session — sockets, listeners, timers,
+ * Three.js resources, side panel DOM. `stopped` resolves once the
+ * teardown finishes, so the lifecycle loop in `runApp` can wait for a
+ * Disconnect and re-show the lobby.
  */
 export interface AnarchyHandle {
   world: World;
@@ -54,11 +61,39 @@ export interface AnarchyHandle {
   // top-Air). Exposed for e2e specs that need to assert ghost-visibility
   // behavior without driving the camera/cursor.
   canPlaceAt: (cx: number, cy: number, lx: number, ly: number) => boolean;
+  stop: () => void;
+  readonly stopped: Promise<void>;
 }
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
 
 export function runMain(identity: LobbyIdentity): AnarchyHandle {
+  // Every owned resource (listener, interval, rAF, WS, mesh, DOM node)
+  // pushes a teardown into this list at construction time. `stop()`
+  // drains the list in reverse so dependencies are torn down before what
+  // they depend on. Keeping this list co-located with the construction
+  // is what guarantees a clean Disconnect — leaks here surface as
+  // duplicated input/network behavior on the next session.
+  const teardowns: Array<() => void> = [];
+  let stopping = false;
+  let resolveStopped!: () => void;
+  const stopped = new Promise<void>((r) => {
+    resolveStopped = r;
+  });
+  const stop = (): void => {
+    if (stopping) return;
+    stopping = true;
+    while (teardowns.length > 0) {
+      const fn = teardowns.pop()!;
+      try {
+        fn();
+      } catch (err) {
+        console.error("[disconnect] teardown failed", err);
+      }
+    }
+    resolveStopped();
+  };
+
   const world = new World();
   const buffer = new SnapshotBuffer();
   const terrain = new Terrain();
@@ -73,9 +108,13 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     },
     terrain,
   );
-  window.addEventListener("resize", () => {
+  teardowns.push(() => renderer.dispose());
+
+  const onResize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
-  });
+  };
+  window.addEventListener("resize", onResize);
+  teardowns.push(() => window.removeEventListener("resize", onResize));
 
   let localPlayerId: number | null = null;
   // Per-client monotonic action sequence. Mirrored into every outbound
@@ -102,6 +141,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
       },
     });
   });
+  teardowns.push(() => conn.close());
 
   function sendMoveIntent(dx: number, dy: number): void {
     const seq = ++actionSeq;
@@ -130,7 +170,8 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   }
 
   const input = new InputController({ sendMoveIntent });
-  input.start(window);
+  const stopInput = input.start(window);
+  teardowns.push(stopInput);
 
   // Builder mode (toggled with `E`): while on, the cell under the cursor is
   // previewed as a translucent gold ghost — but only when (a) within reach,
@@ -161,20 +202,24 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   // Refresh the ghost every animation frame so a remote player walking onto
   // the targeted cell hides the preview without waiting for a mousemove.
   // Cheap: a single raycast + a few players per frame.
+  let ghostRafHandle = 0;
   function ghostTick(): void {
     refreshGhost();
-    requestAnimationFrame(ghostTick);
+    ghostRafHandle = requestAnimationFrame(ghostTick);
   }
-  requestAnimationFrame(ghostTick);
+  ghostRafHandle = requestAnimationFrame(ghostTick);
+  teardowns.push(() => cancelAnimationFrame(ghostRafHandle));
 
-  window.addEventListener("keydown", (ev) => {
+  const onKeydown = (ev: KeyboardEvent): void => {
     if (ev.code !== "KeyE") return;
     if (ev.repeat) return;
     builderMode = !builderMode;
     refreshGhost();
-  });
+  };
+  window.addEventListener("keydown", onKeydown);
+  teardowns.push(() => window.removeEventListener("keydown", onKeydown));
 
-  window.addEventListener("mousemove", (ev) => {
+  const onMousemove = (ev: MouseEvent): void => {
     cursorNdc = {
       x: (ev.clientX / window.innerWidth) * 2 - 1,
       y: -(ev.clientY / window.innerHeight) * 2 + 1,
@@ -184,12 +229,16 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     // backs both the builder-mode block ghost and the player hover
     // (see `picker.ts`).
     renderer.setCursorNdc(cursorNdc);
-  });
+  };
+  window.addEventListener("mousemove", onMousemove);
+  teardowns.push(() => window.removeEventListener("mousemove", onMousemove));
 
   // Suppress the browser context menu so right-click is available for placement.
-  window.addEventListener("contextmenu", (ev) => ev.preventDefault());
+  const onContextMenu = (ev: Event): void => ev.preventDefault();
+  window.addEventListener("contextmenu", onContextMenu);
+  teardowns.push(() => window.removeEventListener("contextmenu", onContextMenu));
 
-  window.addEventListener("mousedown", (ev) => {
+  const onMousedown = (ev: MouseEvent): void => {
     if (localPlayerId === null) return;
     const ndc = {
       x: (ev.clientX / window.innerWidth) * 2 - 1,
@@ -219,7 +268,18 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
       const [cx, cy, lx, ly] = cell;
       sendPlaceBlock(cx, cy, lx, ly, BlockType.Gold);
     }
-  });
+  };
+  window.addEventListener("mousedown", onMousedown);
+  teardowns.push(() => window.removeEventListener("mousedown", onMousedown));
+
+  // Action registry for the side panel. New in-game actions go here as
+  // `{ label, onClick }` entries; the panel renders them as a vertical
+  // button stack without per-action DOM scaffolding.
+  const sidePanelActions: ReadonlyArray<SidePanelAction> = [
+    { label: "Disconnect", onClick: () => stop() },
+  ];
+  const sidePanel = mountSidePanel({ actions: sidePanelActions });
+  teardowns.push(() => sidePanel.unmount());
 
   return {
     world,
@@ -234,5 +294,29 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
       refreshGhost();
     },
     canPlaceAt,
+    stop,
+    stopped,
   };
+}
+
+/**
+ * Lifecycle loop: show the lobby (unless we already have an identity
+ * from a query-string bypass), hand it to `runMain`, wait for a
+ * Disconnect, then return to the lobby. `window.__anarchy` always points
+ * at the *current* live session — set on each spawn, cleared on
+ * Disconnect — so Playwright's test handle keeps working across cycles.
+ */
+export async function runApp(initial: LobbyIdentity | null): Promise<void> {
+  let identity = initial;
+  for (;;) {
+    if (identity === null) {
+      const { showLobby } = await import("./lobby.js");
+      identity = await showLobby();
+    }
+    const handle = runMain(identity);
+    window.__anarchy = handle;
+    await handle.stopped;
+    window.__anarchy = undefined;
+    identity = null;
+  }
 }

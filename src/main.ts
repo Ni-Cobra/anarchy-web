@@ -1,4 +1,4 @@
-import { runMain, type AnarchyHandle } from "./bootstrap.js";
+import { runApp, type AnarchyHandle } from "./bootstrap.js";
 import { isValidColorIndex, validateUsername } from "./game/index.js";
 import type { LobbyIdentity } from "./net/index.js";
 
@@ -16,7 +16,8 @@ declare global {
 // Lobby bypass via `?username=Foo&color=2` — when both query params validate,
 // skip the lobby UI and connect immediately. Used by the browser-driven e2e
 // spec (`client-app.spec.ts`) so it can drive the live app without scripting
-// keystrokes through the lobby form.
+// keystrokes through the lobby form. After a Disconnect the lifecycle loop
+// returns to the lobby (the bypass only seeds the *first* session).
 const params = new URLSearchParams(window.location.search);
 
 if (params.get("stub-terrain") === "1") {
@@ -24,16 +25,7 @@ if (params.get("stub-terrain") === "1") {
     runTerrainStub();
   });
 } else {
-  const bypass = lobbyBypassFromQuery(params);
-  if (bypass) {
-    window.__anarchy = runMain(bypass);
-  } else {
-    void import("./lobby.js").then(({ showLobby }) =>
-      showLobby().then((identity) => {
-        window.__anarchy = runMain(identity);
-      }),
-    );
-  }
+  void runApp(lobbyBypassFromQuery(params));
 }
 
 function lobbyBypassFromQuery(query: URLSearchParams): LobbyIdentity | null {

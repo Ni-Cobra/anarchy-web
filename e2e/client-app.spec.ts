@@ -117,6 +117,37 @@ test("one client moves and the other observes the move", async ({ browser }) => 
   }
 });
 
+test("clicking Disconnect in the side panel returns to the lobby and a fresh login reconnects", async ({ page }) => {
+  await openClient(page, "first");
+  const meFirst = await waitForSelfSpawn(page);
+  expect(meFirst.id).toBeGreaterThan(0);
+
+  // Open the side panel and click Disconnect.
+  await page.locator(".anarchy-side-panel-toggle").click();
+  await page.getByRole("button", { name: "Disconnect" }).click();
+
+  // Disconnect tears down the session: handle clears and lobby DOM mounts.
+  await page.waitForFunction(() => window.__anarchy === undefined);
+  await page.waitForSelector("#anarchy-lobby");
+  // Renderer canvas + side panel root are gone.
+  await expect(page.locator("canvas")).toHaveCount(0);
+  await expect(page.locator("#anarchy-side-panel-root")).toHaveCount(0);
+
+  // Use a fresh username so server-side session cleanup of the prior
+  // identity can't collide with the new admit; a same-name reconnect race
+  // is a known follow-up tracked separately.
+  await page.fill("#anarchy-username", "second");
+  await page.click("#anarchy-submit");
+
+  // A new session spins up: handle reappears, side panel re-mounts, spawn
+  // arrives. Player id must differ from the first session's.
+  await page.waitForFunction(() => window.__anarchy !== undefined);
+  await expect(page.locator("#anarchy-side-panel-root")).toHaveCount(1);
+  const meSecond = await waitForSelfSpawn(page);
+  expect(meSecond.id).toBeGreaterThan(0);
+  expect(meSecond.id).not.toBe(meFirst.id);
+});
+
 test("when one client disconnects the other sees them leave the world", async ({ browser }) => {
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
