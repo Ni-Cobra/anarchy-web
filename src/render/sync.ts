@@ -14,6 +14,15 @@ export interface PlayerMeshFactory {
 }
 
 /**
+ * Body yaw turn rate, radians per second. ~π / 0.15 rad/s gives a half-
+ * revolution in 150 ms — fast enough to feel responsive, slow enough that
+ * a single tick of facing change doesn't read as a snap. Server-side
+ * facing math is unchanged (still discrete `Direction8`); this only
+ * smooths the *render-side* angle interpolating toward that target.
+ */
+export const TURN_RATE_RAD_PER_SEC = Math.PI / 0.15;
+
+/**
  * One entity to draw this frame. The renderer composes these from authoritative
  * world state for the local player and from the interpolation buffer for
  * remote players, but `syncPlayerMeshes` doesn't care which path produced
@@ -76,10 +85,46 @@ export function facingToYaw(facing: Direction8): number {
 }
 
 /**
+ * Step `current` toward `target` by at most `maxStepRad` along the shortest
+ * angular path. Both inputs are in radians; the result is wrapped into
+ * `(-π, π]` so callers can keep accumulating without unbounded growth.
+ *
+ * Used by the per-frame sync pass to smoothly rotate a player body toward
+ * its target yaw instead of snapping. The "shortest path" handling matters
+ * when facing wraps across the ±π discontinuity (e.g. SW → SE crossing
+ * south): a naive lerp would spin the body the long way around.
+ */
+export function lerpYawTowards(
+  current: number,
+  target: number,
+  maxStepRad: number,
+): number {
+  let delta = target - current;
+  while (delta > Math.PI) delta -= 2 * Math.PI;
+  while (delta <= -Math.PI) delta += 2 * Math.PI;
+  let next: number;
+  if (Math.abs(delta) <= maxStepRad) {
+    next = target;
+  } else {
+    next = current + Math.sign(delta) * maxStepRad;
+  }
+  while (next > Math.PI) next -= 2 * Math.PI;
+  while (next <= -Math.PI) next += 2 * Math.PI;
+  return next;
+}
+
+/**
  * Reconcile `meshes` and `parent` with `entities`:
- *   - new ids get a mesh built by `factory` and added,
- *   - existing meshes get their position + facing yaw synced,
+ *   - new ids get a mesh built by `factory`, added, and snapped to their
+ *     initial yaw (no smooth-in for first appearance),
+ *   - existing meshes get their position synced and their yaw lerped
+ *     toward `facingToYaw(entity.facing)` at `TURN_RATE_RAD_PER_SEC`,
  *   - meshes whose id is no longer in `entities` are removed and disposed.
+ *
+ * `dtMs` is the time elapsed since the last sync call. Pass `Infinity`
+ * (the default) to disable smoothing — useful for tests and for the very
+ * first frame, where lerping toward a target with an unknown previous yaw
+ * isn't meaningful. The renderer plumbs real per-frame deltas in.
  *
  * Pure of any rendering-loop / WebGL state — safe to unit-test against a
  * plain `THREE.Group`.
@@ -90,18 +135,23 @@ export function syncPlayerMeshes(
   meshes: Map<PlayerId, THREE.Mesh>,
   parent: THREE.Object3D,
   factory: PlayerMeshFactory,
+  dtMs: number = Infinity,
 ): void {
+  const maxStep = (TURN_RATE_RAD_PER_SEC * dtMs) / 1000;
   const seen = new Set<PlayerId>();
   for (const entity of entities) {
     seen.add(entity.id);
     let mesh = meshes.get(entity.id);
+    const target = facingToYaw(entity.facing);
     if (!mesh) {
       mesh = factory.create(entity, entity.id === localPlayerId);
       meshes.set(entity.id, mesh);
       parent.add(mesh);
+      mesh.rotation.y = target;
+    } else {
+      mesh.rotation.y = lerpYawTowards(mesh.rotation.y, target, maxStep);
     }
     mesh.position.copy(tileToScene(entity.x, entity.y));
-    mesh.rotation.y = facingToYaw(entity.facing);
   }
   for (const id of [...meshes.keys()]) {
     if (seen.has(id)) continue;
@@ -112,15 +162,20 @@ export function syncPlayerMeshes(
 
 /**
  * Detach `mesh` from `parent` and free its GPU-side geometry + material,
- * including any child meshes parented to it (e.g. the eyes attached to the
- * sphere body). Exported so callers that drop a mesh outside the per-frame
- * sync pass (e.g. the renderer reassigning the local-player role) free the
- * same resources the same way.
+ * including any child meshes parented to it. Materials carrying a `.map`
+ * texture (e.g. the painted-eye body texture) get the texture disposed
+ * alongside the material so per-player CanvasTextures don't accumulate
+ * across reconnects.
+ *
+ * Exported so callers that drop a mesh outside the per-frame sync pass
+ * (e.g. the renderer reassigning the local-player role) free the same
+ * resources the same way.
  */
 export function disposePlayerMesh(mesh: THREE.Mesh, parent: THREE.Object3D): void {
   parent.remove(mesh);
   const seenGeoms = new Set<THREE.BufferGeometry>();
   const seenMats = new Set<THREE.Material>();
+  const seenTextures = new Set<THREE.Texture>();
   mesh.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     if (!seenGeoms.has(obj.geometry)) {
@@ -131,6 +186,11 @@ export function disposePlayerMesh(mesh: THREE.Mesh, parent: THREE.Object3D): voi
     for (const m of mats) {
       if (seenMats.has(m)) continue;
       seenMats.add(m);
+      const map = (m as THREE.MeshLambertMaterial).map;
+      if (map && !seenTextures.has(map)) {
+        seenTextures.add(map);
+        map.dispose();
+      }
       m.dispose();
     }
   });

@@ -24,19 +24,32 @@ import {
 } from "./picker.js";
 import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 
-const EYE_COLOR = 0xffffff;
 // The player's body sphere mirrors the authoritative collision radius
 // (`PLAYER_RADIUS` in `config.ts`, `crate::game::player::PLAYER_RADIUS`
 // on the server) so visuals and authority agree on what "touching" means.
 const BODY_RADIUS = PLAYER_RADIUS;
 const BODY_SEGMENTS = 16;
-// Eye geometry + offsets scale with the body so the face stays in
-// proportion (0.7 of the old AABB-era values).
-const EYE_RADIUS = 0.063;
-const EYE_SEGMENTS = 6;
-const EYE_FORWARD = 0.266;
-const EYE_UP = 0.126;
-const EYE_SIDE = 0.14;
+// Painted face. Eyes are drawn into the body's CanvasTexture instead of
+// being separate child meshes — drops two child meshes per player and
+// lets future expressions (blinks, emotes) become 2D texture edits with
+// no geometry churn. The body sphere's local +X is the player's "front"
+// (see `facingToYaw`), which on the default Three.js sphere UV maps to
+// the texture's horizontal midpoint, so eyes painted symmetrically
+// around `s = 0.5` always sit on the facing-forward hemisphere.
+const BODY_TEXTURE_W = 256;
+const BODY_TEXTURE_H = 128;
+// Eye texture coords derived from the previous child-eye offsets:
+// position (0.266, 0.126, ±0.14) projected to the unit sphere then
+// converted via the inverse of the default Three.js sphere UV mapping.
+// `EYE_T` is the texture's vertical coord (1 - latitude/π, with the
+// flipY default making canvas-Y = (1 - t) * H).
+const EYE_S_RIGHT = 0.423;
+const EYE_S_LEFT = 0.577;
+const EYE_T = 0.618;
+const EYE_WHITE_RADIUS_PX = 12;
+const EYE_PUPIL_RADIUS_PX = 5;
+const EYE_WHITE_COLOR = "#ffffff";
+const EYE_PUPIL_COLOR = "#101010";
 
 // Username billboard. `BILLBOARD_HEIGHT_OFFSET` is in scene units (Three.js
 // Y-up); the sprite parents to the body mesh so it follows the player. The
@@ -86,22 +99,8 @@ const defaultFactory: PlayerMeshFactory = {
     // The body color is the player's lobby palette pick; both local and
     // remote players are tinted the same way (the local player is
     // distinguishable by camera follow + their own billboard).
-    const bodyMat = new THREE.MeshLambertMaterial({
-      color: paletteColorHex(entity.colorIndex),
-    });
+    const bodyMat = buildBodyMaterial(paletteColorHex(entity.colorIndex));
     const body = new THREE.Mesh(bodyGeom, bodyMat);
-
-    const eyeGeom = new THREE.SphereGeometry(
-      EYE_RADIUS,
-      EYE_SEGMENTS,
-      EYE_SEGMENTS,
-    );
-    const eyeMat = new THREE.MeshLambertMaterial({ color: EYE_COLOR });
-    const leftEye = new THREE.Mesh(eyeGeom, eyeMat);
-    leftEye.position.set(EYE_FORWARD, EYE_UP, -EYE_SIDE);
-    const rightEye = new THREE.Mesh(eyeGeom, eyeMat);
-    rightEye.position.set(EYE_FORWARD, EYE_UP, EYE_SIDE);
-    body.add(leftEye, rightEye);
 
     if (entity.username.length > 0) {
       const billboard = buildUsernameBillboard(entity.username);
@@ -115,6 +114,48 @@ const defaultFactory: PlayerMeshFactory = {
     return body;
   },
 };
+
+/**
+ * Build the body material with eyes painted into a `CanvasTexture` mapped
+ * onto the sphere. Falls back to a flat-color material when no 2D canvas
+ * context is available (headless test envs); the body still renders, just
+ * without eyes — matching the renderer's prior fault-tolerant style for
+ * the username billboard.
+ */
+function buildBodyMaterial(bodyColorHex: number): THREE.MeshLambertMaterial {
+  const canvas = document.createElement("canvas");
+  canvas.width = BODY_TEXTURE_W;
+  canvas.height = BODY_TEXTURE_H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.MeshLambertMaterial({ color: bodyColorHex });
+
+  const r = (bodyColorHex >> 16) & 0xff;
+  const g = (bodyColorHex >> 8) & 0xff;
+  const b = bodyColorHex & 0xff;
+  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+  ctx.fillRect(0, 0, BODY_TEXTURE_W, BODY_TEXTURE_H);
+
+  // CanvasTexture defaults to flipY = true, so canvas y = (1 - t) * H
+  // for a target texture coord t.
+  const eyeY = (1 - EYE_T) * BODY_TEXTURE_H;
+  for (const s of [EYE_S_LEFT, EYE_S_RIGHT]) {
+    const cx = s * BODY_TEXTURE_W;
+    ctx.fillStyle = EYE_WHITE_COLOR;
+    ctx.beginPath();
+    ctx.arc(cx, eyeY, EYE_WHITE_RADIUS_PX, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillStyle = EYE_PUPIL_COLOR;
+    ctx.beginPath();
+    ctx.arc(cx, eyeY, EYE_PUPIL_RADIUS_PX, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return new THREE.MeshLambertMaterial({ map: texture });
+}
 
 /**
  * Render the username into an offscreen 2D canvas and wrap it as a
@@ -218,6 +259,10 @@ export class Renderer {
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
   private ghostMesh: THREE.Mesh | null = null;
+  // Wall-clock timestamp of the last `frame()` call. `null` until the first
+  // frame so we can flag the initial sync as "no smoothing" (an unknown
+  // previous yaw makes the lerp meaningless until we have a real delta).
+  private lastFrameMs: number | null = null;
   // Last NDC the input layer reported. `null` means the cursor is not over
   // the canvas (or hasn't moved yet) — no player is considered hovered.
   // Re-evaluated every frame against current mesh positions so a player
@@ -440,17 +485,17 @@ export class Renderer {
   }
 
   private frame = () => {
-    const entities = composePlayerEntities(
-      this.world,
-      this.buffer,
-      this.now(),
-    );
+    const nowMs = this.now();
+    const dtMs = this.lastFrameMs === null ? Infinity : nowMs - this.lastFrameMs;
+    this.lastFrameMs = nowMs;
+    const entities = composePlayerEntities(this.world, this.buffer, nowMs);
     syncPlayerMeshes(
       entities,
       this.localPlayerId,
       this.meshes,
       this.playerGroup,
       this.factory,
+      dtMs,
     );
     this.updateCamera(entities);
     this.refreshHoverBillboards();

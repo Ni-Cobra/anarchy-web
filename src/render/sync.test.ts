@@ -3,8 +3,10 @@ import * as THREE from "three";
 
 import { Direction8 } from "../game/index.js";
 import {
+  TURN_RATE_RAD_PER_SEC,
   disposePlayerMesh,
   facingToYaw,
+  lerpYawTowards,
   syncPlayerMeshes,
   tileToScene,
   type PlayerMeshFactory,
@@ -122,6 +124,38 @@ describe("facingToYaw", () => {
   });
 });
 
+describe("lerpYawTowards", () => {
+  it("returns target when within max step", () => {
+    expect(lerpYawTowards(0, 0.1, 0.2)).toBeCloseTo(0.1);
+    expect(lerpYawTowards(1, 1.05, 0.1)).toBeCloseTo(1.05);
+  });
+
+  it("steps toward target by exactly maxStep when farther", () => {
+    expect(lerpYawTowards(0, 1, 0.25)).toBeCloseTo(0.25);
+    expect(lerpYawTowards(1, 0, 0.25)).toBeCloseTo(0.75);
+  });
+
+  it("takes the short way around when target is across the ±π wrap", () => {
+    // current ≈ +π - 0.1, target ≈ -π + 0.1: shortest path crosses π by 0.2
+    // not the other way around (≈ 2π - 0.2).
+    const next = lerpYawTowards(Math.PI - 0.1, -Math.PI + 0.1, 0.05);
+    // Direction should be positive (forward across +π), wrapped into (-π, π].
+    expect(next).toBeCloseTo(Math.PI - 0.05);
+  });
+
+  it("wraps the result back into (-π, π]", () => {
+    // Step past +π into the next branch — result should wrap to -π+ε.
+    const next = lerpYawTowards(Math.PI - 0.05, -Math.PI + 0.1, 0.1);
+    expect(next).toBeGreaterThan(-Math.PI);
+    expect(next).toBeLessThanOrEqual(Math.PI);
+    expect(next).toBeCloseTo(-Math.PI + 0.05);
+  });
+
+  it("returns current unchanged when current already equals target", () => {
+    expect(lerpYawTowards(0.42, 0.42, 0.1)).toBeCloseTo(0.42);
+  });
+});
+
 describe("syncPlayerMeshes", () => {
   it("creates a mesh for each new entity and adds it to the parent", () => {
     const meshes = new Map<number, THREE.Mesh>();
@@ -156,14 +190,63 @@ describe("syncPlayerMeshes", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("syncs mesh.rotation.y from entity facing each frame", () => {
+  it("snaps a brand-new mesh's yaw to its initial facing", () => {
     const meshes = new Map<number, THREE.Mesh>();
     const parent = new THREE.Group();
     const { factory } = recordingFactory();
 
     syncPlayerMeshes([e(1, 0, 0, Direction8.N)], 1, meshes, parent, factory);
     expect(meshes.get(1)!.rotation.y).toBeCloseTo(facingToYaw(Direction8.N));
+  });
 
+  it("lerps yaw toward target with finite dtMs (does not snap)", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    const parent = new THREE.Group();
+    const { factory } = recordingFactory();
+
+    // First sync establishes the initial yaw at E (0).
+    syncPlayerMeshes([e(1, 0, 0, Direction8.E)], 1, meshes, parent, factory);
+    // Next frame: target jumps to W (π). With dt = 50 ms (one server tick)
+    // and TURN_RATE ≈ π/0.15 rad/s, the body should advance by ≈ π/3 rad
+    // — a third of the way around — not snap to π.
+    syncPlayerMeshes(
+      [e(1, 0, 0, Direction8.W)],
+      1,
+      meshes,
+      parent,
+      factory,
+      50,
+    );
+    const expected = (TURN_RATE_RAD_PER_SEC * 50) / 1000;
+    expect(meshes.get(1)!.rotation.y).toBeCloseTo(expected);
+    expect(meshes.get(1)!.rotation.y).not.toBeCloseTo(facingToYaw(Direction8.W));
+  });
+
+  it("snaps to target once the per-step budget exceeds the remaining delta", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    const parent = new THREE.Group();
+    const { factory } = recordingFactory();
+
+    syncPlayerMeshes([e(1, 0, 0, Direction8.E)], 1, meshes, parent, factory);
+    // dt = 1 s ≫ time to half-rev (0.15 s); the lerp should land exactly
+    // on the target.
+    syncPlayerMeshes(
+      [e(1, 0, 0, Direction8.W)],
+      1,
+      meshes,
+      parent,
+      factory,
+      1000,
+    );
+    expect(meshes.get(1)!.rotation.y).toBeCloseTo(facingToYaw(Direction8.W));
+  });
+
+  it("default (no dtMs) snaps to target — preserves test-friendly behavior", () => {
+    const meshes = new Map<number, THREE.Mesh>();
+    const parent = new THREE.Group();
+    const { factory } = recordingFactory();
+
+    syncPlayerMeshes([e(1, 0, 0, Direction8.E)], 1, meshes, parent, factory);
     syncPlayerMeshes([e(1, 0, 0, Direction8.W)], 1, meshes, parent, factory);
     expect(meshes.get(1)!.rotation.y).toBeCloseTo(facingToYaw(Direction8.W));
   });
@@ -244,7 +327,25 @@ describe("disposePlayerMesh", () => {
     expect(matDisposed).toBe(true);
   });
 
-  it("recurses into child meshes (e.g. eye meshes parented to the body)", () => {
+  it("disposes the material's .map texture (e.g. the painted body face)", () => {
+    const parent = new THREE.Group();
+    const geometry = new THREE.SphereGeometry(0.5);
+    const texture = new THREE.Texture();
+    const material = new THREE.MeshLambertMaterial({ map: texture });
+    const mesh = new THREE.Mesh(geometry, material);
+    parent.add(mesh);
+
+    let textureDisposed = false;
+    texture.addEventListener("dispose", () => {
+      textureDisposed = true;
+    });
+
+    disposePlayerMesh(mesh, parent);
+
+    expect(textureDisposed).toBe(true);
+  });
+
+  it("recurses into child meshes parented to the body", () => {
     const parent = new THREE.Group();
     const bodyGeom = new THREE.SphereGeometry(0.5);
     const bodyMat = new THREE.MeshBasicMaterial();
