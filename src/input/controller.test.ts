@@ -165,7 +165,12 @@ describe("InputController", () => {
     stop();
   });
 
-  it("ignores OS auto-repeat keydown events", () => {
+  it("treats OS auto-repeat keydowns as held-state evidence", () => {
+    // OS auto-repeat (`ke.repeat = true`) is accepted: it's a no-op while
+    // the key is genuinely held (the held Set is idempotent) but it
+    // recovers `held` if anything (a browser focus glitch, an X11
+    // auto-repeat keyup, etc.) emptied it transiently. Without this the
+    // player would stop moving until they released and re-pressed.
     const { sent, sink } = makeSink();
     const ctrl = new InputController(sink, 50);
     const stop = ctrl.start(target);
@@ -177,14 +182,21 @@ describe("InputController", () => {
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([{ dx: 0, dy: 1 }]);
 
-    // Release, then a stray repeat=true must not re-arm the held set —
-    // intent stays at (0, 0) on the next tick.
+    // Simulate a spurious keyup mid-hold (e.g. an X11 auto-repeat that
+    // delivers keyup-keydown pairs). The next auto-repeat keydown must
+    // refill `held` so movement resumes without waiting for the user to
+    // release and re-press.
     dispatchKey(target, "keyup", { code: "KeyW" });
-    vi.advanceTimersByTime(50); // emits the stop frame
+    vi.advanceTimersByTime(50); // stop frame
+    expect(sent).toEqual([
+      { dx: 0, dy: 1 },
+      { dx: 0, dy: 0 },
+    ]);
+
     sent.length = 0;
     dispatchKey(target, "keydown", { code: "KeyW", repeat: true });
     vi.advanceTimersByTime(50);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual([{ dx: 0, dy: 1 }]);
 
     stop();
   });

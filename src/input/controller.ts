@@ -24,6 +24,12 @@ export interface InputSink {
  * The controller binds to an `EventTarget` (typically `window`) supplied by
  * the caller. Tests dispatch synthesized events on a custom `EventTarget`,
  * which keeps the module unit-testable without a DOM.
+ *
+ * Held-set robustness: every `keydown` (including OS auto-repeat) refills
+ * `held` idempotently. A browser focus glitch or a Linux X11 keyboard
+ * delivering keyup-keydown pairs as auto-repeat could otherwise empty the
+ * set mid-hold and freeze the player until they released and re-pressed.
+ * Auto-repeats keep the OS's view of "key still down" flowing into us.
  */
 export class InputController {
   private readonly held = new Set<string>();
@@ -53,9 +59,16 @@ export class InputController {
 
     const down: EventListener = (e) => {
       const ke = e as KeyboardEvent;
-      if (ke.repeat) return;
       if (keyToDirection(ke.code) === undefined) return;
       if (SCROLL_KEY_CODES.has(ke.code)) ke.preventDefault();
+      // Add unconditionally — including OS auto-repeat (`ke.repeat`).
+      // `held` is a Set so re-adding is a no-op, and accepting auto-repeat
+      // events makes the state model robust against any cause that would
+      // briefly empty the set: a Linux X11 keyboard without XKB autorepeat
+      // detection delivers a fake `keyup` between auto-repeats, some
+      // browsers fire `keyup` on focus loss, etc. Whenever the OS still
+      // believes the key is held it keeps sending `keydown` — those events
+      // are positive evidence we should trust and refill `held` with.
       this.held.add(ke.code);
     };
     const up: EventListener = (e) => {
