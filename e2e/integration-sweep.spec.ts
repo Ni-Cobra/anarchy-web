@@ -196,15 +196,16 @@ test("place blocks B's path: B walks east into the new block and stops flush aga
 test("ghost gate + server agree: B on cell forbids place; B walks off, place lands", async ({
   browser,
 }) => {
-  // Both clients spawn at origin; the push lands A at (-r, 0), B at
-  // (+r, 0) where r = PLAYER_RADIUS = 0.35. B's circle (center (0.35, 0),
-  // radius 0.35) overlaps cell (0, 0) [0,1]×[0,1]: the nearest point on
-  // the cell to B's center is the center itself, distance 0 < r. A is
-  // tangent to the cell (nearest point (0, 0), distance r) and so does
-  // not block placement. The server must reject A's place; the client
-  // `canPlaceAt` gate must return false for the same reason. Once B
-  // walks east past x = 1 + r = 1.35, B's circle clears cell (0, 0) and
-  // both flip to allowed.
+  // Both clients spawn at origin and the pairwise-overlap pass pushes them
+  // apart along ±x. Per ADR 0005 the second "tester" admission is admitted
+  // as "tester2", so the two clients have distinct usernames and therefore
+  // distinct mass-band entries (`mass_for_username` is FNV-1a → [0.5, 2.0]).
+  // The push is mass-weighted, so we cannot assume A lands tangent to cell
+  // (0, 0) — A could end up at e.g. -0.28, whose circle would *overlap* the
+  // cell and pin the gate to false even after B walks away. To make the
+  // test mass-agnostic we explicitly walk A west to a known-safe position
+  // (x < -1) before checking the gate; A still has the cell well within
+  // REACH_BLOCKS (= 4) so the place attempt is otherwise legal.
   test.setTimeout(15_000);
   const cx = 0,
     cy = 0,
@@ -218,19 +219,32 @@ test("ghost gate + server agree: B on cell forbids place; B walks off, place lan
 
   try {
     await openClient(a);
-    await waitForSelfSpawn(a);
+    const meA = await waitForSelfSpawn(a);
     await openClient(b);
     const meB = await waitForSelfSpawn(b);
 
     // Wait for the post-push positions to be reflected in A's world so
-    // canPlaceAt's overlap check sees B at (+r, 0). r = PLAYER_RADIUS = 0.35.
+    // canPlaceAt's overlap check sees B somewhere in cell (0, 0).
     await a.waitForFunction(
       (peerId) => {
         const p = window.__anarchy?.world.getPlayer(peerId);
-        return p !== undefined && p.x > 0.3;
+        return p !== undefined && p.x > 0;
       },
       meB.id,
     );
+
+    // Walk A clearly off the cell (x < -1) so the only player whose AABB
+    // can overlap cell (0, 0) is B. Position is verified from A's own
+    // self-view to avoid mass-band asymmetry and snapshot interpolation.
+    await a.evaluate(() => window.__anarchy!.sendMoveIntent(-1, 0));
+    await a.waitForFunction(
+      (selfId) => {
+        const me = window.__anarchy?.world.getPlayer(selfId);
+        return me !== undefined && me.x < -1;
+      },
+      meA.id,
+    );
+    await a.evaluate(() => window.__anarchy!.sendMoveIntent(0, 0));
 
     await a.evaluate(() => window.__anarchy!.setBuilderMode(true));
 

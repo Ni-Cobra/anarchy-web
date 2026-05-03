@@ -133,10 +133,12 @@ test("clicking Disconnect in the side panel returns to the lobby and a fresh log
   await expect(page.locator("canvas")).toHaveCount(0);
   await expect(page.locator("#anarchy-side-panel-root")).toHaveCount(0);
 
-  // Use a fresh username so server-side session cleanup of the prior
-  // identity can't collide with the new admit; a same-name reconnect race
-  // is a known follow-up tracked separately.
-  await page.fill("#anarchy-username", "second");
+  // Reconnect under the same name as the prior session. Per ADR 0005 the
+  // server admits the new connection unconditionally — if the prior
+  // session's cleanup is still in flight the new player lands as `first2`,
+  // otherwise it lands as `first` again. Either way admission succeeds and
+  // the new id is distinct.
+  await page.fill("#anarchy-username", "first");
   await page.click("#anarchy-submit");
 
   // A new session spins up: handle reappears, side panel re-mounts, spawn
