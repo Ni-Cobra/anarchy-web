@@ -24,6 +24,7 @@ export enum BlockType {
   Wood = 2,
   Stone = 3,
   Gold = 4,
+  Tree = 5,
 }
 
 /**

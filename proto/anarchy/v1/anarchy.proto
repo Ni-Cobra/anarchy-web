@@ -227,6 +227,7 @@ enum BlockType {
   BLOCK_TYPE_WOOD = 2;
   BLOCK_TYPE_STONE = 3;
   BLOCK_TYPE_GOLD = 4;
+  BLOCK_TYPE_TREE = 5;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper

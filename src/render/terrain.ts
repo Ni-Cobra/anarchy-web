@@ -62,12 +62,12 @@ export function disposeTerrainMesh(
 // internal visual choices, not operator-tunable knobs) ----
 
 /**
- * Color for each block kind. Gold is the placeable kind today (builder
- * mode); the rest cover ground tiles + a future worldgen that puts other
- * kinds on top.
+ * Color for each block kind that renders as the default unit cube. `Tree`
+ * is intentionally absent — it gets its own trunk + canopy mesh below.
+ * Gold is the placeable kind today (builder mode); the rest cover ground
+ * tiles + worldgen-placed top blocks (Stone outcrops).
  */
-const BLOCK_COLOR: Record<BlockType, number> = {
-  [BlockType.Air]: 0x000000,
+const CUBE_BLOCK_COLOR: Partial<Record<BlockType, number>> = {
   [BlockType.Grass]: 0x4a8c2a,
   [BlockType.Stone]: 0x808080,
   [BlockType.Wood]: 0x8b5a2b,
@@ -88,14 +88,28 @@ const TOP_BOX_HEIGHT = 1.0;
 // the ground-slab top), centered at half-height above that surface.
 const TOP_BOX_Y = GROUND_Y + GROUND_THICKNESS / 2 + TOP_BOX_HEIGHT / 2;
 
+// Trees get a low-poly trunk + canopy. Authoritative collision still uses
+// the full unit cell on the server (top-layer Tree blocks the cell exactly
+// like any other top block); these dimensions are visual only.
+const TREE_TRUNK_WIDTH = 0.3;
+const TREE_TRUNK_HEIGHT = 0.55;
+const TREE_TRUNK_COLOR = 0x6b4423;
+const TREE_CANOPY_WIDTH = 0.95;
+const TREE_CANOPY_HEIGHT = 0.7;
+const TREE_CANOPY_COLOR = 0x2d6a2d;
+const TREE_TRUNK_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
+const TREE_TRUNK_Y = TREE_TRUNK_BOTTOM + TREE_TRUNK_HEIGHT / 2;
+// Canopy bottom sits a bit below the trunk top so the two visually merge.
+const TREE_CANOPY_Y =
+  TREE_TRUNK_BOTTOM + TREE_TRUNK_HEIGHT - TREE_CANOPY_HEIGHT * 0.25 + TREE_CANOPY_HEIGHT / 2;
+
 /**
  * Build a per-chunk sub-group named `chunk:cx,cy`. Exported so the renderer
  * can rebuild a single chunk on a `ChunkLoaded` event without throwing away
  * the rest of the terrain mesh.
  */
 export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Group {
-  // Per-chunk shared geometries + materials. One shape per layer role; one
-  // material per BlockType encountered. Sharing keeps the per-build
+  // Per-chunk shared geometries + materials. Sharing keeps the per-build
   // allocation count proportional to "kinds present" rather than "tiles" —
   // and the dedupe-on-dispose set in `disposeTerrainMesh` handles cleanup.
   const groundGeom = new THREE.BoxGeometry(1, GROUND_THICKNESS, 1);
@@ -104,11 +118,19 @@ export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Grou
   const materialFor = (kind: BlockType): THREE.Material => {
     let m = matCache.get(kind);
     if (!m) {
-      m = new THREE.MeshLambertMaterial({ color: BLOCK_COLOR[kind] });
+      const color = CUBE_BLOCK_COLOR[kind] ?? 0xff00ff;
+      m = new THREE.MeshLambertMaterial({ color });
       matCache.set(kind, m);
     }
     return m;
   };
+
+  // Tree-specific resources, allocated lazily so a chunk with no trees
+  // doesn't pay for them. `disposeTerrainMesh`'s dedupe handles cleanup.
+  let trunkGeom: THREE.BoxGeometry | null = null;
+  let canopyGeom: THREE.BoxGeometry | null = null;
+  let trunkMat: THREE.Material | null = null;
+  let canopyMat: THREE.Material | null = null;
 
   const group = new THREE.Group();
   group.name = `chunk:${cx},${cy}`;
@@ -123,9 +145,33 @@ export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Grou
         group.add(mesh);
       }
       const topBlock = getBlock(chunk.top, x, y);
-      if (topBlock.kind !== BlockType.Air) {
+      if (topBlock.kind === BlockType.Air) continue;
+      const scene = tileCenterToScene(cx, cy, x, y);
+      if (topBlock.kind === BlockType.Tree) {
+        if (!trunkGeom)
+          trunkGeom = new THREE.BoxGeometry(
+            TREE_TRUNK_WIDTH,
+            TREE_TRUNK_HEIGHT,
+            TREE_TRUNK_WIDTH,
+          );
+        if (!canopyGeom)
+          canopyGeom = new THREE.BoxGeometry(
+            TREE_CANOPY_WIDTH,
+            TREE_CANOPY_HEIGHT,
+            TREE_CANOPY_WIDTH,
+          );
+        if (!trunkMat)
+          trunkMat = new THREE.MeshLambertMaterial({ color: TREE_TRUNK_COLOR });
+        if (!canopyMat)
+          canopyMat = new THREE.MeshLambertMaterial({ color: TREE_CANOPY_COLOR });
+        const trunk = new THREE.Mesh(trunkGeom, trunkMat);
+        trunk.position.set(scene.x, TREE_TRUNK_Y, scene.z);
+        group.add(trunk);
+        const canopy = new THREE.Mesh(canopyGeom, canopyMat);
+        canopy.position.set(scene.x, TREE_CANOPY_Y, scene.z);
+        group.add(canopy);
+      } else {
         const mesh = new THREE.Mesh(topGeom, materialFor(topBlock.kind));
-        const scene = tileCenterToScene(cx, cy, x, y);
         mesh.position.set(scene.x, TOP_BOX_Y, scene.z);
         group.add(mesh);
       }
@@ -133,7 +179,8 @@ export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Grou
   }
 
   // If a chunk happened to be all-Air on both layers, drop the unused
-  // geometries so they don't leak. The material cache is empty in that case.
+  // shared geometries so they don't leak. Tree resources are only
+  // allocated on demand, so they don't need a fallback path.
   if (group.children.length === 0) {
     groundGeom.dispose();
     topGeom.dispose();
