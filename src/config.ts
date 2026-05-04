@@ -53,6 +53,16 @@ export const REMOTE_RENDER_DELAY_MS = 100;
  */
 export const CAMERA_HEIGHT = 14;
 
+/**
+ * Camera height in the debug zoom-out mode (toggled with `M`). Sized so a
+ * comfortable handful of `CHUNK_SIZE`-wide chunks fit on screen vertically
+ * — at 60° vertical FOV this is roughly `1.155 * H` world units, so a
+ * height of 80 covers ~5–6 chunks vertically and more than that
+ * horizontally on widescreen aspect ratios. The renderer also paints a
+ * faint chunk-border grid in this mode.
+ */
+export const ZOOM_OUT_CAMERA_HEIGHT = 80;
+
 // ---- Input ----
 
 /**

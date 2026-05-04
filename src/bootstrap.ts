@@ -212,6 +212,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   // does nothing; left-click always destroys (the two flows live on
   // separate buttons so they never conflict).
   let builderMode = false;
+  let zoomedOut = false;
   let cursorNdc: { x: number; y: number } | null = null;
 
   const canPlaceAt = (cx: number, cy: number, lx: number, ly: number): boolean =>
@@ -243,10 +244,17 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   teardowns.push(() => cancelAnimationFrame(ghostRafHandle));
 
   const onKeydown = (ev: KeyboardEvent): void => {
-    if (ev.code !== "KeyE") return;
     if (ev.repeat) return;
-    builderMode = !builderMode;
-    refreshGhost();
+    if (ev.code === "KeyE") {
+      builderMode = !builderMode;
+      refreshGhost();
+      return;
+    }
+    if (ev.code === "KeyM") {
+      zoomedOut = !zoomedOut;
+      renderer.setZoomedOut(zoomedOut);
+      return;
+    }
   };
   window.addEventListener("keydown", onKeydown);
   teardowns.push(() => window.removeEventListener("keydown", onKeydown));

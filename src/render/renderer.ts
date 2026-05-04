@@ -1,7 +1,8 @@
 import * as THREE from "three";
 
-import { CAMERA_HEIGHT, PLAYER_RADIUS } from "../config.js";
+import { CAMERA_HEIGHT, PLAYER_RADIUS, ZOOM_OUT_CAMERA_HEIGHT } from "../config.js";
 import {
+  CHUNK_SIZE,
   paletteColorHex,
   type PlayerId,
   type SnapshotBuffer,
@@ -80,6 +81,19 @@ const AXIS_HALF_LENGTH = 10000;
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
 const AXIS_Y_COLOR = 0x60a0ff;
+
+// Chunk-border debug overlay (only visible in zoom-out mode). The grid
+// covers a fixed bounded region in world coords — large enough that the
+// local player can't walk off the edge in a normal session — and uses a
+// single `LineSegments` mesh so the whole grid is one draw call regardless
+// of the line count. Y offset sits a hair above the world axis so the
+// grid doesn't z-fight with the axis lines on platforms that don't write
+// stable depth for line primitives.
+const CHUNK_GRID_HALF_CHUNKS = 64;
+const CHUNK_GRID_HALF = CHUNK_GRID_HALF_CHUNKS * CHUNK_SIZE;
+const CHUNK_GRID_Y_OFFSET = AXIS_Y_OFFSET + 0.005;
+const CHUNK_GRID_COLOR = 0xa0a0a0;
+const CHUNK_GRID_OPACITY = 0.35;
 
 // Builder-mode placement ghost: a semi-transparent unit-cube preview at the
 // targeted top-layer cell. Sized to match a real placed top-layer block
@@ -259,6 +273,8 @@ export class Renderer {
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
   private ghostMesh: THREE.Mesh | null = null;
+  private readonly chunkBorderGrid: THREE.LineSegments;
+  private zoomedOut = false;
   // Wall-clock timestamp of the last `frame()` call. `null` until the first
   // frame so we can flag the initial sync as "no smoothing" (an unknown
   // previous yaw makes the lerp meaningless until we have a real delta).
@@ -333,6 +349,10 @@ export class Renderer {
       this.scene.add(this.terrainGroup);
     }
 
+    this.chunkBorderGrid = buildChunkBorderGrid();
+    this.chunkBorderGrid.visible = false;
+    this.scene.add(this.chunkBorderGrid);
+
     this.webgl.setAnimationLoop(this.frame);
   }
 
@@ -352,6 +372,19 @@ export class Renderer {
 
   setTerrain(terrain: Terrain): void {
     this.terrain = terrain;
+  }
+
+  /**
+   * Debug zoom-out toggle (bound to `M` in `bootstrap.ts`). When on, the
+   * top-down camera floats at `ZOOM_OUT_CAMERA_HEIGHT` instead of
+   * `CAMERA_HEIGHT` and the chunk-border grid is shown. Instant snap; no
+   * animation. The grid is parked in the scene at construction time so
+   * toggling is just a `visible` flip — no allocation, no draw-call churn.
+   */
+  setZoomedOut(on: boolean): void {
+    if (this.zoomedOut === on) return;
+    this.zoomedOut = on;
+    this.chunkBorderGrid.visible = on;
   }
 
   /**
@@ -480,6 +513,9 @@ export class Renderer {
       (this.ghostMesh.material as THREE.Material).dispose();
       this.ghostMesh = null;
     }
+    this.scene.remove(this.chunkBorderGrid);
+    this.chunkBorderGrid.geometry.dispose();
+    (this.chunkBorderGrid.material as THREE.Material).dispose();
     this.webgl.dispose();
     this.webgl.domElement.remove();
   }
@@ -530,7 +566,8 @@ export class Renderer {
     const focus = local
       ? tileToScene(local.x, local.y)
       : new THREE.Vector3(0, 0, 0);
-    this.camera.position.set(focus.x, CAMERA_HEIGHT, focus.z);
+    const height = this.zoomedOut ? ZOOM_OUT_CAMERA_HEIGHT : CAMERA_HEIGHT;
+    this.camera.position.set(focus.x, height, focus.z);
     this.camera.lookAt(focus);
   }
 }
@@ -543,4 +580,30 @@ function buildAxisLine(
   const geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
   const material = new THREE.LineBasicMaterial({ color });
   return new THREE.Line(geometry, material);
+}
+
+/**
+ * Build a single `LineSegments` mesh holding every chunk-border line in a
+ * fixed bounded region around the world origin. World coords map to scene
+ * with `(+x_world, +y_world) → (+x_scene, -z_scene)` (mirroring
+ * `tileCenterToScene`), so a vertical world-space line at `world_x = k`
+ * becomes a constant-`scene_x` segment varying in scene Z.
+ */
+function buildChunkBorderGrid(): THREE.LineSegments {
+  const positions: number[] = [];
+  for (let i = -CHUNK_GRID_HALF_CHUNKS; i <= CHUNK_GRID_HALF_CHUNKS; i++) {
+    const k = i * CHUNK_SIZE;
+    positions.push(k, CHUNK_GRID_Y_OFFSET, -CHUNK_GRID_HALF);
+    positions.push(k, CHUNK_GRID_Y_OFFSET, CHUNK_GRID_HALF);
+    positions.push(-CHUNK_GRID_HALF, CHUNK_GRID_Y_OFFSET, -k);
+    positions.push(CHUNK_GRID_HALF, CHUNK_GRID_Y_OFFSET, -k);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({
+    color: CHUNK_GRID_COLOR,
+    transparent: true,
+    opacity: CHUNK_GRID_OPACITY,
+  });
+  return new THREE.LineSegments(geometry, material);
 }
