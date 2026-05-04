@@ -235,6 +235,8 @@ function blockTypeFromWire(
       return BlockType.Gold;
     case anarchy.v1.BlockType.BLOCK_TYPE_TREE:
       return BlockType.Tree;
+    case anarchy.v1.BlockType.BLOCK_TYPE_STICKS:
+      return BlockType.Sticks;
     case anarchy.v1.BlockType.BLOCK_TYPE_AIR:
     default:
       return BlockType.Air;
@@ -262,6 +264,8 @@ export function blockTypeToWire(kind: BlockType): anarchy.v1.BlockType {
       return anarchy.v1.BlockType.BLOCK_TYPE_GOLD;
     case BlockType.Tree:
       return anarchy.v1.BlockType.BLOCK_TYPE_TREE;
+    case BlockType.Sticks:
+      return anarchy.v1.BlockType.BLOCK_TYPE_STICKS;
   }
 }
 

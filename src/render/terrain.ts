@@ -103,6 +103,16 @@ const TREE_TRUNK_Y = TREE_TRUNK_BOTTOM + TREE_TRUNK_HEIGHT / 2;
 const TREE_CANOPY_Y =
   TREE_TRUNK_BOTTOM + TREE_TRUNK_HEIGHT - TREE_CANOPY_HEIGHT * 0.25 + TREE_CANOPY_HEIGHT / 2;
 
+// Sticks are a thin flat decal hugging the ground — no collision server-side,
+// so the visual is intentionally low-profile so trees + standing geometry
+// remain the dominant verticals in a felled grove. Slightly inset from the
+// full cell so adjacent sticks read as separate piles, and lifted just
+// above the ground slab so they don't z-fight with it.
+const STICKS_WIDTH = 0.7;
+const STICKS_THICKNESS = 0.06;
+const STICKS_COLOR = 0xa9774a;
+const STICKS_Y = GROUND_Y + GROUND_THICKNESS / 2 + STICKS_THICKNESS / 2;
+
 /**
  * Build a per-chunk sub-group named `chunk:cx,cy`. Exported so the renderer
  * can rebuild a single chunk on a `ChunkLoaded` event without throwing away
@@ -131,6 +141,10 @@ export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Grou
   let canopyGeom: THREE.BoxGeometry | null = null;
   let trunkMat: THREE.Material | null = null;
   let canopyMat: THREE.Material | null = null;
+
+  // Sticks-specific resources, allocated lazily for the same reason.
+  let sticksGeom: THREE.BoxGeometry | null = null;
+  let sticksMat: THREE.Material | null = null;
 
   const group = new THREE.Group();
   group.name = `chunk:${cx},${cy}`;
@@ -170,6 +184,14 @@ export function buildChunkMesh(cx: number, cy: number, chunk: Chunk): THREE.Grou
         const canopy = new THREE.Mesh(canopyGeom, canopyMat);
         canopy.position.set(scene.x, TREE_CANOPY_Y, scene.z);
         group.add(canopy);
+      } else if (topBlock.kind === BlockType.Sticks) {
+        if (!sticksGeom)
+          sticksGeom = new THREE.BoxGeometry(STICKS_WIDTH, STICKS_THICKNESS, STICKS_WIDTH);
+        if (!sticksMat)
+          sticksMat = new THREE.MeshLambertMaterial({ color: STICKS_COLOR });
+        const decal = new THREE.Mesh(sticksGeom, sticksMat);
+        decal.position.set(scene.x, STICKS_Y, scene.z);
+        group.add(decal);
       } else {
         const mesh = new THREE.Mesh(topGeom, materialFor(topBlock.kind));
         mesh.position.set(scene.x, TOP_BOX_Y, scene.z);
