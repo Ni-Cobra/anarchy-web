@@ -29,6 +29,7 @@ import {
   blockTypeToWire,
   connect,
   type LobbyIdentity,
+  type LobbyRejectReason,
 } from "./net/index.js";
 import { Renderer } from "./render/index.js";
 import { mountSidePanel, type SidePanelAction } from "./ui/index.js";
@@ -63,6 +64,15 @@ export interface AnarchyHandle {
   canPlaceAt: (cx: number, cy: number, lx: number, ly: number) => boolean;
   stop: () => void;
   readonly stopped: Promise<void>;
+  /**
+   * Resolves with a `LobbyRejectReason` if the server rejected the
+   * lobby Hello (today: only the reconnect-flagged path can produce a
+   * reject), or `null` if the session ended normally / via `stop()` /
+   * via socket close. The lifecycle loop in `runApp` waits on this to
+   * decide whether to re-show the lobby with a server-side error
+   * message above the form.
+   */
+  readonly lobbyReject: Promise<LobbyRejectReason | null>;
 }
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
@@ -80,6 +90,10 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   const stopped = new Promise<void>((r) => {
     resolveStopped = r;
   });
+  let resolveLobbyReject!: (reason: LobbyRejectReason | null) => void;
+  const lobbyReject = new Promise<LobbyRejectReason | null>((r) => {
+    resolveLobbyReject = r;
+  });
   const stop = (): void => {
     if (stopping) return;
     stopping = true;
@@ -91,6 +105,10 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
         console.error("[disconnect] teardown failed", err);
       }
     }
+    // If the server never sent a LobbyReject the promise has nothing to
+    // carry — resolve with null so the lifecycle loop knows the
+    // disconnect was a normal one.
+    resolveLobbyReject(null);
     resolveStopped();
   };
 
@@ -123,24 +141,38 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   // expects a monotonic counter and may surface it again later.
   let actionSeq = 0;
 
-  const conn = connect("ws://localhost:8080/ws", identity, (msg) => {
-    applyServerMessage(msg, {
-      world,
-      buffer,
-      terrain,
-      terrainSink: {
-        onChunkLoaded: (cx, cy) => renderer.applyChunkLoaded(cx, cy),
-        onChunkUnloaded: (cx, cy) => renderer.applyChunkUnloaded(cx, cy),
-      },
-      local: {
-        setLocalPlayerId: (id) => {
-          localPlayerId = id;
-          renderer.setLocalPlayerId(id);
+  const conn = connect(
+    "ws://localhost:8080/ws",
+    identity,
+    (msg) => {
+      applyServerMessage(msg, {
+        world,
+        buffer,
+        terrain,
+        terrainSink: {
+          onChunkLoaded: (cx, cy) => renderer.applyChunkLoaded(cx, cy),
+          onChunkUnloaded: (cx, cy) => renderer.applyChunkUnloaded(cx, cy),
         },
-        getLocalPlayerId: () => localPlayerId,
+        local: {
+          setLocalPlayerId: (id) => {
+            localPlayerId = id;
+            renderer.setLocalPlayerId(id);
+          },
+          getLocalPlayerId: () => localPlayerId,
+        },
+      });
+    },
+    {
+      onLobbyReject: (reason) => {
+        // Server rejected the Hello (only the reconnect-flagged path can
+        // produce a reject today). Surface the reason to the lifecycle
+        // loop *before* the teardown swallows it as a generic stop, then
+        // fall through to `stop()` so the socket / listeners unwind.
+        resolveLobbyReject(reason);
+        stop();
       },
-    });
-  });
+    },
+  );
   teardowns.push(() => conn.close());
 
   function sendMoveIntent(dx: number, dy: number): void {
@@ -296,6 +328,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     canPlaceAt,
     stop,
     stopped,
+    lobbyReject,
   };
 }
 
@@ -305,18 +338,40 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
  * Disconnect, then return to the lobby. `window.__anarchy` always points
  * at the *current* live session — set on each spawn, cleared on
  * Disconnect — so Playwright's test handle keeps working across cycles.
+ *
+ * If the server replied to the Hello with a `LobbyReject` (today: only
+ * the reconnect-flagged path can fail this way), the lobby is re-shown
+ * with the reason rendered above the form and the user's prior inputs
+ * pre-filled so they can fix the choice (uncheck reconnect, type a
+ * different username) without retyping everything.
  */
 export async function runApp(initial: LobbyIdentity | null): Promise<void> {
   let identity = initial;
+  let pendingReject: { reason: LobbyRejectReason; identity: LobbyIdentity } | null =
+    null;
   for (;;) {
     if (identity === null) {
-      const { showLobby } = await import("./lobby.js");
-      identity = await showLobby();
+      const { showLobby, lobbyRejectMessage } = await import("./lobby.js");
+      const defaults = pendingReject
+        ? {
+            username: pendingReject.identity.username,
+            colorIndex: pendingReject.identity.colorIndex,
+            reconnect: pendingReject.identity.reconnect,
+            rejectMessage: lobbyRejectMessage(pendingReject.reason),
+          }
+        : {};
+      identity = await showLobby(defaults);
+      pendingReject = null;
     }
     const handle = runMain(identity);
     window.__anarchy = handle;
+    const sessionIdentity = identity;
     await handle.stopped;
+    const reason = await handle.lobbyReject;
     window.__anarchy = undefined;
+    if (reason !== null) {
+      pendingReject = { reason, identity: sessionIdentity };
+    }
     identity = null;
   }
 }

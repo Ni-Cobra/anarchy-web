@@ -148,7 +148,12 @@ function decodeTickUpdate(data: Uint8Array): DecodedTick | null {
   };
 }
 
-async function readWelcomePlayerId(s: Socket): Promise<number> {
+async function readWelcomePlayerId(
+  s: Socket,
+  username = "tester",
+  colorIndex = 0,
+): Promise<number> {
+  await sendHello(s, username, colorIndex);
   const frame = (await s.next((f) => {
     if (f.kind !== "msg") return false;
     const m = ServerMessage.decode(f.data).toJSON() as { welcome?: unknown };
@@ -157,16 +162,20 @@ async function readWelcomePlayerId(s: Socket): Promise<number> {
   const msg = ServerMessage.decode(frame.data).toJSON() as {
     welcome?: { playerId?: string | number };
   };
-  await sendHello(s);
   return Number(msg.welcome!.playerId);
 }
 
 let helloSeq = 100;
-async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+async function sendHello(
+  s: Socket,
+  username = "tester",
+  colorIndex = 0,
+  reconnect = false,
+): Promise<void> {
   const bytes = ClientMessage.encode(
     ClientMessage.create({
       seq: helloSeq++,
-      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex, reconnect },
     }),
   ).finish();
   s.ws.send(bytes);

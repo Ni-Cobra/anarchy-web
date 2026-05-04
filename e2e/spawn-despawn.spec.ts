@@ -74,7 +74,16 @@ interface DecodedWelcome {
   playerId: number;
 }
 
-async function readWelcome(s: Socket): Promise<DecodedWelcome> {
+async function readWelcome(
+  s: Socket,
+  username = "tester",
+  colorIndex = 0,
+): Promise<DecodedWelcome> {
+  // The server defers `ServerWelcome` until after a valid `ClientHello`
+  // arrives — admission outcome (fresh allocation vs. reconnect to a
+  // dormant id) shapes the welcome's `player_id`. Send Hello first, then
+  // await the welcome.
+  await sendHello(s, username, colorIndex);
   const frame = (await s.next((f) => {
     if (f.kind !== "msg") return false;
     const m = ServerMessage.decode(f.data).toJSON() as { welcome?: unknown };
@@ -83,19 +92,20 @@ async function readWelcome(s: Socket): Promise<DecodedWelcome> {
   const msg = ServerMessage.decode(frame.data).toJSON() as {
     welcome?: { playerId?: string | number };
   };
-  // The lobby gate requires a valid `ClientHello` before the server admits
-  // the player to the world. Send one immediately on every readWelcome so
-  // tests can proceed as if admission were implicit.
-  await sendHello(s);
   return { playerId: Number(msg.welcome!.playerId) };
 }
 
 let helloSeq = 100;
-async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+async function sendHello(
+  s: Socket,
+  username = "tester",
+  colorIndex = 0,
+  reconnect = false,
+): Promise<void> {
   const bytes = ClientMessage.encode(
     ClientMessage.create({
       seq: helloSeq++,
-      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex, reconnect },
     }),
   ).finish();
   s.ws.send(bytes);

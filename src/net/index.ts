@@ -7,5 +7,9 @@
  * it's the boundary where protobuf types stay confined.
  */
 export { connect } from "./connection.js";
-export type { LobbyIdentity } from "./connection.js";
+export type {
+  LobbyIdentity,
+  LobbyRejectReason,
+  ConnectHooks,
+} from "./connection.js";
 export { applyServerMessage, blockTypeToWire } from "./wire.js";

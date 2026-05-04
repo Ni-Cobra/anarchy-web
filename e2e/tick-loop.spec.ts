@@ -78,7 +78,12 @@ interface DecodedWelcome {
   viewRadiusChunks: number;
 }
 
-async function readWelcome(s: Socket): Promise<DecodedWelcome> {
+async function readWelcome(
+  s: Socket,
+  username = "tester",
+  colorIndex = 0,
+): Promise<DecodedWelcome> {
+  await sendHello(s, username, colorIndex);
   const frame = (await s.next((f) => {
     if (f.kind !== "msg") return false;
     const m = ServerMessage.decode(f.data).toJSON() as { welcome?: unknown };
@@ -92,7 +97,6 @@ async function readWelcome(s: Socket): Promise<DecodedWelcome> {
     };
   };
   if (!msg.welcome) throw new Error("first frame was not a Welcome");
-  await sendHello(s);
   return {
     playerId: Number(msg.welcome.playerId),
     tickRateHz: Number(msg.welcome.tickRateHz ?? 0),
@@ -101,11 +105,16 @@ async function readWelcome(s: Socket): Promise<DecodedWelcome> {
 }
 
 let helloSeq = 100;
-async function sendHello(s: Socket, username = "tester", colorIndex = 0): Promise<void> {
+async function sendHello(
+  s: Socket,
+  username = "tester",
+  colorIndex = 0,
+  reconnect = false,
+): Promise<void> {
   const bytes = ClientMessage.encode(
     ClientMessage.create({
       seq: helloSeq++,
-      hello: { clientVersion: "anarchy-e2e", username, colorIndex },
+      hello: { clientVersion: "anarchy-e2e", username, colorIndex, reconnect },
     }),
   ).finish();
   s.ws.send(bytes);

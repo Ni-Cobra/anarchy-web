@@ -65,7 +65,19 @@ async function openSocket(timeoutMs = 5_000): Promise<{
 test("Ping → Pong roundtrip echoes client_time_ms", async () => {
   const { ws, next } = await openSocket();
 
-  // Drain the unsolicited Welcome.
+  // The server defers Welcome until after a valid `ClientHello` lands.
+  // Send Hello so admission completes, then drain the Welcome.
+  const hello = ClientMessage.encode(
+    ClientMessage.create({
+      seq: 100,
+      hello: {
+        clientVersion: "anarchy-e2e",
+        username: "heartbeat",
+        colorIndex: 0,
+      },
+    }),
+  ).finish();
+  ws.send(hello);
   await next((f) => f.kind === "msg");
 
   const clientTimeMs = 1234567;
@@ -92,12 +104,13 @@ test("Ping → Pong roundtrip echoes client_time_ms", async () => {
 });
 
 test("server disconnects an idle client after the recv timeout", async () => {
-  // Server idle timeout is 15s; allow some slack for scheduling.
+  // Server idle timeout is 15s; allow some slack for scheduling. We
+  // intentionally never send a Hello — the pre-Hello idle timeout fires
+  // on the same `RECV_IDLE_TIMEOUT` so the close still arrives within
+  // the same window even before admission completes.
   test.setTimeout(25_000);
 
   const { ws, next } = await openSocket();
-  // Drain the Welcome but then send nothing, ever.
-  await next((f) => f.kind === "msg");
 
   const closeFrame = (await next((f) => f.kind === "close", 22_000)) as Extract<
     Frame,

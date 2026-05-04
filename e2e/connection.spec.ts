@@ -69,8 +69,24 @@ test("websocket endpoint accepts a connection", async () => {
   ws.close();
 });
 
-test("server sends a ServerWelcome with assigned player id and view radius", async () => {
+test("server sends a ServerWelcome with assigned player id and view radius after Hello", async () => {
   const { ws, next } = await openSocket();
+
+  // The server defers Welcome until after admission — the lobby phase
+  // gates the welcome on a valid ClientHello so the assigned `player_id`
+  // can reflect either fresh allocation (this case) or a recycled
+  // dormant id (reconnect path).
+  const hello = ClientMessage.encode(
+    ClientMessage.create({
+      seq: 1,
+      hello: {
+        clientVersion: "anarchy-client/e2e",
+        username: "welcome-test",
+        colorIndex: 0,
+      },
+    }),
+  ).finish();
+  ws.send(hello);
 
   const frame = (await next((f) => f.kind === "msg")) as Extract<Frame, { kind: "msg" }>;
   const msg = ServerMessage.decode(frame.data).toJSON() as {
@@ -98,8 +114,6 @@ test("server sends a ServerWelcome with assigned player id and view radius", asy
 test("Hello → Action → Ping: connection survives a multi-message handshake", async () => {
   const { ws, next, frames } = await openSocket();
 
-  await next((f) => f.kind === "msg");
-
   const hello = ClientMessage.encode(
     ClientMessage.create({
       seq: 1,
@@ -111,6 +125,15 @@ test("Hello → Action → Ping: connection survives a multi-message handshake",
     }),
   ).finish();
   ws.send(hello);
+
+  // Welcome is deferred until after admission completes — wait for it
+  // before sending steady-state frames so this test pins the new
+  // server ordering explicitly.
+  await next((f) => {
+    if (f.kind !== "msg") return false;
+    const m = ServerMessage.decode(f.data).toJSON() as { welcome?: unknown };
+    return m.welcome !== undefined;
+  });
 
   const action = ClientMessage.encode(
     ClientMessage.create({
