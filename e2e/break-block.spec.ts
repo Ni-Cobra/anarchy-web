@@ -82,18 +82,19 @@ async function waitForTopBlockKind(
   );
 }
 
-test("destroy: A clicks → block disappears for both A and B on the next tick", async ({
+test("held break: A holds → Wood breaks after ~10 ticks for both A and B", async ({
   browser,
 }) => {
-  // Seed BEFORE either client connects so both clients' first TickUpdate
-  // already carries the block (avoids racing the chunk-dirty machinery
-  // against late connects).
+  // Held-break flow (ADR 0006). Seed a Wood block (max durability = 10);
+  // Player A sends a `BreakIntent` and the server damages the block one
+  // dur/tick until it breaks. At 20 Hz this is ~500 ms wall-clock; we
+  // wait up to 5 s to absorb scheduler jitter.
   //
   // Block at world tile (1, 0) — chunk (0, 0) local (1, 0). With two
-  // clients spawning at origin the circle-circle push shoves the lower-id
-  // player to (-0.35, 0) on the first joint tick, so the chosen block
-  // must stay in reach from there: distance from (-0.35, 0) to tile
-  // center (1.5, 0.5) is √(1.85² + 0.5²) ≈ 1.92 — comfortably under 4.0.
+  // clients spawning at origin the circle-circle push shoves the
+  // lower-id player to (-0.35, 0) on the first joint tick, so the chosen
+  // block must stay in reach from there: distance from (-0.35, 0) to
+  // tile center (1.5, 0.5) is √(1.85² + 0.5²) ≈ 1.92 — under 4.0.
   await seedTopBlock(0, 0, 1, 0, "wood");
 
   const ctxA = await browser.newContext();
@@ -107,19 +108,25 @@ test("destroy: A clicks → block disappears for both A and B on the next tick",
     await openClient(b);
     await waitForSelfSpawn(b);
 
-    // Both clients must see the seeded Wood block before the destroy.
+    // Both clients must see the seeded Wood block before the held break.
     await waitForTopBlockKind(a, 0, 0, 1, 0, "Wood");
     await waitForTopBlockKind(b, 0, 0, 1, 0, "Wood");
 
-    // A sends BreakBlock for the cell. (We bypass the mousedown handler
-    // because the picker is camera/cursor-driven and would require careful
-    // coordinate setup; the wire-level handle does the same thing.)
-    await a.evaluate(() => window.__anarchy!.sendBreakBlock(0, 0, 1, 0));
+    // A starts the held break by sending a `BreakIntent` carrying the
+    // target. (We bypass the mousedown handler because the picker is
+    // camera/cursor-driven and would require careful coordinate setup;
+    // the wire-level handle does the same thing.) The server damages
+    // the block one dur/tick until it breaks.
+    await a.evaluate(() =>
+      window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 1, ly: 0 }),
+    );
 
-    // After one tick the chunk should ship as full-state with the cell
-    // cleared. Both clients should see Air at (0, 0)/(1, 0).
+    // After ~10 ticks (~500 ms) the cell is cleared; both clients see it.
     await waitForTopBlockKind(a, 0, 0, 1, 0, "Air");
     await waitForTopBlockKind(b, 0, 0, 1, 0, "Air");
+
+    // Release the held break (cosmetic — block is already gone).
+    await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
   } finally {
     await ctxA.close();
     await ctxB.close();
@@ -129,14 +136,13 @@ test("destroy: A clicks → block disappears for both A and B on the next tick",
   }
 });
 
-test("destroy: server silently drops out-of-reach BreakBlock", async ({
+test("held break: out-of-reach intent never breaks the target", async ({
   browser,
 }) => {
   // Seed a block well outside REACH_BLOCKS = 4 from origin but inside chunk
-  // (0, 0) so it's always loaded (view-radius and the four startup defaults
-  // both keep this chunk loaded regardless of which clients are around).
-  // World tile (10, 0) center (10.5, 0.5) → distance ≈ 10 from any
-  // post-push player position (worst case ±PLAYER_RADIUS). Way outside reach.
+  // (0, 0) so it's always loaded. The player sends a `BreakIntent`, but the
+  // server's per-tick durability sweep checks reach against the post-tick
+  // position and drops the damage every tick.
   await seedTopBlock(0, 0, 10, 0, "wood");
 
   const ctxA = await browser.newContext();
@@ -153,20 +159,65 @@ test("destroy: server silently drops out-of-reach BreakBlock", async ({
     await waitForTopBlockKind(a, 0, 0, 10, 0, "Wood");
     await waitForTopBlockKind(b, 0, 0, 10, 0, "Wood");
 
-    // A sends BreakBlock for the out-of-reach cell. Server validates against
-    // A's authoritative position (still ≈ origin) and silently drops it.
-    await a.evaluate(() => window.__anarchy!.sendBreakBlock(0, 0, 10, 0));
+    // A holds break on the out-of-reach cell. Server stores the intent but
+    // every tick's reach check fails → no damage applied.
+    await a.evaluate(() =>
+      window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 10, ly: 0 }),
+    );
 
-    // Give the server several tick cycles — way more than enough for any
-    // mutation to propagate. The block must still be present.
-    await a.waitForTimeout(500);
+    // Wait long enough that an in-reach Wood would have broken many times
+    // over (Wood = 10 ticks, so 1.5 s ≈ 30 ticks). Cell must still be Wood.
+    await a.waitForTimeout(1500);
     await waitForTopBlockKind(a, 0, 0, 10, 0, "Wood");
     await waitForTopBlockKind(b, 0, 0, 10, 0, "Wood");
+    await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
   } finally {
     await ctxA.close();
     await ctxB.close();
     // The server is reused across tests; clear the seeded block so it
     // doesn't perturb later specs that move clients through chunk (0, 0).
     await seedTopBlock(0, 0, 10, 0, "air").catch(() => {});
+  }
+});
+
+test("held break: release mid-break recovers the partial damage", async ({
+  browser,
+}) => {
+  // Pin the recovery semantics from ADR 0006: damage Stone (max = 30) for
+  // ~5 ticks, release, wait for the untouched-delay window + ramp, then
+  // hold again — the block must take a fresh ~30 ticks to break, proving
+  // the prior damage was healed.
+  await seedTopBlock(0, 0, 1, 0, "stone");
+
+  const ctxA = await browser.newContext();
+  const a = await ctxA.newPage();
+
+  try {
+    await openClient(a);
+    await waitForSelfSpawn(a);
+    await waitForTopBlockKind(a, 0, 0, 1, 0, "Stone");
+
+    // Hold for ~250 ms (≈ 5 ticks) → release → wait for full recovery
+    // (UNTOUCHED_DELAY_TICKS=20 + ramp 5 ticks back to max ≈ 1.25 s).
+    await a.evaluate(() =>
+      window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 1, ly: 0 }),
+    );
+    await a.waitForTimeout(250);
+    await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
+    await a.waitForTimeout(1500);
+
+    // Restart the hold: full Stone (30 ticks) takes ~1.5 s. Cell must
+    // still be Stone after 1.0 s of fresh hold (only ~20 ticks elapsed).
+    await a.evaluate(() =>
+      window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 1, ly: 0 }),
+    );
+    await a.waitForTimeout(1000);
+    await waitForTopBlockKind(a, 0, 0, 1, 0, "Stone");
+    // Extra ~1 s should finish the break.
+    await waitForTopBlockKind(a, 0, 0, 1, 0, "Air");
+    await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
+  } finally {
+    await ctxA.close();
+    await seedTopBlock(0, 0, 1, 0, "air").catch(() => {});
   }
 });

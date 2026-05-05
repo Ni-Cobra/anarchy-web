@@ -68,14 +68,20 @@ test("place from selected slot decrements inventory; break replenishes it", asyn
       () => window.__anarchy!.inventory.countOf(4) === 9,
     );
 
-    // Now break it; the drop comes back into the inventory.
+    // Now break it via the held-break flow (ADR 0006). Gold has max
+    // durability 50, so this takes ~50 ticks (~2.5 s). Send the break
+    // intent and wait for the drop to land in inventory; release once
+    // it's done so the heartbeat doesn't keep firing post-break.
     await page.evaluate((coords) => {
       const [cx, cy, lx, ly] = coords;
-      window.__anarchy!.sendBreakBlock(cx, cy, lx, ly);
+      window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
     }, [cx, cy, lx, ly] as const);
     await page.waitForFunction(
       () => window.__anarchy!.inventory.countOf(4) === 10,
+      undefined,
+      { timeout: 5000 },
     );
+    await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
   } finally {
     await clearTopBlock(cx, cy, lx, ly);
   }

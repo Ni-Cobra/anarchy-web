@@ -15,7 +15,7 @@
  * `main.ts` reads at a glance.
  */
 
-import { REACH_BLOCKS } from "./config.js";
+import { BREAK_HEARTBEAT_TICKS, INPUT_TICK_INTERVAL_MS, REACH_BLOCKS } from "./config.js";
 import {
   CHUNK_SIZE,
   HOTBAR_SLOTS,
@@ -61,7 +61,17 @@ export interface AnarchyHandle {
   inventory: Inventory;
   getLocalPlayerId: () => number | null;
   sendMoveIntent: (dx: number, dy: number) => void;
-  sendBreakBlock: (cx: number, cy: number, lx: number, ly: number) => void;
+  /**
+   * Held-break wire surface (ADR 0006). Pass a `BreakTarget` to start /
+   * retarget the held break — server damages the cell `BREAK_DAMAGE_PER_TICK`
+   * per tick until durability hits zero — or `null` to release. Client-side
+   * latched state owns the heartbeat resend and the on-mouseup release; tests
+   * call this directly to drive the wire round-trip without simulating
+   * mousedown/up.
+   */
+  sendBreakIntent: (
+    target: { cx: number; cy: number; lx: number; ly: number } | null,
+  ) => void;
   /**
    * Send a place-block action. The placed kind is now decided
    * authoritatively by the server from the player's selected hotbar slot
@@ -200,8 +210,24 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     conn.send({ action: { moveIntent: { dx, dy }, clientSeq: seq } });
   }
 
-  function sendBreakBlock(cx: number, cy: number, lx: number, ly: number): void {
-    conn.send({ breakBlock: { chunkCoord: { cx, cy }, localX: lx, localY: ly } });
+  function sendBreakIntent(
+    target: { cx: number; cy: number; lx: number; ly: number } | null,
+  ): void {
+    const seq = ++actionSeq;
+    if (target === null) {
+      conn.send({ breakIntent: { clientSeq: seq } });
+    } else {
+      conn.send({
+        breakIntent: {
+          target: {
+            chunkCoord: { cx: target.cx, cy: target.cy },
+            localX: target.lx,
+            localY: target.ly,
+          },
+          clientSeq: seq,
+        },
+      });
+    }
   }
 
   function sendPlaceBlock(cx: number, cy: number, lx: number, ly: number): void {
@@ -293,37 +319,142 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   window.addEventListener("mousemove", onMousemove);
   teardowns.push(() => window.removeEventListener("mousemove", onMousemove));
 
-  const onMousedown = (ev: MouseEvent): void => {
-    if (localPlayerId === null) return;
-    if (ev.button !== 0 && ev.button !== 2) return;
+  // Held-break state (ADR 0006). While left-mouse is held we keep the
+  // server's per-player `break_intent` synced with whatever tile the
+  // cursor points at, plus a heartbeat resend every
+  // `BREAK_HEARTBEAT_TICKS * INPUT_TICK_INTERVAL_MS` ms so a dropped
+  // frame can't strand the held break with a stale view of the intent.
+  let breakHeld = false;
+  let lastBreakTarget:
+    | { cx: number; cy: number; lx: number; ly: number }
+    | null = null;
+  let breakHeartbeat: ReturnType<typeof setInterval> | null = null;
+
+  function pickBreakTargetAt(
+    clientX: number,
+    clientY: number,
+  ): { cx: number; cy: number; lx: number; ly: number } | null {
+    if (localPlayerId === null) return null;
+    const me = world.getPlayer(localPlayerId);
+    if (!me) return null;
     const ndc = {
-      x: (ev.clientX / window.innerWidth) * 2 - 1,
-      y: -(ev.clientY / window.innerHeight) * 2 + 1,
+      x: (clientX / window.innerWidth) * 2 - 1,
+      y: -(clientY / window.innerHeight) * 2 + 1,
     };
     const pick = renderer.pickAtCursor(ndc);
-    if (!pick) return;
-    const me = world.getPlayer(localPlayerId);
-    if (!me) return;
+    if (!pick) return null;
+    if (pick.layer !== "top") return null;
     const [cx, cy] = pick.chunkCoord;
     const [lx, ly] = pick.localXY;
     const tileCenterX = cx * CHUNK_SIZE + lx + 0.5;
     const tileCenterY = cy * CHUNK_SIZE + ly + 0.5;
     const dx = tileCenterX - me.x;
     const dy = tileCenterY - me.y;
-    if (dx * dx + dy * dy > REACH_BLOCKS_SQ) return;
-    if (ev.button === 0) {
-      // Left-click → destroy the top-layer block under the cursor.
-      if (pick.layer !== "top") return;
-      sendBreakBlock(cx, cy, lx, ly);
-    } else {
-      // Right-click → place the selected hotbar slot's block on the
-      // ground tile under the cursor. Server validates that the cell is
-      // currently Air on the top layer + everything else.
-      sendPlaceBlock(cx, cy, lx, ly);
+    if (dx * dx + dy * dy > REACH_BLOCKS_SQ) return null;
+    return { cx, cy, lx, ly };
+  }
+
+  function targetsEqual(
+    a: { cx: number; cy: number; lx: number; ly: number } | null,
+    b: { cx: number; cy: number; lx: number; ly: number } | null,
+  ): boolean {
+    if (a === null) return b === null;
+    if (b === null) return false;
+    return a.cx === b.cx && a.cy === b.cy && a.lx === b.lx && a.ly === b.ly;
+  }
+
+  function startBreakHeartbeat(): void {
+    if (breakHeartbeat !== null) return;
+    breakHeartbeat = setInterval(() => {
+      if (!breakHeld) return;
+      sendBreakIntent(lastBreakTarget);
+    }, BREAK_HEARTBEAT_TICKS * INPUT_TICK_INTERVAL_MS);
+  }
+
+  function stopBreakHeartbeat(): void {
+    if (breakHeartbeat === null) return;
+    clearInterval(breakHeartbeat);
+    breakHeartbeat = null;
+  }
+  teardowns.push(stopBreakHeartbeat);
+
+  function endHeldBreak(): void {
+    if (!breakHeld) return;
+    breakHeld = false;
+    stopBreakHeartbeat();
+    if (lastBreakTarget !== null) {
+      sendBreakIntent(null);
+      lastBreakTarget = null;
     }
+  }
+
+  const onMousedown = (ev: MouseEvent): void => {
+    if (localPlayerId === null) return;
+    if (ev.button !== 0 && ev.button !== 2) return;
+    if (ev.button === 0) {
+      // Left-click → start the held-break. The cursor's current top-tile
+      // pick (if any, in reach) becomes the initial target. If the
+      // cursor isn't over a valid target the held state still starts —
+      // mousemove updates the target as the cursor scans across the
+      // world; mouseup releases regardless.
+      breakHeld = true;
+      lastBreakTarget = pickBreakTargetAt(ev.clientX, ev.clientY);
+      sendBreakIntent(lastBreakTarget);
+      startBreakHeartbeat();
+      return;
+    }
+    // Right-click → place the selected hotbar slot's block on the tile
+    // under the cursor. Server validates reach + top-Air + slot kind.
+    const place = pickBreakTargetAt(ev.clientX, ev.clientY);
+    if (place === null) {
+      // Place's reach gate uses the same predicate; if the cursor isn't
+      // on a valid in-reach top tile, the click is silently dropped.
+      const ndc = {
+        x: (ev.clientX / window.innerWidth) * 2 - 1,
+        y: -(ev.clientY / window.innerHeight) * 2 + 1,
+      };
+      const pick = renderer.pickAtCursor(ndc);
+      if (!pick) return;
+      const me = world.getPlayer(localPlayerId);
+      if (!me) return;
+      const [cx, cy] = pick.chunkCoord;
+      const [lx, ly] = pick.localXY;
+      const tileCenterX = cx * CHUNK_SIZE + lx + 0.5;
+      const tileCenterY = cy * CHUNK_SIZE + ly + 0.5;
+      const dx = tileCenterX - me.x;
+      const dy = tileCenterY - me.y;
+      if (dx * dx + dy * dy > REACH_BLOCKS_SQ) return;
+      sendPlaceBlock(cx, cy, lx, ly);
+      return;
+    }
+    sendPlaceBlock(place.cx, place.cy, place.lx, place.ly);
   };
   window.addEventListener("mousedown", onMousedown);
   teardowns.push(() => window.removeEventListener("mousedown", onMousedown));
+
+  const onMouseup = (ev: MouseEvent): void => {
+    if (ev.button !== 0) return;
+    endHeldBreak();
+  };
+  window.addEventListener("mouseup", onMouseup);
+  teardowns.push(() => window.removeEventListener("mouseup", onMouseup));
+
+  // While the break is held, every cursor sample re-picks the current
+  // top-layer tile under the cursor. If the target tile has changed (or
+  // we've moved off any valid target), ship a fresh intent so the server
+  // updates `Player::break_intent` immediately rather than waiting for
+  // the next heartbeat.
+  const onMouseMoveBreakRetarget = (ev: MouseEvent): void => {
+    if (!breakHeld) return;
+    const next = pickBreakTargetAt(ev.clientX, ev.clientY);
+    if (targetsEqual(next, lastBreakTarget)) return;
+    lastBreakTarget = next;
+    sendBreakIntent(lastBreakTarget);
+  };
+  window.addEventListener("mousemove", onMouseMoveBreakRetarget);
+  teardowns.push(() =>
+    window.removeEventListener("mousemove", onMouseMoveBreakRetarget),
+  );
 
   // Suppress the browser's right-click context menu so right-click can
   // drive place-block without tearing the player out of the game.
@@ -346,7 +477,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     inventory,
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,
-    sendBreakBlock,
+    sendBreakIntent,
     sendPlaceBlock,
     sendSelectSlot,
     sendMoveSlot,

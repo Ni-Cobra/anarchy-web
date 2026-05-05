@@ -78,6 +78,16 @@ export const INPUT_TICK_INTERVAL_MS = 50;
  */
 export const INPUT_HEARTBEAT_TICKS = 10;
 
+/**
+ * Held-break keep-alive cadence (ADR 0006 §10). While the player holds the
+ * break action, re-send the current `BreakIntent` every N input ticks even
+ * if the target hasn't changed, so a dropped frame can't strand a held
+ * break with a stale server-side intent. The server's per-conn frame
+ * budget (`INBOUND_FRAMES_PER_SECOND = 60`) easily absorbs this; 10 input
+ * ticks ≈ 500 ms.
+ */
+export const BREAK_HEARTBEAT_TICKS = 10;
+
 // ---- Network ----
 
 /**

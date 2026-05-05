@@ -20,7 +20,7 @@ message ClientMessage {
     ClientHello hello = 10;
     Ping ping = 11;
     ClientAction action = 20;
-    BreakBlock break_block = 21;
+    BreakIntent break_intent = 21;
     PlaceBlock place_block = 22;
     SelectSlot select_slot = 23;
     MoveSlot move_slot = 24;
@@ -133,18 +133,40 @@ message MoveIntent {
   double dy = 2;
 }
 
-// Client→server intent to destroy the top-layer block at the given cell.
-// The server validates the player exists, the targeted cell holds a non-Air
-// top-layer block, and the player's authoritative position is within reach
-// (see `crate::config::REACH_BLOCKS` — Euclidean distance from player center
-// to block center). On success the cell is cleared and the chunk marked
-// dirty so the next `TickUpdate` ships the change. Validation failures are
-// silently dropped: a misbehaving client cannot tell whether it lost a race
-// or sent a malformed message.
-message BreakBlock {
+// Client→server *continuous* intent to break a top-layer block — the
+// held-action durability model from ADR 0006. Same lifetime semantics as
+// `MoveIntent`: the server keeps the latest intent per player; absence of
+// the inner `target` (proto3 message-type optional) means "no longer
+// targeting anything". A player who holds the break key sends this on
+// initial press, again whenever the targeted tile changes, and once with
+// `target` cleared on release; a defensive keep-alive resend every 10
+// ticks (0.5 s) of the current intent guards against a dropped frame
+// stranding a held break.
+//
+// The damage / recovery mechanics live server-side: each tick the world
+// applies 1 dur/tick of damage per targeting player to the block named by
+// `target` (additive across players), kicks recovery on after a delay
+// once nobody is targeting it, and emits the eventual break as a normal
+// chunk mutation in the next per-client `TickUpdate`. See ADR 0006 for
+// the full numbers and storage shape.
+//
+// Validation failures (player unknown, target out of `REACH_BLOCKS`,
+// out-of-range local coords, target on Air or a non-targetable kind)
+// are silently dropped: a misbehaving client cannot tell whether it lost
+// a race or sent a malformed message.
+message BreakIntent {
+  // Absent = "stop targeting" (release / no held break).
+  BreakTarget target = 1;
+  // Per-client monotonic action seq; the server ratchets the player's
+  // `last_acked_client_seq` forward to its largest seen value.
+  uint64 client_seq = 2;
+}
+
+// One target tile inside a `BreakIntent`. Local coords must be in
+// `[0, LAYER_SIZE)` — out-of-range values are validated server-side and
+// silently dropped.
+message BreakTarget {
   ChunkCoord chunk_coord = 1;
-  // Local cell within the chunk, in `[0, LAYER_SIZE)`. Out-of-range values
-  // are validated server-side and silently dropped.
   uint32 local_x = 2;
   uint32 local_y = 3;
 }
@@ -157,7 +179,7 @@ message BreakBlock {
 // The server validates: chunk loaded, target cell's top is currently Air,
 // no player AABB overlaps the cell, and the player's authoritative
 // position is within `crate::config::REACH_BLOCKS` of the cell center.
-// Failures are silently dropped — same posture as `BreakBlock`.
+// Failures are silently dropped — same posture as `BreakIntent`.
 //
 // Field 4 was previously `BlockType kind` (client-driven builder-mode
 // affordance) and was removed when placement became inventory-driven.
