@@ -112,11 +112,10 @@ test("place: A toggles builder + sends → both clients see gold", async ({
     await waitForTopBlockKind(a, cx, cy, lx, ly, "Air");
     await waitForTopBlockKind(b, cx, cy, lx, ly, "Air");
 
-    // A sends a place via the wire seam — same path the eventual hotbar-
-    // driven UI placement runs through.
+    // A sends a place via the wire seam — the server reads A's selected
+    // hotbar slot (default 0, seeded with 10 Gold) and produces a Gold.
     await a.evaluate(() => {
-      // Numeric BlockType enum, Gold = 4.
-      window.__anarchy!.sendPlaceBlock(0, 0, 2, 0, 4);
+      window.__anarchy!.sendPlaceBlock(0, 0, 2, 0);
     });
 
     // Both clients should observe Gold at the cell after the next tick.
@@ -156,7 +155,7 @@ test("place: server silently drops out-of-reach PlaceBlock", async ({
     await waitForTopBlockKind(b, cx, cy, lx, ly, "Air");
 
     // Bypass the client-side reach gate by calling the wire helper directly.
-    await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 10, 0, 4));
+    await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 10, 0));
 
     // Several tick cycles — way more than enough for any mutation to
     // propagate. The cell must still be Air on both clients.
@@ -198,7 +197,7 @@ test("place: server silently drops PlaceBlock on a cell occupied by a player", a
     await waitForTopBlockKind(a, cx, cy, lx, ly, "Air");
 
     // A asks the server to place on the cell B is standing on.
-    await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 0, 0, 4));
+    await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 0, 0));
 
     await a.waitForTimeout(500);
     await waitForTopBlockKind(a, cx, cy, lx, ly, "Air");

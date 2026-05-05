@@ -12,4 +12,4 @@ export type {
   LobbyRejectReason,
   ConnectHooks,
 } from "./connection.js";
-export { applyServerMessage, blockTypeToWire } from "./wire.js";
+export { applyServerMessage } from "./wire.js";

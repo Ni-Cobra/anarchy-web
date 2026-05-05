@@ -297,32 +297,6 @@ function blockTypeFromWire(
   }
 }
 
-/**
- * Translate the local `BlockType` enum to its proto-side counterpart. The
- * two enums use identical numeric values today — see `terrain.ts` — but
- * they are nominally distinct TS types, so callers building outbound
- * `IClientMessage` payloads need this for the kind field on `PlaceBlock`.
- * Lives here so `main.ts` doesn't reach into `../gen/anarchy.js`.
- */
-export function blockTypeToWire(kind: BlockType): anarchy.v1.BlockType {
-  switch (kind) {
-    case BlockType.Air:
-      return anarchy.v1.BlockType.BLOCK_TYPE_AIR;
-    case BlockType.Grass:
-      return anarchy.v1.BlockType.BLOCK_TYPE_GRASS;
-    case BlockType.Wood:
-      return anarchy.v1.BlockType.BLOCK_TYPE_WOOD;
-    case BlockType.Stone:
-      return anarchy.v1.BlockType.BLOCK_TYPE_STONE;
-    case BlockType.Gold:
-      return anarchy.v1.BlockType.BLOCK_TYPE_GOLD;
-    case BlockType.Tree:
-      return anarchy.v1.BlockType.BLOCK_TYPE_TREE;
-    case BlockType.Sticks:
-      return anarchy.v1.BlockType.BLOCK_TYPE_STICKS;
-  }
-}
-
 function coordKey(cx: number, cy: number): string {
   return `${cx},${cy}`;
 }

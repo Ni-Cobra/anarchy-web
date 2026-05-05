@@ -1,16 +1,21 @@
 /**
  * Inventory overlay: a fixed bottom-center hotbar (always visible) and a
  * left-side sliding panel that exposes the main grid (slots
- * `HOTBAR_SLOTS..INVENTORY_SIZE`). Pure rendering — interactions land in
- * task 040, so the panel currently only opens / closes via the caller's
- * `KeyE` binding; clicks inside it are consumed (so they don't leak to the
- * world break / place handlers) but otherwise inert.
+ * `HOTBAR_SLOTS..INVENTORY_SIZE`).
  *
  * Network-free: the module reads inventory state through a `getInventory`
  * thunk passed in by `bootstrap.ts` and subscribes to the live `Inventory`
  * mirror so each `InventoryUpdate` from the server triggers a re-render.
  * Slot icons are placeholder colored squares per `ItemId` — `INVENTORY_PALETTE`
  * is the small CSS-color map. Real textures land later.
+ *
+ * Selection state (the highlighted hotbar cell) is mirrored locally so the
+ * UI can repaint without a server round-trip; the wire-driven `sendSelect`
+ * callback ships the authoritative update (the server is the source of
+ * truth — see `Player::selected_hotbar_slot` in the server crate). The UI
+ * also owns the drag preview for slot moves; on drop, `sendMove(src, dst)`
+ * is called and the mirror waits for the next `InventoryUpdate` to
+ * reflect the result (no optimistic update — the UI is a pure mirror).
  *
  * Click handling mirrors `side_panel.ts`: pointer events on the panel /
  * hotbar root are stopped from propagating to `window` so the bootstrap-
@@ -21,6 +26,7 @@
 
 import {
   HOTBAR_SLOTS,
+  INVENTORY_SIZE,
   type Inventory,
   ItemId,
   MAIN_SLOTS,
@@ -122,6 +128,22 @@ const STYLE = `
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
     pointer-events: none;
   }
+  .anarchy-inventory-slot.drag-source { opacity: 0.4; }
+  .anarchy-inventory-drag-preview {
+    position: fixed;
+    width: ${SLOT_PX}px;
+    height: ${SLOT_PX}px;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 9000;
+    background: rgba(20, 24, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 `;
 
 function injectStyle(): void {
@@ -135,6 +157,17 @@ function injectStyle(): void {
 export interface InventoryUiOptions {
   /** Reads the current inventory mirror. Called on every render. */
   readonly getInventory: () => Inventory;
+  /**
+   * Ship a `SelectSlot` action up to the server. Called by the keymap +
+   * wheel hooks any time the local selection changes; the local mirror
+   * updates immediately so the highlight is responsive, and the next
+   * server `InventoryUpdate` is the authoritative correction (today the
+   * server doesn't echo selection back, but the action is still
+   * authoritatively applied per place validation).
+   */
+  readonly sendSelect: (slot: number) => void;
+  /** Ship a `MoveSlot` drag-drop action up to the server. */
+  readonly sendMove: (src: number, dst: number) => void;
 }
 
 export interface InventoryUiHandle {
@@ -143,6 +176,11 @@ export interface InventoryUiHandle {
   toggle(): void;
   /** Index of the highlighted hotbar slot. Default 0. */
   selectedHotbarSlot(): number;
+  /**
+   * Locally mirror a hotbar selection change (also ships the action via
+   * `sendSelect`). Called by `bootstrap.ts`'s number-key + wheel handlers.
+   */
+  selectHotbarSlot(slot: number): void;
   /** Force a re-render — exposed for tests; the live mirror notifies on its own. */
   render(): void;
   unmount(): void;
@@ -187,14 +225,26 @@ export function mountInventoryUi(
   }
 
   let open = false;
-  // Reserved highlight for the selected hotbar slot. Selection logic lives
-  // in task 040; pin to slot 0 here so the visual is unambiguous.
   let selectedSlot = 0;
 
-  const setOpen = (next: boolean): void => {
-    if (open === next) return;
-    open = next;
-    panel.classList.toggle("open", open);
+  // Drag state: the slot index the pointer-down landed on plus a floating
+  // preview element that follows the cursor until release. `null` outside
+  // of an active drag.
+  let dragSrc: number | null = null;
+  let dragPreview: HTMLDivElement | null = null;
+
+  const cellByIndex = (idx: number): HTMLDivElement | null => {
+    if (idx < 0 || idx >= INVENTORY_SIZE) return null;
+    if (idx < HOTBAR_SLOTS) return hotbarCells[idx];
+    return panelCells[idx - HOTBAR_SLOTS];
+  };
+
+  const slotIndexFromCell = (cell: HTMLElement): number | null => {
+    const hotbarIdx = hotbarCells.indexOf(cell as HTMLDivElement);
+    if (hotbarIdx >= 0) return hotbarIdx;
+    const panelIdx = panelCells.indexOf(cell as HTMLDivElement);
+    if (panelIdx >= 0) return HOTBAR_SLOTS + panelIdx;
+    return null;
   };
 
   const render = (): void => {
@@ -205,6 +255,112 @@ export function mountInventoryUi(
     for (let i = 0; i < MAIN_SLOTS; i++) {
       paintSlot(panelCells[i], inv.slot(HOTBAR_SLOTS + i), false);
     }
+  };
+
+  const beginDrag = (src: number, ev: PointerEvent): void => {
+    const inv = options.getInventory();
+    const slot = inv.slot(src);
+    if (slot === null) return;
+    dragSrc = src;
+    cellByIndex(src)?.classList.add("drag-source");
+    const preview = document.createElement("div");
+    preview.className = "anarchy-inventory-drag-preview";
+    const icon = document.createElement("div");
+    icon.className = "anarchy-inventory-icon";
+    icon.style.background = INVENTORY_PALETTE[slot.item] ?? "#888";
+    preview.appendChild(icon);
+    if (slot.count > 1) {
+      const count = document.createElement("span");
+      count.className = "anarchy-inventory-count";
+      count.textContent = String(slot.count);
+      preview.appendChild(count);
+    }
+    preview.style.left = `${ev.clientX}px`;
+    preview.style.top = `${ev.clientY}px`;
+    document.body.appendChild(preview);
+    dragPreview = preview;
+  };
+
+  const cancelDrag = (): void => {
+    if (dragSrc !== null) {
+      cellByIndex(dragSrc)?.classList.remove("drag-source");
+    }
+    dragSrc = null;
+    if (dragPreview !== null) {
+      dragPreview.remove();
+      dragPreview = null;
+    }
+  };
+
+  // Pointer-down on a slot starts a drag. The matching `pointerup`
+  // listener at the document level resolves the drop target.
+  const wireSlotPointerDown = (idx: number, cell: HTMLDivElement): void => {
+    cell.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      beginDrag(idx, ev);
+    });
+  };
+  for (let i = 0; i < HOTBAR_SLOTS; i++) {
+    wireSlotPointerDown(i, hotbarCells[i]);
+  }
+  for (let i = 0; i < MAIN_SLOTS; i++) {
+    wireSlotPointerDown(HOTBAR_SLOTS + i, panelCells[i]);
+  }
+
+  // Cursor follow + drop resolution at document level so a drag that
+  // releases outside any slot cancels cleanly.
+  const onDocumentPointerMove = (ev: PointerEvent): void => {
+    if (dragPreview === null) return;
+    dragPreview.style.left = `${ev.clientX}px`;
+    dragPreview.style.top = `${ev.clientY}px`;
+  };
+  document.addEventListener("pointermove", onDocumentPointerMove);
+
+  const onDocumentPointerUp = (ev: PointerEvent): void => {
+    if (dragSrc === null) return;
+    const src = dragSrc;
+    cancelDrag();
+    const targets = document.elementsFromPoint(ev.clientX, ev.clientY);
+    let dst: number | null = null;
+    for (const t of targets) {
+      if (t instanceof HTMLElement && t.classList.contains("anarchy-inventory-slot")) {
+        dst = slotIndexFromCell(t);
+        if (dst !== null) break;
+      }
+    }
+    if (dst === null || dst === src) return;
+    options.sendMove(src, dst);
+  };
+  document.addEventListener("pointerup", onDocumentPointerUp);
+
+  // Hotbar click → select. Bound on `click` (vs. pointerdown) so a drag
+  // gesture starting on a hotbar cell doesn't also flip selection on the
+  // way down — `click` doesn't fire when the pointer-down + pointer-up
+  // pair didn't land on the same element (the drag preview floats away
+  // from the source).
+  for (let i = 0; i < HOTBAR_SLOTS; i++) {
+    const idx = i;
+    hotbarCells[i].addEventListener("click", () => {
+      if (idx === selectedSlot) return;
+      selectedSlot = idx;
+      options.sendSelect(idx);
+      render();
+    });
+  }
+
+  const setOpen = (next: boolean): void => {
+    if (open === next) return;
+    open = next;
+    panel.classList.toggle("open", open);
+  };
+
+  const selectHotbarSlot = (slot: number): void => {
+    if (slot < 0 || slot >= HOTBAR_SLOTS) return;
+    if (slot === selectedSlot) return;
+    selectedSlot = slot;
+    options.sendSelect(slot);
+    render();
   };
 
   const unsubscribe = options.getInventory().subscribe(render);
@@ -225,9 +381,13 @@ export function mountInventoryUi(
     setOpen,
     toggle: () => setOpen(!open),
     selectedHotbarSlot: () => selectedSlot,
+    selectHotbarSlot,
     render,
     unmount: () => {
       unsubscribe();
+      document.removeEventListener("pointermove", onDocumentPointerMove);
+      document.removeEventListener("pointerup", onDocumentPointerUp);
+      cancelDrag();
       root.remove();
     },
   };

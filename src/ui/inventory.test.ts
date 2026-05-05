@@ -33,7 +33,11 @@ describe("inventory UI", () => {
   });
 
   it("renders an empty inventory: 9 hotbar cells, 36 panel cells, panel hidden", () => {
-    const ui = mountInventoryUi({ getInventory: () => inventory });
+    const ui = mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
 
     const hotbarCells = document.querySelectorAll(
       ".anarchy-hotbar .anarchy-inventory-slot",
@@ -62,7 +66,11 @@ describe("inventory UI", () => {
     inventory.replaceFromWire(
       fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
     );
-    mountInventoryUi({ getInventory: () => inventory });
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
 
     const hotbarCells = document.querySelectorAll(
       ".anarchy-hotbar .anarchy-inventory-slot",
@@ -90,7 +98,11 @@ describe("inventory UI", () => {
         [HOTBAR_SLOTS + 7]: { item: ItemId.Gold, count: 999 },
       }),
     );
-    mountInventoryUi({ getInventory: () => inventory });
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
 
     const hotbarCells = document.querySelectorAll(
       ".anarchy-hotbar .anarchy-inventory-slot",
@@ -128,7 +140,11 @@ describe("inventory UI", () => {
   });
 
   it("re-renders reactively when the inventory mutates", () => {
-    mountInventoryUi({ getInventory: () => inventory });
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
 
     // Empty → no icons.
     let icons = document.querySelectorAll(".anarchy-inventory-icon");
@@ -157,7 +173,11 @@ describe("inventory UI", () => {
   });
 
   it("toggles the side panel open / closed", () => {
-    const ui = mountInventoryUi({ getInventory: () => inventory });
+    const ui = mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
     const panel = document.querySelector(".anarchy-inventory-panel")!;
 
     expect(ui.isOpen()).toBe(false);
@@ -173,7 +193,11 @@ describe("inventory UI", () => {
   });
 
   it("unmount removes the root and stops reactive updates", () => {
-    const ui = mountInventoryUi({ getInventory: () => inventory });
+    const ui = mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
     expect(document.querySelector("#anarchy-inventory-root")).not.toBeNull();
 
     ui.unmount();
@@ -186,8 +210,171 @@ describe("inventory UI", () => {
     expect(document.querySelector("#anarchy-inventory-root")).toBeNull();
   });
 
+  it("clicking a hotbar cell flips selection and ships a SelectSlot", () => {
+    inventory.replaceFromWire(
+      fillSlots({
+        0: { item: ItemId.Gold, count: 10 },
+        3: { item: ItemId.Stone, count: 4 },
+      }),
+    );
+    const sent: number[] = [];
+    const ui = mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: (slot) => sent.push(slot),
+      sendMove: () => {},
+    });
+
+    const hotbarCells = document.querySelectorAll(
+      ".anarchy-hotbar .anarchy-inventory-slot",
+    );
+    expect(ui.selectedHotbarSlot()).toBe(0);
+    hotbarCells[3].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(ui.selectedHotbarSlot()).toBe(3);
+    expect(sent).toEqual([3]);
+    expect(hotbarCells[0].classList.contains("selected")).toBe(false);
+    expect(hotbarCells[3].classList.contains("selected")).toBe(true);
+
+    // Clicking the already-selected cell is a no-op — no extra send.
+    hotbarCells[3].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(sent).toEqual([3]);
+  });
+
+  it("selectHotbarSlot updates the highlight and ships SelectSlot", () => {
+    const sent: number[] = [];
+    const ui = mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: (slot) => sent.push(slot),
+      sendMove: () => {},
+    });
+    expect(ui.selectedHotbarSlot()).toBe(0);
+    ui.selectHotbarSlot(5);
+    expect(ui.selectedHotbarSlot()).toBe(5);
+    expect(sent).toEqual([5]);
+    // Out-of-range slots are ignored.
+    ui.selectHotbarSlot(HOTBAR_SLOTS);
+    ui.selectHotbarSlot(-1);
+    expect(sent).toEqual([5]);
+  });
+
+  it("dragging a non-empty slot onto another slot ships a MoveSlot", () => {
+    inventory.replaceFromWire(
+      fillSlots({
+        0: { item: ItemId.Gold, count: 10 },
+      }),
+    );
+    const moves: Array<[number, number]> = [];
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: (src, dst) => moves.push([src, dst]),
+    });
+
+    const hotbarCells = document.querySelectorAll(
+      ".anarchy-hotbar .anarchy-inventory-slot",
+    );
+    const src = hotbarCells[0] as HTMLElement;
+    const dst = hotbarCells[5] as HTMLElement;
+
+    // Stub elementsFromPoint to return the destination cell — happy-dom
+    // doesn't compute layout, so we can't rely on the real hit-test.
+    const original = document.elementsFromPoint;
+    document.elementsFromPoint = ((_x: number, _y: number) => [dst]) as typeof document.elementsFromPoint;
+
+    src.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 200,
+        clientY: 200,
+        bubbles: true,
+      }),
+    );
+
+    document.elementsFromPoint = original;
+    expect(moves).toEqual([[0, 5]]);
+  });
+
+  it("dragging from an empty slot does not ship a MoveSlot", () => {
+    const moves: Array<[number, number]> = [];
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: (src, dst) => moves.push([src, dst]),
+    });
+    const hotbarCells = document.querySelectorAll(
+      ".anarchy-hotbar .anarchy-inventory-slot",
+    );
+    const src = hotbarCells[0] as HTMLElement;
+
+    src.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 200,
+        clientY: 200,
+        bubbles: true,
+      }),
+    );
+    expect(moves).toEqual([]);
+  });
+
+  it("dragging onto the same slot is a no-op", () => {
+    inventory.replaceFromWire(
+      fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
+    );
+    const moves: Array<[number, number]> = [];
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: (src, dst) => moves.push([src, dst]),
+    });
+    const hotbarCells = document.querySelectorAll(
+      ".anarchy-hotbar .anarchy-inventory-slot",
+    );
+    const src = hotbarCells[0] as HTMLElement;
+    const original = document.elementsFromPoint;
+    document.elementsFromPoint = ((_x: number, _y: number) => [src]) as typeof document.elementsFromPoint;
+
+    src.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+    document.elementsFromPoint = original;
+    expect(moves).toEqual([]);
+  });
+
   it("stops mousedown / contextmenu inside the overlay from reaching window", () => {
-    mountInventoryUi({ getInventory: () => inventory });
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
 
     let windowHits = 0;
     const onWindow = (): void => {

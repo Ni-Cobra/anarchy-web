@@ -22,6 +22,8 @@ message ClientMessage {
     ClientAction action = 20;
     BreakBlock break_block = 21;
     PlaceBlock place_block = 22;
+    SelectSlot select_slot = 23;
+    MoveSlot move_slot = 24;
   }
 }
 
@@ -147,18 +149,51 @@ message BreakBlock {
   uint32 local_y = 3;
 }
 
-// Client→server intent to place a top-layer block at the given cell.
-// Today the only placeable kind is `BLOCK_TYPE_GOLD` (the builder-mode
-// affordance); the field is on the wire so future placeable kinds slot in
-// without a schema change. The server validates: chunk loaded, target cell's
-// top is currently Air, no player AABB overlaps the cell, and the player's
-// authoritative position is within `crate::config::REACH_BLOCKS` of the cell
-// center. Failures are silently dropped — same posture as `BreakBlock`.
+// Client→server intent to place a top-layer block at the given cell. The
+// server picks the placed block kind authoritatively from the player's
+// currently-selected hotbar slot (`Player::selected_hotbar_slot`): if the
+// slot is empty or holds an item without a `places_block`, the action is
+// dropped; otherwise the slot is decremented by 1 and the block placed.
+// The server validates: chunk loaded, target cell's top is currently Air,
+// no player AABB overlaps the cell, and the player's authoritative
+// position is within `crate::config::REACH_BLOCKS` of the cell center.
+// Failures are silently dropped — same posture as `BreakBlock`.
+//
+// Field 4 was previously `BlockType kind` (client-driven builder-mode
+// affordance) and was removed when placement became inventory-driven.
 message PlaceBlock {
   ChunkCoord chunk_coord = 1;
   uint32 local_x = 2;
   uint32 local_y = 3;
-  BlockType kind = 4;
+  reserved 4;
+  reserved "kind";
+}
+
+// Client→server "select hotbar slot" action. The server stores the chosen
+// slot per player so subsequent `PlaceBlock` actions can be validated
+// against authoritative selection (a misbehaving client cannot lie about
+// "which slot is selected" on every place). Validation: `slot <
+// HOTBAR_SLOTS as u32` (server-side constant). Failures are silently
+// dropped. No echo back — the next `InventoryUpdate` reflects any
+// resulting state, and selection itself doesn't need confirmation.
+message SelectSlot {
+  uint32 slot = 1;
+  // Per-client monotonic action seq; the server ratchets the player's
+  // `last_acked_client_seq` forward to its largest seen value.
+  uint64 client_seq = 2;
+}
+
+// Client→server "move items between slots" action — covers hotbar ↔
+// hotbar, hotbar ↔ main, main ↔ main drags from the inventory UI. The
+// server validates indices (`< INVENTORY_SIZE`), then applies
+// `Inventory::merge_stacks(src, dst)`; if that returns `false` (different
+// item kinds or both empty), falls back to `Inventory::swap_slots(src,
+// dst)`. Failures are silently dropped; the next `InventoryUpdate`
+// reflects the result.
+message MoveSlot {
+  uint32 src = 1;
+  uint32 dst = 2;
+  uint64 client_seq = 3;
 }
 
 // === Server -> client world state ===

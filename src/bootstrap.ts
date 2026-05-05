@@ -17,8 +17,8 @@
 
 import { REACH_BLOCKS } from "./config.js";
 import {
-  BlockType,
   CHUNK_SIZE,
+  HOTBAR_SLOTS,
   Inventory,
   SnapshotBuffer,
   Terrain,
@@ -28,7 +28,6 @@ import {
 import { InputController } from "./input/index.js";
 import {
   applyServerMessage,
-  blockTypeToWire,
   connect,
   type LobbyIdentity,
   type LobbyRejectReason,
@@ -63,13 +62,18 @@ export interface AnarchyHandle {
   getLocalPlayerId: () => number | null;
   sendMoveIntent: (dx: number, dy: number) => void;
   sendBreakBlock: (cx: number, cy: number, lx: number, ly: number) => void;
-  sendPlaceBlock: (
-    cx: number,
-    cy: number,
-    lx: number,
-    ly: number,
-    kind: BlockType,
-  ) => void;
+  /**
+   * Send a place-block action. The placed kind is now decided
+   * authoritatively by the server from the player's selected hotbar slot
+   * — the client no longer ships a kind on the wire (task 040).
+   */
+  sendPlaceBlock: (cx: number, cy: number, lx: number, ly: number) => void;
+  /** Send a hotbar-selection action; bumps the local action seq. */
+  sendSelectSlot: (slot: number) => void;
+  /** Send an inventory drag-drop action; bumps the local action seq. */
+  sendMoveSlot: (src: number, dst: number) => void;
+  /** Index of the locally-mirrored selected hotbar slot. */
+  getSelectedHotbarSlot: () => number;
   /** True while the inventory side panel is open (toggled with `E`). */
   isInventoryOpen: () => boolean;
   // Reach + AABB overlap + top-Air gate, mirrored from the server's
@@ -200,21 +204,24 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     conn.send({ breakBlock: { chunkCoord: { cx, cy }, localX: lx, localY: ly } });
   }
 
-  function sendPlaceBlock(
-    cx: number,
-    cy: number,
-    lx: number,
-    ly: number,
-    kind: BlockType,
-  ): void {
+  function sendPlaceBlock(cx: number, cy: number, lx: number, ly: number): void {
     conn.send({
       placeBlock: {
         chunkCoord: { cx, cy },
         localX: lx,
         localY: ly,
-        kind: blockTypeToWire(kind),
       },
     });
+  }
+
+  function sendSelectSlot(slot: number): void {
+    const seq = ++actionSeq;
+    conn.send({ selectSlot: { slot, clientSeq: seq } });
+  }
+
+  function sendMoveSlot(src: number, dst: number): void {
+    const seq = ++actionSeq;
+    conn.send({ moveSlot: { src, dst, clientSeq: seq } });
   }
 
   const input = new InputController({ sendMoveIntent });
@@ -228,8 +235,15 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
 
   // Inventory overlay: hotbar always visible, side panel toggled with `E`.
   // Mounted before the keydown handler so the listener can drive
-  // `inventoryUi.toggle()` without a forward reference.
-  const inventoryUi = mountInventoryUi({ getInventory: () => inventory });
+  // `inventoryUi.toggle()` and `inventoryUi.selectHotbarSlot()` without a
+  // forward reference. The UI ships authority-bound actions (SelectSlot,
+  // MoveSlot) up via `sendSelectSlot` / `sendMoveSlot`; the server's
+  // next `InventoryUpdate` is the canonical state.
+  const inventoryUi = mountInventoryUi({
+    getInventory: () => inventory,
+    sendSelect: sendSelectSlot,
+    sendMove: sendMoveSlot,
+  });
   teardowns.push(() => inventoryUi.unmount());
 
   const onKeydown = (ev: KeyboardEvent): void => {
@@ -243,9 +257,29 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
       renderer.setZoomedOut(zoomedOut);
       return;
     }
+    // Digits 1..9 select hotbar slots 0..8. `event.code` keeps the binding
+    // robust to keyboard layouts where the produced character differs.
+    if (ev.code.startsWith("Digit")) {
+      const digit = Number(ev.code.slice("Digit".length));
+      if (digit >= 1 && digit <= HOTBAR_SLOTS) {
+        inventoryUi.selectHotbarSlot(digit - 1);
+        return;
+      }
+    }
   };
   window.addEventListener("keydown", onKeydown);
   teardowns.push(() => window.removeEventListener("keydown", onKeydown));
+
+  // Mouse wheel cycles hotbar selection ±1 with wraparound. Up = previous.
+  const onWheel = (ev: WheelEvent): void => {
+    if (ev.deltaY === 0) return;
+    const cur = inventoryUi.selectedHotbarSlot();
+    const step = ev.deltaY > 0 ? 1 : -1;
+    const next = (cur + step + HOTBAR_SLOTS) % HOTBAR_SLOTS;
+    inventoryUi.selectHotbarSlot(next);
+  };
+  window.addEventListener("wheel", onWheel, { passive: true });
+  teardowns.push(() => window.removeEventListener("wheel", onWheel));
 
   const onMousemove = (ev: MouseEvent): void => {
     // Renderer drives the per-frame hover billboard from cursor NDC, so
@@ -261,14 +295,13 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
 
   const onMousedown = (ev: MouseEvent): void => {
     if (localPlayerId === null) return;
-    if (ev.button !== 0) return;
+    if (ev.button !== 0 && ev.button !== 2) return;
     const ndc = {
       x: (ev.clientX / window.innerWidth) * 2 - 1,
       y: -(ev.clientY / window.innerHeight) * 2 + 1,
     };
-    // Left-click → destroy the top-layer block under the cursor.
     const pick = renderer.pickAtCursor(ndc);
-    if (!pick || pick.layer !== "top") return;
+    if (!pick) return;
     const me = world.getPlayer(localPlayerId);
     if (!me) return;
     const [cx, cy] = pick.chunkCoord;
@@ -278,10 +311,25 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     const dx = tileCenterX - me.x;
     const dy = tileCenterY - me.y;
     if (dx * dx + dy * dy > REACH_BLOCKS_SQ) return;
-    sendBreakBlock(cx, cy, lx, ly);
+    if (ev.button === 0) {
+      // Left-click → destroy the top-layer block under the cursor.
+      if (pick.layer !== "top") return;
+      sendBreakBlock(cx, cy, lx, ly);
+    } else {
+      // Right-click → place the selected hotbar slot's block on the
+      // ground tile under the cursor. Server validates that the cell is
+      // currently Air on the top layer + everything else.
+      sendPlaceBlock(cx, cy, lx, ly);
+    }
   };
   window.addEventListener("mousedown", onMousedown);
   teardowns.push(() => window.removeEventListener("mousedown", onMousedown));
+
+  // Suppress the browser's right-click context menu so right-click can
+  // drive place-block without tearing the player out of the game.
+  const onContextMenu = (ev: MouseEvent): void => ev.preventDefault();
+  window.addEventListener("contextmenu", onContextMenu);
+  teardowns.push(() => window.removeEventListener("contextmenu", onContextMenu));
 
   // Action registry for the side panel. New in-game actions go here as
   // `{ label, onClick }` entries; the panel renders them as a vertical
@@ -300,6 +348,9 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     sendMoveIntent,
     sendBreakBlock,
     sendPlaceBlock,
+    sendSelectSlot,
+    sendMoveSlot,
+    getSelectedHotbarSlot: () => inventoryUi.selectedHotbarSlot(),
     isInventoryOpen: () => inventoryUi.isOpen(),
     canPlaceAt,
     stop,
