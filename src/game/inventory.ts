@@ -56,6 +56,7 @@ export type Slot = ItemStack | null;
  */
 export class Inventory {
   private slots: Slot[];
+  private listeners: Array<() => void> = [];
 
   constructor() {
     this.slots = Array.from({ length: INVENTORY_SIZE }, () => null);
@@ -87,7 +88,8 @@ export class Inventory {
   /**
    * Replace the inventory wholesale from a decoded `InventoryUpdate` frame.
    * Throws if `slots.length` does not match `INVENTORY_SIZE` — the wire
-   * bridge guards against malformed frames before reaching here.
+   * bridge guards against malformed frames before reaching here. Notifies
+   * subscribers after the swap so a UI mirror can re-render reactively.
    */
   replaceFromWire(slots: readonly Slot[]): void {
     if (slots.length !== INVENTORY_SIZE) {
@@ -96,5 +98,19 @@ export class Inventory {
       );
     }
     this.slots = slots.slice();
+    for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * Register a change listener. Returns an unsubscribe function. The
+   * inventory UI uses this to re-render when an `InventoryUpdate` arrives;
+   * future mutators (slot moves, place-consume) will hit the same channel.
+   */
+  subscribe(listener: () => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
   }
 }

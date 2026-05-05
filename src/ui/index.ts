@@ -9,3 +9,8 @@ export type {
   SidePanelHandle,
   SidePanelOptions,
 } from "./side_panel.js";
+export { mountInventoryUi } from "./inventory.js";
+export type {
+  InventoryUiHandle,
+  InventoryUiOptions,
+} from "./inventory.js";

@@ -238,3 +238,51 @@ test("client mirror absorbs the post-Welcome inventory through the bootstrap pat
   });
   expect(slot0).toEqual({ item: 4, count: 10 });
 });
+
+test("hotbar renders 9 cells and reflects the seeded 10 Gold; E toggles the side panel", async ({
+  page,
+}) => {
+  // Task 030 UI: the inventory overlay mounts on every session. The hotbar
+  // is always visible; the side panel slides in from the left when `E` is
+  // pressed. We assert (a) the static cell counts, (b) slot 0's count badge
+  // shows the 10 the server seeded, (c) `E` flips the open state both ways
+  // (and the `isInventoryOpen` test seam agrees).
+  await page.goto("/?username=inv-ui&color=0");
+  await page.waitForFunction(() => window.__anarchy !== undefined);
+
+  await expect(page.locator(".anarchy-hotbar")).toHaveCount(1);
+  await expect(
+    page.locator(".anarchy-hotbar .anarchy-inventory-slot"),
+  ).toHaveCount(9);
+  await expect(
+    page.locator(".anarchy-inventory-panel .anarchy-inventory-slot"),
+  ).toHaveCount(36);
+
+  // Wait for the seeded 10 Gold to land — the badge appears once the
+  // post-Welcome InventoryUpdate has been processed by the wire bridge.
+  await expect(
+    page.locator(".anarchy-hotbar .anarchy-inventory-slot").first().locator(
+      ".anarchy-inventory-count",
+    ),
+  ).toHaveText("10", { timeout: 10_000 });
+
+  // Panel starts closed.
+  expect(await page.evaluate(() => window.__anarchy!.isInventoryOpen())).toBe(
+    false,
+  );
+  await expect(page.locator(".anarchy-inventory-panel.open")).toHaveCount(0);
+
+  // Press E → panel opens.
+  await page.keyboard.press("KeyE");
+  await expect(page.locator(".anarchy-inventory-panel.open")).toHaveCount(1);
+  expect(await page.evaluate(() => window.__anarchy!.isInventoryOpen())).toBe(
+    true,
+  );
+
+  // Press E again → panel closes.
+  await page.keyboard.press("KeyE");
+  await expect(page.locator(".anarchy-inventory-panel.open")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__anarchy!.isInventoryOpen())).toBe(
+    false,
+  );
+});

@@ -112,9 +112,8 @@ test("place: A toggles builder + sends → both clients see gold", async ({
     await waitForTopBlockKind(a, cx, cy, lx, ly, "Air");
     await waitForTopBlockKind(b, cx, cy, lx, ly, "Air");
 
-    // A toggles builder mode and sends a place. The wire-level handle is
-    // the same code path the right-click handler runs through.
-    await a.evaluate(() => window.__anarchy!.setBuilderMode(true));
+    // A sends a place via the wire seam — same path the eventual hotbar-
+    // driven UI placement runs through.
     await a.evaluate(() => {
       // Numeric BlockType enum, Gold = 4.
       window.__anarchy!.sendPlaceBlock(0, 0, 2, 0, 4);

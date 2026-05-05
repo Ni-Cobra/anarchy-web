@@ -141,7 +141,6 @@ test("place blocks B's path: B walks east into the new block and stops flush aga
 
     // A places. Both clients must observe the gold cell before B starts
     // walking — otherwise the test could time-race the place vs. the move.
-    await a.evaluate(() => window.__anarchy!.setBuilderMode(true));
     await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 2, 0, 4));
     await waitForTopBlockKind(a, cx, cy, lx, ly, "Gold");
     await waitForTopBlockKind(b, cx, cy, lx, ly, "Gold");
@@ -245,8 +244,6 @@ test("ghost gate + server agree: B on cell forbids place; B walks off, place lan
       meA.id,
     );
     await a.evaluate(() => window.__anarchy!.sendMoveIntent(0, 0));
-
-    await a.evaluate(() => window.__anarchy!.setBuilderMode(true));
 
     // Step 1: gate says no while B stands on the cell.
     expect(await a.evaluate(() => window.__anarchy!.canPlaceAt(0, 0, 0, 0))).toBe(false);
@@ -375,8 +372,8 @@ test("PlaceBlock issued right after a fresh reconnect Welcome is processed corre
     await a.waitForFunction(() => window.__anarchy !== undefined);
     const secondA = await waitForSelfSpawn(a);
     expect(secondA.id).not.toBe(firstA.id);
-    // Builder mode must have reset (client-only state).
-    expect(await a.evaluate(() => window.__anarchy!.isBuilderMode())).toBe(false);
+    // Inventory panel must have reset (client-only state).
+    expect(await a.evaluate(() => window.__anarchy!.isInventoryOpen())).toBe(false);
 
     // Wait until A's world reflects B (so `canPlaceAt`'s overlap check has
     // a current view). When the post-reload A spawns at origin a fresh push
@@ -393,12 +390,11 @@ test("PlaceBlock issued right after a fresh reconnect Welcome is processed corre
       (await b.evaluate(() => window.__anarchy!.getLocalPlayerId()))!,
     );
 
-    // Toggle builder + place at chunk (0, 0) local (1, 1) — center
-    // (1.5, 1.5). From A at ~(0.175, 0): distance ≈ √(1.756 + 2.25) ≈ 2.00
-    // — in reach. No player circle overlaps cell (1, 1): B at (-0.525, 0)
-    // is √((1+0.525)² + 1²) ≈ 1.83 from the nearest cell point, A at
+    // Place at chunk (0, 0) local (1, 1) — center (1.5, 1.5). From A at
+    // ~(0.175, 0): distance ≈ √(1.756 + 2.25) ≈ 2.00 — in reach. No
+    // player circle overlaps cell (1, 1): B at (-0.525, 0) is
+    // √((1+0.525)² + 1²) ≈ 1.83 from the nearest cell point, A at
     // (0.175, 0) is √(0.825² + 1²) ≈ 1.30 — both well past PLAYER_RADIUS.
-    await a.evaluate(() => window.__anarchy!.setBuilderMode(true));
     await a.waitForFunction(() => window.__anarchy!.canPlaceAt(0, 0, 1, 1));
     await a.evaluate(() => window.__anarchy!.sendPlaceBlock(0, 0, 1, 1, 4));
 

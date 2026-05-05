@@ -31,11 +31,11 @@ Boundaries have been audited; new code must respect them.
   `bootstrap.runMain()` (or routes to the dev terrain stub), and publishes
   the returned `AnarchyHandle` on `window.__anarchy` for Playwright.
 - **`src/bootstrap.ts`** — sibling of `main.ts`. Constructs the world /
-  buffer / terrain / renderer / connection / input controller, owns the
-  per-client monotonic `actionSeq`, and registers the keydown / mousemove
-  / mousedown / contextmenu listeners that drive builder mode + destroy.
-  Together with `main.ts` and `dev/terrain_stub.ts`, the only modules
-  allowed to touch `window` / `document` directly.
+  buffer / terrain / renderer / connection / input controller / inventory
+  overlay, owns the per-client monotonic `actionSeq`, and registers the
+  keydown / mousemove / mousedown listeners that drive the inventory
+  toggle + destroy. Together with `main.ts` and `dev/terrain_stub.ts`,
+  the only modules allowed to touch `window` / `document` directly.
 - **`src/config.ts`** — operator-tunable constants (speeds, intervals,
   reconciliation distance, render delays). Values mirrored from server's
   `crate::config` where they must agree (notably `SPEED`).
