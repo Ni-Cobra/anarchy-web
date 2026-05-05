@@ -9,6 +9,7 @@ package anarchy.v1;
 // Payload field-number convention inside the envelope oneofs:
 //   10-19 : connection lifecycle (handshake, heartbeat)
 //   20-29 : per-tick world state (chunk-centric — see ADR 0003)
+//   30-39 : per-client out-of-band state (inventory, etc.)
 // New payloads slot into the matching range so wire numbers stay grouped.
 
 // === Envelopes ===
@@ -32,6 +33,7 @@ message ServerMessage {
     Pong pong = 11;
     LobbyReject lobby_reject = 12;
     TickUpdate tick_update = 20;
+    InventoryUpdate inventory_update = 30;
   }
 }
 
@@ -293,4 +295,43 @@ message Chunk {
   Layer ground = 2;
   Layer top = 3;
   repeated PlayerSnapshot players = 4;
+}
+
+// === Inventory ===
+//
+// Per-player inventory mirror. Shipped to the originating client only — other
+// connections never see another player's inventory. Sent immediately after
+// `ServerWelcome` for the admitted client, then again each tick where the
+// player's inventory mutated (drops, slot moves, place-consume — landing in
+// later tasks).
+//
+// Carries the full slot array every time. Slot count is fixed to the
+// server's `INVENTORY_SIZE` (9 hotbar + 36 main = 45); the client validates
+// and rejects unexpected lengths defensively.
+
+// Mirrors `crate::game::ItemId`. Numeric values are arbitrary but stable —
+// extend by appending. `ITEM_ID_UNSPECIFIED = 0` is the proto3 default
+// sentinel; the server never emits it.
+enum ItemId {
+  ITEM_ID_UNSPECIFIED = 0;
+  ITEM_ID_STICK = 1;
+  ITEM_ID_WOOD = 2;
+  ITEM_ID_STONE = 3;
+  ITEM_ID_GOLD = 4;
+}
+
+// One inventory cell. `count == 0` is the canonical empty slot — the server
+// emits `count == 0` (and `item == ITEM_ID_UNSPECIFIED`) for empty slots so
+// the wire shape mirrors the in-memory `Slot = Option<ItemStack>` exactly.
+// Receivers MUST treat `count == 0` as empty regardless of `item`.
+message ItemSlot {
+  ItemId item = 1;
+  uint32 count = 2;
+}
+
+message InventoryUpdate {
+  // Full slot array — length is the server's `INVENTORY_SIZE` (45). Indices
+  // `0..9` are the hotbar; `9..45` are the main grid. Receivers reject any
+  // other length defensively.
+  repeated ItemSlot slots = 1;
 }

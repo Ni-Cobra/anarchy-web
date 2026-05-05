@@ -22,6 +22,14 @@ export {
 } from "./terrain.js";
 export { canPlaceTopBlock } from "./place_validation.js";
 export {
+  HOTBAR_SLOTS,
+  INVENTORY_SIZE,
+  Inventory,
+  ItemId,
+  MAIN_SLOTS,
+} from "./inventory.js";
+export type { ItemStack, Slot } from "./inventory.js";
+export {
   MAX_USERNAME_LEN,
   MIN_USERNAME_LEN,
   PALETTE,

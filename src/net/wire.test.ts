@@ -5,6 +5,9 @@ import {
   BlockType,
   DEFAULT_FACING,
   Direction8,
+  INVENTORY_SIZE,
+  Inventory,
+  ItemId,
   LAYER_AREA,
   SnapshotBuffer,
   Terrain,
@@ -14,6 +17,7 @@ import {
   type Chunk,
   type ChunkCoord,
   type PlayerId,
+  type Slot,
 } from "../game/index.js";
 import {
   applyServerMessage,
@@ -389,3 +393,106 @@ describe("applyServerMessage — TickUpdate", () => {
   });
 });
 
+describe("applyServerMessage — InventoryUpdate", () => {
+  function makeInventoryFixture() {
+    const base = makeFixture();
+    const inventory = new Inventory();
+    const deps: WireDeps = { ...base.deps, inventory };
+    return { ...base, inventory, deps };
+  }
+
+  function buildWireSlots(
+    overrides: Record<number, anarchy.v1.IItemSlot> = {},
+  ): anarchy.v1.IItemSlot[] {
+    const slots: anarchy.v1.IItemSlot[] = Array.from(
+      { length: INVENTORY_SIZE },
+      () => ({
+        item: anarchy.v1.ItemId.ITEM_ID_UNSPECIFIED,
+        count: 0,
+      }),
+    );
+    for (const [k, v] of Object.entries(overrides)) {
+      slots[Number(k)] = v;
+    }
+    return slots;
+  }
+
+  it("writes the slot array into the inventory mirror", () => {
+    const { deps, inventory } = makeInventoryFixture();
+    const wireSlots = buildWireSlots({
+      0: { item: anarchy.v1.ItemId.ITEM_ID_GOLD, count: 10 },
+    });
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: { slots: wireSlots },
+    });
+    applyServerMessage(msg, deps);
+    expect(inventory.slot(0)).toEqual({ item: ItemId.Gold, count: 10 });
+    expect(inventory.countOf(ItemId.Gold)).toBe(10);
+  });
+
+  it("translates every item kind to its game-side counterpart", () => {
+    const { deps, inventory } = makeInventoryFixture();
+    const wireSlots = buildWireSlots({
+      0: { item: anarchy.v1.ItemId.ITEM_ID_STICK, count: 1 },
+      1: { item: anarchy.v1.ItemId.ITEM_ID_WOOD, count: 2 },
+      2: { item: anarchy.v1.ItemId.ITEM_ID_STONE, count: 3 },
+      3: { item: anarchy.v1.ItemId.ITEM_ID_GOLD, count: 4 },
+    });
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: { slots: wireSlots },
+    });
+    applyServerMessage(msg, deps);
+    expect(inventory.slot(0)).toEqual({ item: ItemId.Stick, count: 1 });
+    expect(inventory.slot(1)).toEqual({ item: ItemId.Wood, count: 2 });
+    expect(inventory.slot(2)).toEqual({ item: ItemId.Stone, count: 3 });
+    expect(inventory.slot(3)).toEqual({ item: ItemId.Gold, count: 4 });
+  });
+
+  it("treats count=0 as the canonical empty regardless of item field", () => {
+    const { deps, inventory } = makeInventoryFixture();
+    const wireSlots = buildWireSlots({
+      0: { item: anarchy.v1.ItemId.ITEM_ID_GOLD, count: 0 },
+    });
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: { slots: wireSlots },
+    });
+    applyServerMessage(msg, deps);
+    expect(inventory.slot(0)).toBeNull();
+  });
+
+  it("drops a frame whose slot count does not match INVENTORY_SIZE", () => {
+    const { deps, inventory } = makeInventoryFixture();
+    // Plant a known prior state so we can detect an erroneous overwrite.
+    const known: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    known[0] = { item: ItemId.Stone, count: 5 };
+    inventory.replaceFromWire(known);
+
+    const tooFew: anarchy.v1.IItemSlot[] = [
+      { item: anarchy.v1.ItemId.ITEM_ID_GOLD, count: 1 },
+    ];
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: { slots: tooFew },
+    });
+    applyServerMessage(msg, deps);
+    // Inventory must remain unchanged.
+    expect(inventory.slot(0)).toEqual({ item: ItemId.Stone, count: 5 });
+  });
+
+  it("is a no-op when no inventory mirror is supplied", () => {
+    // Tests that don't exercise inventory should survive an InventoryUpdate
+    // arriving without an `inventory` dep wired up.
+    const { deps } = makeFixture();
+    const wireSlots = buildWireSlots({
+      0: { item: anarchy.v1.ItemId.ITEM_ID_GOLD, count: 10 },
+    });
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: { slots: wireSlots },
+    });
+    expect(() => applyServerMessage(msg, deps)).not.toThrow();
+  });
+});

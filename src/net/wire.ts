@@ -6,11 +6,15 @@ import {
   type ChunkCoord,
   DEFAULT_FACING,
   Direction8,
+  INVENTORY_SIZE,
+  type Inventory,
+  ItemId,
   LAYER_AREA,
   type Layer,
   type Player,
   type PlayerId,
   type SnapshotBuffer,
+  type Slot,
   type Terrain,
   type World,
 } from "../game/index.js";
@@ -52,6 +56,13 @@ export interface WireDeps {
   readonly terrain?: Terrain;
   /** Renderer notification hooks; see `TerrainSink`. */
   readonly terrainSink?: TerrainSink;
+  /**
+   * Local-player inventory mirror. Mutated in place when `InventoryUpdate`
+   * arrives. Per-player only — the server never ships another player's
+   * inventory, so this is always the local player's view. Optional for
+   * tests that don't exercise inventory.
+   */
+  readonly inventory?: Inventory;
   /** Wall-clock for stamping samples. Override in tests. */
   readonly now?: () => number;
 }
@@ -104,6 +115,49 @@ export function applyServerMessage(
   if (msg.tickUpdate) {
     applyTickUpdate(msg.tickUpdate, deps, now());
     return;
+  }
+
+  if (msg.inventoryUpdate) {
+    applyInventoryUpdate(msg.inventoryUpdate, deps);
+    return;
+  }
+}
+
+function applyInventoryUpdate(
+  update: anarchy.v1.IInventoryUpdate,
+  deps: WireDeps,
+): void {
+  if (!deps.inventory) return;
+  const wireSlots = update.slots ?? [];
+  if (wireSlots.length !== INVENTORY_SIZE) {
+    // Defensive: a misbehaving server could ship the wrong slot count.
+    // Drop the frame rather than corrupt local state.
+    return;
+  }
+  const slots: Slot[] = wireSlots.map((s): Slot => {
+    const count = s.count ?? 0;
+    if (count === 0) return null;
+    const item = itemIdFromWire(s.item);
+    if (item === null) return null;
+    return { item, count };
+  });
+  deps.inventory.replaceFromWire(slots);
+}
+
+function itemIdFromWire(
+  item: anarchy.v1.ItemId | null | undefined,
+): ItemId | null {
+  switch (item) {
+    case anarchy.v1.ItemId.ITEM_ID_STICK:
+      return ItemId.Stick;
+    case anarchy.v1.ItemId.ITEM_ID_WOOD:
+      return ItemId.Wood;
+    case anarchy.v1.ItemId.ITEM_ID_STONE:
+      return ItemId.Stone;
+    case anarchy.v1.ItemId.ITEM_ID_GOLD:
+      return ItemId.Gold;
+    default:
+      return null;
   }
 }
 

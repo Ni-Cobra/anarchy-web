@@ -18,6 +18,7 @@ import { REACH_BLOCKS } from "./config.js";
 import {
   BlockType,
   CHUNK_SIZE,
+  Inventory,
   SnapshotBuffer,
   Terrain,
   World,
@@ -46,6 +47,14 @@ import { mountSidePanel, type SidePanelAction } from "./ui/index.js";
 export interface AnarchyHandle {
   world: World;
   terrain: Terrain;
+  /**
+   * Local-player inventory mirror, populated by `InventoryUpdate` frames
+   * the server ships immediately after admission and on every tick the
+   * inventory mutates. No rendering yet — task 030 will build the UI on
+   * top of this. Exposed on the test handle so e2e specs can pin the
+   * wire surface end-to-end.
+   */
+  inventory: Inventory;
   getLocalPlayerId: () => number | null;
   sendMoveIntent: (dx: number, dy: number) => void;
   sendBreakBlock: (cx: number, cy: number, lx: number, ly: number) => void;
@@ -115,6 +124,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   const world = new World();
   const buffer = new SnapshotBuffer();
   const terrain = new Terrain();
+  const inventory = new Inventory();
   const renderer = new Renderer(
     world,
     buffer,
@@ -153,6 +163,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
           onChunkLoaded: (cx, cy) => renderer.applyChunkLoaded(cx, cy),
           onChunkUnloaded: (cx, cy) => renderer.applyChunkUnloaded(cx, cy),
         },
+        inventory,
         local: {
           setLocalPlayerId: (id) => {
             localPlayerId = id;
@@ -324,6 +335,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   return {
     world,
     terrain,
+    inventory,
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,
     sendBreakBlock,
