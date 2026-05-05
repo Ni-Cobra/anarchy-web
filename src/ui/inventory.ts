@@ -334,6 +334,16 @@ export function mountInventoryUi(
   };
   document.addEventListener("pointerup", onDocumentPointerUp);
 
+  // Escape during a drag aborts cleanly — no `sendMove` fires and the
+  // preview / drag-source highlight clears. Listener is captured so a
+  // game-side keydown handler can't preempt it.
+  const onDocumentKeydown = (ev: KeyboardEvent): void => {
+    if (ev.key !== "Escape") return;
+    if (dragSrc === null) return;
+    cancelDrag();
+  };
+  document.addEventListener("keydown", onDocumentKeydown, true);
+
   // Hotbar click → select. Bound on `click` (vs. pointerdown) so a drag
   // gesture starting on a hotbar cell doesn't also flip selection on the
   // way down — `click` doesn't fire when the pointer-down + pointer-up
@@ -387,6 +397,7 @@ export function mountInventoryUi(
       unsubscribe();
       document.removeEventListener("pointermove", onDocumentPointerMove);
       document.removeEventListener("pointerup", onDocumentPointerUp);
+      document.removeEventListener("keydown", onDocumentKeydown, true);
       cancelDrag();
       root.remove();
     },

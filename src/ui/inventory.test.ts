@@ -369,6 +369,106 @@ describe("inventory UI", () => {
     expect(moves).toEqual([]);
   });
 
+  it("escape during a drag cancels cleanly — no sendMove, preview removed, source highlight cleared", () => {
+    inventory.replaceFromWire(
+      fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
+    );
+    const moves: Array<[number, number]> = [];
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: (src, dst) => moves.push([src, dst]),
+    });
+
+    const hotbarCells = document.querySelectorAll(
+      ".anarchy-hotbar .anarchy-inventory-slot",
+    );
+    const src = hotbarCells[0] as HTMLElement;
+    src.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+    expect(
+      document.querySelector(".anarchy-inventory-drag-preview"),
+    ).not.toBeNull();
+    expect(src.classList.contains("drag-source")).toBe(true);
+
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    expect(
+      document.querySelector(".anarchy-inventory-drag-preview"),
+    ).toBeNull();
+    expect(src.classList.contains("drag-source")).toBe(false);
+
+    // A subsequent pointerup-on-target must NOT fire a MoveSlot — the drag
+    // already aborted.
+    const dst = hotbarCells[5] as HTMLElement;
+    const original = document.elementsFromPoint;
+    document.elementsFromPoint = ((_x: number, _y: number) => [dst]) as typeof document.elementsFromPoint;
+    document.dispatchEvent(
+      new PointerEvent("pointerup", {
+        button: 0,
+        clientX: 200,
+        clientY: 200,
+        bubbles: true,
+      }),
+    );
+    document.elementsFromPoint = original;
+    expect(moves).toEqual([]);
+  });
+
+  it("escape outside an active drag is a no-op", () => {
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
+    // No drag in flight; escape must not throw or mutate DOM.
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    expect(
+      document.querySelector(".anarchy-inventory-drag-preview"),
+    ).toBeNull();
+  });
+
+  it("selectHotbarSlot cycles through every hotbar index, ratcheting selection and shipping each", () => {
+    // Mirrors the bootstrap-level keyboard / wheel state machine: every
+    // hotbar slot 0..HOTBAR_SLOTS-1 is selectable, the highlight class
+    // tracks the current slot, and the `SelectSlot` action fires once per
+    // distinct selection.
+    const sent: number[] = [];
+    const ui = mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: (slot) => sent.push(slot),
+      sendMove: () => {},
+    });
+    const hotbarCells = document.querySelectorAll(
+      ".anarchy-hotbar .anarchy-inventory-slot",
+    );
+
+    for (let i = 1; i < HOTBAR_SLOTS; i++) {
+      ui.selectHotbarSlot(i);
+      expect(ui.selectedHotbarSlot()).toBe(i);
+      expect(hotbarCells[i].classList.contains("selected")).toBe(true);
+      // Only the current slot carries the highlight.
+      for (let j = 0; j < HOTBAR_SLOTS; j++) {
+        if (j === i) continue;
+        expect(hotbarCells[j].classList.contains("selected")).toBe(false);
+      }
+    }
+    // Wrap back to 0 mirrors the wheel-based wraparound the bootstrap drives.
+    ui.selectHotbarSlot(0);
+    expect(ui.selectedHotbarSlot()).toBe(0);
+    // 8 forward steps (1..8) + 1 back to 0 = 9 distinct selection sends.
+    expect(sent).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 0]);
+  });
+
   it("stops mousedown / contextmenu inside the overlay from reaching window", () => {
     mountInventoryUi({
       getInventory: () => inventory,

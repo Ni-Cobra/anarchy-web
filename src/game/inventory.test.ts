@@ -67,4 +67,48 @@ describe("Inventory", () => {
     expect(() => inv.replaceFromWire(new Array(INVENTORY_SIZE - 1).fill(null))).toThrow();
     expect(() => inv.replaceFromWire(new Array(INVENTORY_SIZE + 1).fill(null))).toThrow();
   });
+
+  it("replaceFromWire replaces, never merges — prior non-empty slots clear when the new frame is empty", () => {
+    // First frame seeds a busy mid-session state (two non-empty slots).
+    const inv = new Inventory();
+    const seeded: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    seeded[0] = { item: ItemId.Gold, count: 10 };
+    seeded[5] = { item: ItemId.Stone, count: 20 };
+    inv.replaceFromWire(seeded);
+    expect(inv.slot(0)).toEqual({ item: ItemId.Gold, count: 10 });
+    expect(inv.slot(5)).toEqual({ item: ItemId.Stone, count: 20 });
+
+    // A second frame with a different layout (slot 0 empty, slot 7 carrying
+    // Wood, slot 5 still missing) must wholesale replace the mirror — no
+    // merge fallback that would keep the prior Gold/Stone alive.
+    const next: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    next[7] = { item: ItemId.Wood, count: 3 };
+    inv.replaceFromWire(next);
+    expect(inv.slot(0)).toBeNull();
+    expect(inv.slot(5)).toBeNull();
+    expect(inv.slot(7)).toEqual({ item: ItemId.Wood, count: 3 });
+    expect(inv.countOf(ItemId.Gold)).toBe(0);
+    expect(inv.countOf(ItemId.Stone)).toBe(0);
+  });
+
+  it("subscribe fires on every replaceFromWire and the unsubscribe stops further notifications", () => {
+    const inv = new Inventory();
+    let calls = 0;
+    const unsubscribe = inv.subscribe(() => {
+      calls++;
+    });
+
+    const empty: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    inv.replaceFromWire(empty);
+    expect(calls).toBe(1);
+
+    const seeded: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    seeded[0] = { item: ItemId.Gold, count: 1 };
+    inv.replaceFromWire(seeded);
+    expect(calls).toBe(2);
+
+    unsubscribe();
+    inv.replaceFromWire(empty);
+    expect(calls).toBe(2);
+  });
 });
