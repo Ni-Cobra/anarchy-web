@@ -18,6 +18,12 @@ declare global {
 // spec (`client-app.spec.ts`) so it can drive the live app without scripting
 // keystrokes through the lobby form. After a Disconnect the lifecycle loop
 // returns to the lobby (the bypass only seeds the *first* session).
+//
+// `?server-port=NNNN` redirects the WebSocket connection to a different
+// port on `localhost`. Used by the player-accounts e2e spec
+// (`accounts.spec.ts`) which spawns its own server on a non-default port +
+// custom world so the per-spec accounts file stays isolated from the
+// Playwright-managed default on `:8080`.
 const params = new URLSearchParams(window.location.search);
 
 if (params.get("stub-terrain") === "1") {
@@ -25,7 +31,7 @@ if (params.get("stub-terrain") === "1") {
     runTerrainStub();
   });
 } else {
-  void runApp(lobbyBypassFromQuery(params));
+  void runApp(lobbyBypassFromQuery(params), wsUrlFromQuery(params));
 }
 
 function lobbyBypassFromQuery(query: URLSearchParams): LobbyIdentity | null {
@@ -37,4 +43,13 @@ function lobbyBypassFromQuery(query: URLSearchParams): LobbyIdentity | null {
   if (username === null) return null;
   if (!isValidColorIndex(colorIndex)) return null;
   return { username, colorIndex };
+}
+
+function wsUrlFromQuery(query: URLSearchParams): string | undefined {
+  const rawPort = query.get("server-port");
+  if (rawPort === null) return undefined;
+  if (!/^\d+$/.test(rawPort)) return undefined;
+  const port = Number.parseInt(rawPort, 10);
+  if (port < 1 || port > 65535) return undefined;
+  return `ws://localhost:${port}/ws`;
 }

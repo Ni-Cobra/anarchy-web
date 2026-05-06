@@ -124,7 +124,15 @@ export interface AnarchyHandle {
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
 
-export function runMain(identity: LobbyIdentity): AnarchyHandle {
+/** Default WebSocket endpoint. Overridden by `runApp`'s `wsUrl` arg, which
+ * `main.ts` populates from the `?server-port=NNNN` query param so the
+ * accounts e2e spec can target its own dedicated server. */
+const DEFAULT_WS_URL = "ws://localhost:8080/ws";
+
+export function runMain(
+  identity: LobbyIdentity,
+  wsUrl: string = DEFAULT_WS_URL,
+): AnarchyHandle {
   // Every owned resource (listener, interval, rAF, WS, mesh, DOM node)
   // pushes a teardown into this list at construction time. `stop()`
   // drains the list in reverse so dependencies are torn down before what
@@ -204,7 +212,7 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   let registered = false;
 
   const conn = connect(
-    "ws://localhost:8080/ws",
+    wsUrl,
     identity,
     (msg) => {
       applyServerMessage(msg, {
@@ -637,7 +645,10 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
  * pre-filled so they can fix the choice (uncheck reconnect, type a
  * different username) without retyping everything.
  */
-export async function runApp(initial: LobbyIdentity | null): Promise<void> {
+export async function runApp(
+  initial: LobbyIdentity | null,
+  wsUrl?: string,
+): Promise<void> {
   let identity = initial;
   let pendingReject: { reason: LobbyRejectReason; identity: LobbyIdentity } | null =
     null;
@@ -662,7 +673,7 @@ export async function runApp(initial: LobbyIdentity | null): Promise<void> {
       identity = await showLobby(defaults);
       pendingReject = null;
     }
-    const handle = runMain(identity);
+    const handle = runMain(identity, wsUrl);
     window.__anarchy = handle;
     const sessionIdentity = identity;
     await handle.stopped;
