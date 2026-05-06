@@ -24,6 +24,11 @@ import {
   type PickResult,
 } from "./picker.js";
 import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
+import {
+  EffectsLayer,
+  type BlockEditEvent,
+  type TargetingStateEvent,
+} from "./effects/index.js";
 
 // The player's body sphere mirrors the authoritative collision radius
 // (`PLAYER_RADIUS` in `config.ts`, `crate::game::player::PLAYER_RADIUS`
@@ -273,6 +278,7 @@ export class Renderer {
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
   private ghostMesh: THREE.Mesh | null = null;
+  private readonly effects: EffectsLayer;
   private readonly chunkBorderGrid: THREE.LineSegments;
   private zoomedOut = false;
   // Wall-clock timestamp of the last `frame()` call. `null` until the first
@@ -348,6 +354,16 @@ export class Renderer {
       this.terrainGroup = buildTerrainMesh(terrain);
       this.scene.add(this.terrainGroup);
     }
+
+    // Effects layer (task 070): place pulses, break shatters, and held-
+    // break targeting overlays. Tinted by the actor's lobby color via the
+    // `World`-backed lookup; players unknown to the local snapshot fall
+    // back to palette[0] (the layer handles the missing-player path).
+    this.effects = new EffectsLayer((id) => {
+      const player = this.world.getPlayer(id);
+      return player ? player.colorIndex : null;
+    });
+    this.scene.add(this.effects.scene());
 
     this.chunkBorderGrid = buildChunkBorderGrid();
     this.chunkBorderGrid.visible = false;
@@ -449,6 +465,23 @@ export class Renderer {
   }
 
   /**
+   * The wire layer just observed a per-tick block-edit (place / break)
+   * attributed to a player. Spawns a one-shot effect at the cell tinted
+   * by the actor's color. See `EffectsLayer.onBlockEdit`.
+   */
+  onBlockEdit(event: BlockEditEvent): void {
+    this.effects.onBlockEdit(event, this.now());
+  }
+
+  /**
+   * The wire layer just observed this tick's full set of held-break
+   * targeting states. Replaces the live targeting overlays wholesale.
+   */
+  applyTargetingStates(targets: readonly TargetingStateEvent[]): void {
+    this.effects.applyTargets(targets);
+  }
+
+  /**
    * The wire layer just inserted or replaced the chunk at `(cx, cy)`.
    * Replace just that chunk's sub-group inside the terrain mesh, leaving
    * neighbors untouched.
@@ -513,6 +546,7 @@ export class Renderer {
       (this.ghostMesh.material as THREE.Material).dispose();
       this.ghostMesh = null;
     }
+    this.effects.dispose();
     this.scene.remove(this.chunkBorderGrid);
     this.chunkBorderGrid.geometry.dispose();
     (this.chunkBorderGrid.material as THREE.Material).dispose();
@@ -535,6 +569,7 @@ export class Renderer {
     );
     this.updateCamera(entities);
     this.refreshHoverBillboards();
+    this.effects.update(nowMs);
     this.webgl.render(this.scene, this.camera);
   };
 

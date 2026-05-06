@@ -246,6 +246,63 @@ message MoveSlot {
 message TickUpdate {
   repeated Chunk full_state_chunks = 1;
   repeated ChunkCoord unmodified_chunks = 2;
+  // Per-tick block-edit feed (ADR-tracked side-channel for task 070).
+  // Distinct from `full_state_chunks` because chunk delivery only tells the
+  // client *what* the world looks like now, not *who* did the edit nor *when*
+  // — both of which the targeting / pulse / shatter effects need to attribute
+  // and animate. Scoped to the recipient's view window: an edit whose
+  // `chunk_coord` is outside the receiver's window is suppressed (the
+  // recipient wouldn't see the block anyway). Empty when no edits this tick.
+  repeated BlockEdit edits = 3;
+  // Players currently held-break-targeting a tile inside the recipient's view
+  // window. Re-emitted every tick the set is non-empty so the client renders
+  // a faint outlined frame + thin durability bar at the targeted cell, and
+  // the absence of an entry is the canonical "stop showing the overlay"
+  // signal (no separate release event). Includes the local player's own
+  // targets so visuals stay consistent. Scope mirrors `edits` — entries whose
+  // `chunk_coord` is outside the recipient's window are suppressed.
+  repeated TargetingState targets = 4;
+}
+
+// One block edit emitted by the server this tick. `Placed` covers
+// `try_place_top_block` outcomes (right-click, hotbar-driven kind); `Broken`
+// covers `try_break_top_block` outcomes including the held-break completion
+// path through `tick_durability`. The kind is the *resulting* top block for
+// `Placed` (so the client can tint the pulse to match) and the *removed*
+// top block for `Broken` (so a tree shatter can look different from a stone
+// shatter if a future client wants).
+message BlockEdit {
+  enum Kind {
+    BLOCK_EDIT_KIND_UNSPECIFIED = 0;
+    BLOCK_EDIT_KIND_PLACED = 1;
+    BLOCK_EDIT_KIND_BROKEN = 2;
+  }
+  uint64 player_id = 1;
+  Kind kind = 2;
+  ChunkCoord chunk_coord = 3;
+  uint32 local_x = 4;
+  uint32 local_y = 5;
+  // The top-layer block kind involved in this edit — placed kind for
+  // `Placed`, removed kind for `Broken`. Carries enough context that the
+  // renderer can colorize / pick a particle template without re-reading the
+  // chunk.
+  BlockType block_type = 6;
+}
+
+// One held-break targeting state currently active in the recipient's view
+// window. Emitted every tick a player is targeting a still-targetable cell
+// (the durability sweep validates reach + targetable kind before a damage
+// tick lands; the same predicate gates inclusion here). `durability_pct` is
+// `current * 100 / max_durability` rounded down — `100` means "fresh" and
+// `0` means "next tick lands the break". Encoded `u8`-wide via the proto3
+// `uint32` minimum so the field stays compact when many players target many
+// blocks.
+message TargetingState {
+  uint64 player_id = 1;
+  ChunkCoord chunk_coord = 2;
+  uint32 local_x = 3;
+  uint32 local_y = 4;
+  uint32 durability_pct = 5;
 }
 
 message ChunkCoord {

@@ -13,3 +13,10 @@ export type {
   ConnectHooks,
 } from "./connection.js";
 export { applyServerMessage } from "./wire.js";
+export type {
+  EffectsSink,
+  TerrainSink,
+  WireBlockEditEvent,
+  WireBlockEditKind,
+  WireTargetingStateEvent,
+} from "./wire.js";

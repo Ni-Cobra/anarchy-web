@@ -44,6 +44,36 @@ export interface TerrainSink {
   onChunkUnloaded?(cx: number, cy: number): void;
 }
 
+/**
+ * Per-tick block-edit + targeting feed (task 070). The wire layer reads
+ * the new `TickUpdate.edits` / `TickUpdate.targets` fields and routes
+ * them here so the renderer can spawn / advance / cull effects without
+ * the bridge importing `three`. The shape mirrors
+ * `render/effects.BlockEditEvent` / `TargetingStateEvent` so the bridge
+ * stays free of `three`-dependent types.
+ */
+export type WireBlockEditKind = "placed" | "broken";
+export interface WireBlockEditEvent {
+  readonly playerId: number;
+  readonly kind: WireBlockEditKind;
+  readonly cx: number;
+  readonly cy: number;
+  readonly lx: number;
+  readonly ly: number;
+}
+export interface WireTargetingStateEvent {
+  readonly playerId: number;
+  readonly cx: number;
+  readonly cy: number;
+  readonly lx: number;
+  readonly ly: number;
+  readonly durabilityPct: number;
+}
+export interface EffectsSink {
+  onBlockEdit?(event: WireBlockEditEvent): void;
+  applyTargets?(targets: readonly WireTargetingStateEvent[]): void;
+}
+
 export interface WireDeps {
   readonly world: World;
   readonly buffer: SnapshotBuffer;
@@ -56,6 +86,12 @@ export interface WireDeps {
   readonly terrain?: Terrain;
   /** Renderer notification hooks; see `TerrainSink`. */
   readonly terrainSink?: TerrainSink;
+  /**
+   * Renderer effects-layer hooks; see `EffectsSink`. Optional — tests
+   * that don't exercise the per-tick block-edit / targeting feed leave
+   * it absent and the bridge silently drops the events.
+   */
+  readonly effectsSink?: EffectsSink;
   /**
    * Local-player inventory mirror. Mutated in place when `InventoryUpdate`
    * arrives. Per-player only — the server never ships another player's
@@ -233,6 +269,72 @@ function applyTickUpdate(
   for (const id of deps.buffer.knownIds()) {
     if (!visible.has(id)) deps.buffer.drop(id);
   }
+
+  // Per-tick effects feed (task 070): block edits one-shot, targeting
+  // states are an authoritative replace. Both are scoped to this client's
+  // view window server-side, so the bridge fans them out as-is.
+  const effects = deps.effectsSink;
+  if (effects) {
+    if (effects.onBlockEdit) {
+      for (const wire of tick.edits ?? []) {
+        const event = blockEditFromWire(wire);
+        if (event) effects.onBlockEdit(event);
+      }
+    }
+    if (effects.applyTargets) {
+      const targets: WireTargetingStateEvent[] = [];
+      for (const wire of tick.targets ?? []) {
+        const t = targetingStateFromWire(wire);
+        if (t) targets.push(t);
+      }
+      effects.applyTargets(targets);
+    }
+  }
+}
+
+function blockEditFromWire(
+  wire: anarchy.v1.IBlockEdit,
+): WireBlockEditEvent | null {
+  const coord = wire.chunkCoord;
+  if (!coord) return null;
+  const kind = blockEditKindFromWire(wire.kind);
+  if (kind === null) return null;
+  return {
+    playerId: toNumber(wire.playerId),
+    kind,
+    cx: coord.cx ?? 0,
+    cy: coord.cy ?? 0,
+    lx: wire.localX ?? 0,
+    ly: wire.localY ?? 0,
+  };
+}
+
+function blockEditKindFromWire(
+  kind: anarchy.v1.BlockEdit.Kind | null | undefined,
+): WireBlockEditKind | null {
+  switch (kind) {
+    case anarchy.v1.BlockEdit.Kind.BLOCK_EDIT_KIND_PLACED:
+      return "placed";
+    case anarchy.v1.BlockEdit.Kind.BLOCK_EDIT_KIND_BROKEN:
+      return "broken";
+    default:
+      return null;
+  }
+}
+
+function targetingStateFromWire(
+  wire: anarchy.v1.ITargetingState,
+): WireTargetingStateEvent | null {
+  const coord = wire.chunkCoord;
+  if (!coord) return null;
+  return {
+    playerId: toNumber(wire.playerId),
+    cx: coord.cx ?? 0,
+    cy: coord.cy ?? 0,
+    lx: wire.localX ?? 0,
+    ly: wire.localY ?? 0,
+    durabilityPct: wire.durabilityPct ?? 0,
+  };
 }
 
 function chunkFromWire(

@@ -496,3 +496,117 @@ describe("applyServerMessage — InventoryUpdate", () => {
     expect(() => applyServerMessage(msg, deps)).not.toThrow();
   });
 });
+
+describe("applyServerMessage — TickUpdate effects feed (task 070)", () => {
+  it("forwards block edits to the effects sink with the right shape", () => {
+    const base = makeTerrainFixture();
+    const edits: import("./wire.js").WireBlockEditEvent[] = [];
+    const targetCalls: import("./wire.js").WireTargetingStateEvent[][] = [];
+    const deps = {
+      ...base.deps,
+      effectsSink: {
+        onBlockEdit: (e: import("./wire.js").WireBlockEditEvent) => edits.push(e),
+        applyTargets: (
+          ts: readonly import("./wire.js").WireTargetingStateEvent[],
+        ) => targetCalls.push([...ts]),
+      },
+    };
+    const msg = decodeRoundtrip({
+      seq: 1,
+      tickUpdate: {
+        fullStateChunks: [],
+        unmodifiedChunks: [],
+        edits: [
+          {
+            playerId: 17,
+            kind: anarchy.v1.BlockEdit.Kind.BLOCK_EDIT_KIND_PLACED,
+            chunkCoord: { cx: -1, cy: 2 },
+            localX: 3,
+            localY: 4,
+            blockType: anarchy.v1.BlockType.BLOCK_TYPE_GOLD,
+          },
+          {
+            playerId: 9,
+            kind: anarchy.v1.BlockEdit.Kind.BLOCK_EDIT_KIND_BROKEN,
+            chunkCoord: { cx: 5, cy: 6 },
+            localX: 7,
+            localY: 8,
+            blockType: anarchy.v1.BlockType.BLOCK_TYPE_TREE,
+          },
+        ],
+        targets: [],
+      },
+    });
+    applyServerMessage(msg, deps);
+    expect(edits).toEqual([
+      { playerId: 17, kind: "placed", cx: -1, cy: 2, lx: 3, ly: 4 },
+      { playerId: 9, kind: "broken", cx: 5, cy: 6, lx: 7, ly: 8 },
+    ]);
+    expect(targetCalls).toEqual([[]]);
+  });
+
+  it("forwards targeting states to the effects sink as a single replace call", () => {
+    const base = makeTerrainFixture();
+    const targetCalls: import("./wire.js").WireTargetingStateEvent[][] = [];
+    const deps = {
+      ...base.deps,
+      effectsSink: {
+        applyTargets: (
+          ts: readonly import("./wire.js").WireTargetingStateEvent[],
+        ) => targetCalls.push([...ts]),
+      },
+    };
+    const msg = decodeRoundtrip({
+      seq: 1,
+      tickUpdate: {
+        fullStateChunks: [],
+        unmodifiedChunks: [],
+        edits: [],
+        targets: [
+          {
+            playerId: 1,
+            chunkCoord: { cx: 0, cy: 0 },
+            localX: 5,
+            localY: 6,
+            durabilityPct: 75,
+          },
+        ],
+      },
+    });
+    applyServerMessage(msg, deps);
+    expect(targetCalls).toEqual([
+      [{ playerId: 1, cx: 0, cy: 0, lx: 5, ly: 6, durabilityPct: 75 }],
+    ]);
+  });
+
+  it("is a no-op when no effects sink is supplied", () => {
+    const { deps } = makeTerrainFixture();
+    const msg = decodeRoundtrip({
+      seq: 1,
+      tickUpdate: {
+        fullStateChunks: [],
+        unmodifiedChunks: [],
+        edits: [
+          {
+            playerId: 1,
+            kind: anarchy.v1.BlockEdit.Kind.BLOCK_EDIT_KIND_PLACED,
+            chunkCoord: { cx: 0, cy: 0 },
+            localX: 0,
+            localY: 0,
+            blockType: anarchy.v1.BlockType.BLOCK_TYPE_GOLD,
+          },
+        ],
+        targets: [
+          {
+            playerId: 1,
+            chunkCoord: { cx: 0, cy: 0 },
+            localX: 0,
+            localY: 0,
+            durabilityPct: 100,
+          },
+        ],
+      },
+    });
+    expect(() => applyServerMessage(msg, deps)).not.toThrow();
+  });
+});

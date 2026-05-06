@@ -31,6 +31,8 @@ import {
   connect,
   type LobbyIdentity,
   type LobbyRejectReason,
+  type WireBlockEditEvent,
+  type WireTargetingStateEvent,
 } from "./net/index.js";
 import { Renderer } from "./render/index.js";
 import {
@@ -90,6 +92,20 @@ export interface AnarchyHandle {
   // place-validator. Exposed for e2e specs that need to assert
   // place-visibility behavior without round-tripping a real PlaceBlock.
   canPlaceAt: (cx: number, cy: number, lx: number, ly: number) => boolean;
+  /**
+   * Test handle (task 070): authoritative latest set of held-break
+   * targeting overlays for any player visible to this client. Mirrors
+   * the wire bridge's `applyTargets` call exactly — wholesale replace
+   * each tick a `TickUpdate.targets` arrives.
+   */
+  getActiveTargetingStates: () => readonly WireTargetingStateEvent[];
+  /**
+   * Test handle (task 070): total count of `BlockEdit` events observed
+   * on this connection since session start. Lets a Playwright spec assert
+   * "client B saw the place / break that client A initiated" without
+   * inspecting renderer internals.
+   */
+  getObservedBlockEditCount: () => number;
   stop: () => void;
   readonly stopped: Promise<void>;
   /**
@@ -170,6 +186,13 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   // expects a monotonic counter and may surface it again later.
   let actionSeq = 0;
 
+  // Test-handle observability for the task 070 effects feed. The
+  // renderer-visible effects layer is internal; these mirrors give
+  // Playwright (and unit tests for the bootstrap wire) a way to assert
+  // that the new wire surface is being delivered end-to-end.
+  let observedBlockEditCount = 0;
+  let activeTargets: readonly WireTargetingStateEvent[] = [];
+
   const conn = connect(
     "ws://localhost:8080/ws",
     identity,
@@ -181,6 +204,16 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
         terrainSink: {
           onChunkLoaded: (cx, cy) => renderer.applyChunkLoaded(cx, cy),
           onChunkUnloaded: (cx, cy) => renderer.applyChunkUnloaded(cx, cy),
+        },
+        effectsSink: {
+          onBlockEdit: (event: WireBlockEditEvent) => {
+            observedBlockEditCount += 1;
+            renderer.onBlockEdit(event);
+          },
+          applyTargets: (targets: readonly WireTargetingStateEvent[]) => {
+            activeTargets = targets;
+            renderer.applyTargetingStates(targets);
+          },
         },
         inventory,
         local: {
@@ -484,6 +517,8 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     getSelectedHotbarSlot: () => inventoryUi.selectedHotbarSlot(),
     isInventoryOpen: () => inventoryUi.isOpen(),
     canPlaceAt,
+    getActiveTargetingStates: () => activeTargets,
+    getObservedBlockEditCount: () => observedBlockEditCount,
     stop,
     stopped,
     lobbyReject,
