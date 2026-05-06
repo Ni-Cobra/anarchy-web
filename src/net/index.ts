@@ -11,6 +11,7 @@ export type {
   LobbyIdentity,
   LobbyRejectReason,
   ConnectHooks,
+  RegisterResultStatus,
 } from "./connection.js";
 export { applyServerMessage } from "./wire.js";
 export type {

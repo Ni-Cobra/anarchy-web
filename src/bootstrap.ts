@@ -31,6 +31,7 @@ import {
   connect,
   type LobbyIdentity,
   type LobbyRejectReason,
+  type RegisterResultStatus,
   type WireBlockEditEvent,
   type WireTargetingStateEvent,
 } from "./net/index.js";
@@ -38,6 +39,8 @@ import { Renderer } from "./render/index.js";
 import {
   mountInventoryUi,
   mountSidePanel,
+  showRegisterModal,
+  type RegisterModalHandle,
   type SidePanelAction,
 } from "./ui/index.js";
 
@@ -193,6 +196,13 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   let observedBlockEditCount = 0;
   let activeTargets: readonly WireTargetingStateEvent[] = [];
 
+  // Pending result handler for an in-flight `RegisterAccount` submission
+  // (ADR 0007). Set when the user submits the modal; cleared by the
+  // server's `RegisterAccountResult` reply (or by `stop()` on disconnect).
+  let pendingRegisterResult: ((status: RegisterResultStatus) => void) | null =
+    null;
+  let registered = false;
+
   const conn = connect(
     "ws://localhost:8080/ws",
     identity,
@@ -227,16 +237,26 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
     },
     {
       onLobbyReject: (reason) => {
-        // Server rejected the Hello (only the reconnect-flagged path can
-        // produce a reject today). Surface the reason to the lifecycle
+        // Server rejected the Hello. Surface the reason to the lifecycle
         // loop *before* the teardown swallows it as a generic stop, then
         // fall through to `stop()` so the socket / listeners unwind.
         resolveLobbyReject(reason);
         stop();
       },
+      onRegisterResult: (status) => {
+        if (pendingRegisterResult) {
+          const cb = pendingRegisterResult;
+          pendingRegisterResult = null;
+          cb(status);
+        }
+      },
     },
   );
   teardowns.push(() => conn.close());
+
+  function sendRegisterAccount(password: string): void {
+    conn.send({ registerAccount: { password } });
+  }
 
   function sendMoveIntent(dx: number, dy: number): void {
     const seq = ++actionSeq;
@@ -495,14 +515,93 @@ export function runMain(identity: LobbyIdentity): AnarchyHandle {
   window.addEventListener("contextmenu", onContextMenu);
   teardowns.push(() => window.removeEventListener("contextmenu", onContextMenu));
 
+  // Tiny in-session toast for the register flow's result. Stays on
+  // screen for ~3 s, then fades. Created on demand so an empty session
+  // pays no DOM cost.
+  function showToast(text: string, kind: "ok" | "error"): void {
+    let host = document.getElementById("anarchy-toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "anarchy-toast-host";
+      host.style.cssText =
+        "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9700;display:flex;flex-direction:column;gap:8px;align-items:center;font-family:system-ui,-apple-system,sans-serif;";
+      document.body.appendChild(host);
+    }
+    const toast = document.createElement("div");
+    toast.textContent = text;
+    toast.style.cssText = `padding:10px 16px;border-radius:6px;font-size:13px;color:#fff;background:${
+      kind === "ok" ? "#1e7a3a" : "#a32d2d"
+    };box-shadow:0 4px 12px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.18s ease;`;
+    host.appendChild(toast);
+    requestAnimationFrame(() => (toast.style.opacity = "1"));
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 250);
+    }, 3000);
+  }
+
+  let openRegisterModal: () => void = () => {};
+  let registerModal: RegisterModalHandle | null = null;
+  teardowns.push(() => {
+    registerModal?.close();
+    registerModal = null;
+    pendingRegisterResult = null;
+    document.getElementById("anarchy-toast-host")?.remove();
+  });
+
   // Action registry for the side panel. New in-game actions go here as
   // `{ label, onClick }` entries; the panel renders them as a vertical
   // button stack without per-action DOM scaffolding.
-  const sidePanelActions: ReadonlyArray<SidePanelAction> = [
-    { label: "Disconnect", onClick: () => stop() },
-  ];
-  const sidePanel = mountSidePanel({ actions: sidePanelActions });
+  function buildSidePanelActions(): ReadonlyArray<SidePanelAction> {
+    const actions: SidePanelAction[] = [
+      { label: "Disconnect", onClick: () => stop() },
+    ];
+    if (!registered) {
+      actions.push({
+        label: "Register account",
+        onClick: () => openRegisterModal(),
+      });
+    }
+    return actions;
+  }
+  let sidePanel = mountSidePanel({ actions: buildSidePanelActions() });
   teardowns.push(() => sidePanel.unmount());
+
+  function rebuildSidePanel(): void {
+    const wasOpen = sidePanel.isOpen();
+    sidePanel.unmount();
+    sidePanel = mountSidePanel({ actions: buildSidePanelActions() });
+    if (wasOpen) sidePanel.setOpen(true);
+  }
+
+  openRegisterModal = (): void => {
+    if (registerModal !== null) return;
+    if (registered) return;
+    if (localPlayerId === null) return;
+    const me = world.getPlayer(localPlayerId);
+    const username = me?.username ?? identity.username;
+    registerModal = showRegisterModal({
+      username,
+      onSubmit: (password) => {
+        registerModal = null;
+        pendingRegisterResult = (status) => {
+          if (status === "ok") {
+            registered = true;
+            showToast("Account registered.", "ok");
+            rebuildSidePanel();
+          } else if (status === "already-registered") {
+            showToast("This username is already registered.", "error");
+          } else {
+            showToast("Registration failed. Please try again.", "error");
+          }
+        };
+        sendRegisterAccount(password);
+      },
+      onCancel: () => {
+        registerModal = null;
+      },
+    });
+  };
 
   return {
     world,
@@ -549,7 +648,14 @@ export async function runApp(initial: LobbyIdentity | null): Promise<void> {
         ? {
             username: pendingReject.identity.username,
             colorIndex: pendingReject.identity.colorIndex,
-            reconnect: pendingReject.identity.reconnect,
+            // The "username taken" case asks the user to switch to
+            // Returning + enter a password — surface that mode so they
+            // don't have to click the tab themselves.
+            mode:
+              pendingReject.reason === "username-taken-by-registration" ||
+              pendingReject.identity.reconnect
+                ? ("returning" as const)
+                : ("new" as const),
             rejectMessage: lobbyRejectMessage(pendingReject.reason),
           }
         : {};

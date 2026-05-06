@@ -14,3 +14,8 @@ export type {
   InventoryUiHandle,
   InventoryUiOptions,
 } from "./inventory.js";
+export { showRegisterModal, MIN_PASSWORD_LEN } from "./register_modal.js";
+export type {
+  RegisterModalHandle,
+  RegisterModalOptions,
+} from "./register_modal.js";

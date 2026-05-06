@@ -19,6 +19,7 @@ message ClientMessage {
   oneof payload {
     ClientHello hello = 10;
     Ping ping = 11;
+    RegisterAccount register_account = 12;
     ClientAction action = 20;
     BreakIntent break_intent = 21;
     PlaceBlock place_block = 22;
@@ -34,6 +35,7 @@ message ServerMessage {
     ServerWelcome welcome = 10;
     Pong pong = 11;
     LobbyReject lobby_reject = 12;
+    RegisterAccountResult register_account_result = 13;
     TickUpdate tick_update = 20;
     InventoryUpdate inventory_update = 30;
   }
@@ -64,6 +66,13 @@ message ClientHello {
   string username = 2;
   uint32 color_index = 3;
   bool reconnect = 4;
+  // Password for password-locked usernames (ADR 0007). Empty means
+  // "anonymous attempt" — admission proceeds only if the username is not
+  // registered. When non-empty: a fresh Hello (`reconnect=false`) verifies
+  // against the registered hash if one exists; a reconnect Hello requires
+  // the password when the username is registered. The server never echoes
+  // this back. The client never persists it (no localStorage).
+  string password = 5;
 }
 
 message ServerWelcome {
@@ -90,8 +99,46 @@ message LobbyReject {
     LOBBY_REJECT_REASON_RECONNECT_LIVE_SESSION = 1;
     // No dormant record exists with the requested username.
     LOBBY_REJECT_REASON_RECONNECT_NO_RECORD = 2;
+    // Reconnect path: the username is registered but the supplied password
+    // was empty.
+    LOBBY_REJECT_REASON_PASSWORD_REQUIRED = 3;
+    // Either path: the username is registered and the supplied password
+    // does not match the stored hash.
+    LOBBY_REJECT_REASON_PASSWORD_INCORRECT = 4;
+    // Fresh Hello (`reconnect=false`) on a registered username with empty
+    // password. Distinct from `PASSWORD_REQUIRED` (reconnect path) so the
+    // lobby UX can render "this name is taken — sign in to claim it".
+    LOBBY_REJECT_REASON_USERNAME_TAKEN_BY_REGISTRATION = 5;
   }
   Reason reason = 1;
+}
+
+// === Account registration (ADR 0007) ===
+//
+// Client→server in-game registration. The lobby identity is taken from the
+// already-admitted player's session (the server knows which connection sent
+// this); the client only ships the password. The server hashes (argon2id),
+// writes `<world>.accounts.json`, and replies with `RegisterAccountResult`.
+// The session that just registered keeps playing on its current admit; the
+// lock applies starting next session.
+message RegisterAccount {
+  string password = 1;
+}
+
+message RegisterAccountResult {
+  enum Status {
+    REGISTER_ACCOUNT_STATUS_UNSPECIFIED = 0;
+    // Hashed + persisted; future sessions under this username require the
+    // password.
+    REGISTER_ACCOUNT_STATUS_OK = 1;
+    // The canonical (lowercased) username already has an account record.
+    // Re-registration is intentionally not supported in this iteration.
+    REGISTER_ACCOUNT_STATUS_ALREADY_REGISTERED = 2;
+    // I/O failure during write or hashing failure. The in-memory registry
+    // is unchanged; the client may retry.
+    REGISTER_ACCOUNT_STATUS_ERROR = 3;
+  }
+  Status status = 1;
 }
 
 // === Heartbeat ===

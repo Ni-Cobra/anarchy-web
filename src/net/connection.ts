@@ -21,12 +21,16 @@ export interface Connection {
  * to restore a dormant character with the same `username` rather than
  * spawning a fresh one. Failures (no record, or a live session under that
  * name) come back as a `LobbyReject` and the lobby renders the reason.
- * Documented as a temporary identity mechanism pending real auth.
+ *
+ * `password` (ADR 0007) carries the supplied password for password-locked
+ * usernames. Empty / missing means anonymous attempt. The client never
+ * persists this field — it is re-typed each session.
  */
 export interface LobbyIdentity {
   readonly username: string;
   readonly colorIndex: number;
   readonly reconnect?: boolean;
+  readonly password?: string;
 }
 
 /**
@@ -35,7 +39,12 @@ export interface LobbyIdentity {
  * discriminator so the lobby UI can switch on it cleanly. New variants
  * land here when the proto enum grows.
  */
-export type LobbyRejectReason = "reconnect-live-session" | "reconnect-no-record";
+export type LobbyRejectReason =
+  | "reconnect-live-session"
+  | "reconnect-no-record"
+  | "password-required"
+  | "password-incorrect"
+  | "username-taken-by-registration";
 
 /**
  * Lifecycle hooks for the lobby UI. `onLobbyReject` fires when the server
@@ -43,9 +52,17 @@ export type LobbyRejectReason = "reconnect-live-session" | "reconnect-no-record"
  * immediately afterward, so the caller doesn't need to call `close()` to
  * tear down. The reason lets the lobby render a specific message and
  * keep the player on the lobby screen instead of routing into the game.
+ *
+ * `onRegisterResult` fires when the server replies to a
+ * `register_account` request (ADR 0007); the bootstrap layer surfaces a
+ * notification and toggles the side-panel button accordingly. Unlike
+ * `onLobbyReject`, this leaves the connection live.
  */
+export type RegisterResultStatus = "ok" | "already-registered" | "error";
+
 export interface ConnectHooks {
   onLobbyReject?: (reason: LobbyRejectReason) => void;
+  onRegisterResult?: (status: RegisterResultStatus) => void;
 }
 
 export function connect(
@@ -79,6 +96,7 @@ export function connect(
         username: identity.username,
         colorIndex: identity.colorIndex,
         reconnect: identity.reconnect ?? false,
+        password: identity.password ?? "",
       },
     });
 
@@ -116,6 +134,11 @@ export function connect(
         if (reason !== null) hooks.onLobbyReject?.(reason);
         return;
       }
+      if (msg.registerAccountResult) {
+        const status = registerResultFromWire(msg.registerAccountResult.status);
+        if (status !== null) hooks.onRegisterResult?.(status);
+        return;
+      }
       onMessage(msg);
     } catch (err) {
       console.error("[net] decode failed", err);
@@ -140,6 +163,22 @@ export function connect(
   };
 }
 
+function registerResultFromWire(
+  status: anarchy.v1.RegisterAccountResult.Status | null | undefined,
+): RegisterResultStatus | null {
+  switch (status) {
+    case anarchy.v1.RegisterAccountResult.Status.REGISTER_ACCOUNT_STATUS_OK:
+      return "ok";
+    case anarchy.v1.RegisterAccountResult.Status
+      .REGISTER_ACCOUNT_STATUS_ALREADY_REGISTERED:
+      return "already-registered";
+    case anarchy.v1.RegisterAccountResult.Status.REGISTER_ACCOUNT_STATUS_ERROR:
+      return "error";
+    default:
+      return null;
+  }
+}
+
 function lobbyRejectReasonFromWire(
   reason: anarchy.v1.LobbyReject.Reason | null | undefined,
 ): LobbyRejectReason | null {
@@ -148,6 +187,12 @@ function lobbyRejectReasonFromWire(
       return "reconnect-live-session";
     case anarchy.v1.LobbyReject.Reason.LOBBY_REJECT_REASON_RECONNECT_NO_RECORD:
       return "reconnect-no-record";
+    case anarchy.v1.LobbyReject.Reason.LOBBY_REJECT_REASON_PASSWORD_REQUIRED:
+      return "password-required";
+    case anarchy.v1.LobbyReject.Reason.LOBBY_REJECT_REASON_PASSWORD_INCORRECT:
+      return "password-incorrect";
+    case anarchy.v1.LobbyReject.Reason.LOBBY_REJECT_REASON_USERNAME_TAKEN_BY_REGISTRATION:
+      return "username-taken-by-registration";
     default:
       return null;
   }
