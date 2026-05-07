@@ -293,6 +293,15 @@ describe("inventory UI", () => {
         bubbles: true,
       }),
     );
+    // Cross the drag-promotion threshold so the pending gesture turns
+    // into a drag rather than a click.
+    document.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 200,
+        clientY: 200,
+        bubbles: true,
+      }),
+    );
     document.dispatchEvent(
       new PointerEvent("pointerup", {
         button: 0,
@@ -323,6 +332,13 @@ describe("inventory UI", () => {
         button: 0,
         clientX: 10,
         clientY: 10,
+        bubbles: true,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 200,
+        clientY: 200,
         bubbles: true,
       }),
     );
@@ -362,6 +378,14 @@ describe("inventory UI", () => {
         bubbles: true,
       }),
     );
+    // Promote to a drag, then release back over the source.
+    document.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 50,
+        clientY: 50,
+        bubbles: true,
+      }),
+    );
     document.dispatchEvent(
       new PointerEvent("pointerup", {
         button: 0,
@@ -397,6 +421,14 @@ describe("inventory UI", () => {
         bubbles: true,
       }),
     );
+    // Drag promotion happens on the first pointermove past the threshold.
+    document.dispatchEvent(
+      new PointerEvent("pointermove", {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+      }),
+    );
     expect(
       document.querySelector(".anarchy-inventory-drag-preview"),
     ).not.toBeNull();
@@ -425,6 +457,218 @@ describe("inventory UI", () => {
     );
     document.elementsFromPoint = original;
     expect(moves).toEqual([]);
+  });
+
+  describe("click-to-swap (panel → selected hotbar)", () => {
+    // Helper: dispatch a "click" gesture on the cell — pointerdown
+    // followed by an immediate pointerup at the same coords (no
+    // pointermove past the threshold). Mirrors the user's "tap a panel
+    // cell to drop it in the active hand" flow.
+    function clickGesture(target: HTMLElement, x = 10, y = 10): void {
+      target.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          clientX: x,
+          clientY: y,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          button: 0,
+          clientX: x,
+          clientY: y,
+          bubbles: true,
+        }),
+      );
+    }
+
+    it("clicking a non-empty panel cell ships MoveSlot(panel → selectedHotbar) when the hotbar slot is empty", () => {
+      // Selected hotbar slot is 0 (empty); panel slot 0 (= flat index
+      // HOTBAR_SLOTS) holds Gold. Click → server gets the move and
+      // (server-side) the stack relocates whole into the empty slot.
+      inventory.replaceFromWire(
+        fillSlots({
+          [HOTBAR_SLOTS]: { item: ItemId.Gold, count: 10 },
+        }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      clickGesture(panelCells[0] as HTMLElement);
+      expect(moves).toEqual([[HOTBAR_SLOTS, 0]]);
+    });
+
+    it("clicking a same-kind panel cell into a same-kind hotbar slot ships MoveSlot — server merges", () => {
+      // Both slots hold Gold. The wire is the same MoveSlot — the
+      // merge / overflow split happens server-side via try_move_slot →
+      // Inventory::merge_stacks.
+      inventory.replaceFromWire(
+        fillSlots({
+          0: { item: ItemId.Gold, count: 10 },
+          [HOTBAR_SLOTS]: { item: ItemId.Gold, count: 60 },
+        }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      clickGesture(panelCells[0] as HTMLElement);
+      expect(moves).toEqual([[HOTBAR_SLOTS, 0]]);
+    });
+
+    it("clicking a different-kind panel cell into a different-kind hotbar slot ships MoveSlot — server swaps", () => {
+      inventory.replaceFromWire(
+        fillSlots({
+          0: { item: ItemId.Stone, count: 5 },
+          [HOTBAR_SLOTS]: { item: ItemId.Gold, count: 10 },
+        }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      clickGesture(panelCells[0] as HTMLElement);
+      expect(moves).toEqual([[HOTBAR_SLOTS, 0]]);
+    });
+
+    it("clicking an empty panel cell is a no-op", () => {
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      clickGesture(panelCells[0] as HTMLElement);
+      expect(moves).toEqual([]);
+    });
+
+    it("targets the *currently-selected* hotbar slot, not just slot 0", () => {
+      // Move the selection to slot 4, then click a panel cell. The
+      // wire MoveSlot must point at 4, not 0.
+      inventory.replaceFromWire(
+        fillSlots({
+          [HOTBAR_SLOTS]: { item: ItemId.Gold, count: 10 },
+        }),
+      );
+      const moves: Array<[number, number]> = [];
+      const ui = mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      ui.selectHotbarSlot(4);
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      clickGesture(panelCells[0] as HTMLElement);
+      expect(moves).toEqual([[HOTBAR_SLOTS, 4]]);
+    });
+
+    it("a pointerdown+up on a hotbar cell does NOT ship MoveSlot — selection stays its own path", () => {
+      // Hotbar cells own their own click-to-select handler (verified
+      // separately by the "clicking a hotbar cell flips selection"
+      // test). The panel click-swap path must not double-fire on a
+      // hotbar pointerup that didn't promote into a drag.
+      inventory.replaceFromWire(
+        fillSlots({ 3: { item: ItemId.Stone, count: 4 } }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      const hotbarCells = document.querySelectorAll(
+        ".anarchy-hotbar .anarchy-inventory-slot",
+      );
+      clickGesture(hotbarCells[3] as HTMLElement);
+      expect(moves).toEqual([]);
+    });
+
+    it("a click followed by a drag distinguishes correctly: only the drag ships MoveSlot", () => {
+      // Click on a panel cell first (one MoveSlot to the selected
+      // hotbar). Then drag from the same panel cell to a hotbar slot
+      // 5 (a second MoveSlot). The two gestures must produce two
+      // distinct emissions, in order.
+      inventory.replaceFromWire(
+        fillSlots({
+          [HOTBAR_SLOTS]: { item: ItemId.Gold, count: 10 },
+        }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+      });
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      const hotbarCells = document.querySelectorAll(
+        ".anarchy-hotbar .anarchy-inventory-slot",
+      );
+      const panelCell = panelCells[0] as HTMLElement;
+      const dst = hotbarCells[5] as HTMLElement;
+
+      // Gesture #1: click. No pointermove past the threshold.
+      clickGesture(panelCell, 10, 10);
+      expect(moves).toEqual([[HOTBAR_SLOTS, 0]]);
+
+      // Gesture #2: drag. Pointermove past the threshold turns it into
+      // a drag; pointerup over slot 5 ships MoveSlot to 5, not 0.
+      const original = document.elementsFromPoint;
+      document.elementsFromPoint = ((_x: number, _y: number) => [
+        dst,
+      ]) as typeof document.elementsFromPoint;
+      panelCell.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          clientX: 200,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          button: 0,
+          clientX: 200,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      document.elementsFromPoint = original;
+      expect(moves).toEqual([
+        [HOTBAR_SLOTS, 0],
+        [HOTBAR_SLOTS, 5],
+      ]);
+    });
   });
 
   it("escape outside an active drag is a no-op", () => {

@@ -107,6 +107,50 @@ test("MoveSlot relocates the seeded Gold stack to a new slot", async ({
   });
 });
 
+test("clicking a panel cell ships MoveSlot to the selected hotbar slot", async ({
+  page,
+}) => {
+  // Stage the panel cell first via a programmatic MoveSlot (slot 0 →
+  // slot 9 / first panel cell). Then open the side panel and click
+  // that panel cell with the mouse — the selected hotbar slot is empty
+  // (we just emptied it), so the server moves the whole 10-Gold stack
+  // back into slot 0.
+  await openClient(page, "inv-click");
+
+  await page.evaluate(() => {
+    window.__anarchy!.sendMoveSlot(0, 9);
+  });
+  await page.waitForFunction(() => {
+    const a = window.__anarchy;
+    if (!a) return false;
+    const s9 = a.inventory.slot(9);
+    return a.inventory.slot(0) === null && s9 !== null && s9.count === 10;
+  });
+
+  // The side panel slides off-screen when closed. `E` toggles it open
+  // — bootstrap.ts wires the keybinding to `inventoryUi.toggle()`.
+  await page.keyboard.press("KeyE");
+  await page.waitForFunction(() => window.__anarchy!.isInventoryOpen());
+
+  // Drive the click via the real mouse to exercise the pointerdown→
+  // pointerup gesture without any cursor movement (i.e. below the
+  // drag-promotion threshold). The first panel cell is the one that
+  // mirrors flat slot index 9.
+  const panelCell = page.locator(
+    ".anarchy-inventory-panel .anarchy-inventory-slot",
+  ).first();
+  await panelCell.click();
+
+  // Server applies MoveSlot(9 → 0): slot 9 empties, slot 0 carries the
+  // 10-Gold stack again.
+  await page.waitForFunction(() => {
+    const a = window.__anarchy;
+    if (!a) return false;
+    const s0 = a.inventory.slot(0);
+    return s0 !== null && s0.count === 10 && a.inventory.slot(9) === null;
+  });
+});
+
 test("SelectSlot mirror locally tracks digit-key selection", async ({
   page,
 }) => {

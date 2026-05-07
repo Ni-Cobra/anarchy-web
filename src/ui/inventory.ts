@@ -29,6 +29,15 @@
  * level mousedown handlers don't fire destroy / place behind the overlay.
  * The panel does NOT capture clicks outside its DOM bounds — the player
  * can keep playing while the inventory is open.
+ *
+ * Pointer-down on any slot starts a *pending* gesture; the drag preview
+ * only materializes once the cursor moves past `DRAG_THRESHOLD_PX`. A
+ * pointer-up before that threshold is a click — and on panel cells
+ * (slots `>= HOTBAR_SLOTS`) the click ships a `MoveSlot(panel,
+ * selectedHotbar)` so the server can merge / swap into the active hand.
+ * On hotbar cells the click flips selection (existing behavior). The
+ * server's `try_move_slot` handles the merge-with-overflow / swap-on-
+ * mismatch / move-into-empty branches the click can produce.
  */
 
 import {
@@ -50,6 +59,14 @@ const PANEL_GAP_PX = 4;
 const PANEL_COLS = 4;
 const PANEL_WIDTH_PX =
   PANEL_COLS * SLOT_PX + (PANEL_COLS - 1) * PANEL_GAP_PX + PANEL_PAD_PX * 2;
+
+/**
+ * Squared cursor-movement threshold (in CSS pixels) that flips a
+ * pointer-down into a drag instead of a click. Below this, the gesture
+ * is a click — on panel cells, that ships a `MoveSlot` to the selected
+ * hotbar; on hotbar cells, the existing click handler flips selection.
+ */
+const DRAG_THRESHOLD_PX_SQ = 25;
 
 /**
  * Apply the per-item texture to a slot icon element. Items that map to a
@@ -246,9 +263,13 @@ export function mountInventoryUi(
   let open = false;
   let selectedSlot = 0;
 
-  // Drag state: the slot index the pointer-down landed on plus a floating
-  // preview element that follows the cursor until release. `null` outside
-  // of an active drag.
+  // Pending-gesture state: pointer-down landed on `pointerSrc` at
+  // `pointerStart`. While the gesture stays inside `DRAG_THRESHOLD_PX_SQ`
+  // it remains a click candidate; once the cursor exceeds the threshold
+  // it promotes to a drag (`dragSrc` set + floating preview). Both null
+  // outside an active gesture.
+  let pointerSrc: number | null = null;
+  let pointerStart: { x: number; y: number } | null = null;
   let dragSrc: number | null = null;
   let dragPreview: HTMLDivElement | null = null;
 
@@ -311,13 +332,17 @@ export function mountInventoryUi(
     }
   };
 
-  // Pointer-down on a slot starts a drag. The matching `pointerup`
-  // listener at the document level resolves the drop target.
+  // Pointer-down on a slot opens a pending gesture; promotion to a drag
+  // happens on the first pointermove that crosses `DRAG_THRESHOLD_PX_SQ`.
+  // Pointerup before promotion is treated as a click (panel-cell click
+  // ships a MoveSlot to the selected hotbar; hotbar-cell click is
+  // selection, handled by the per-cell `click` listener below).
   const wireSlotPointerDown = (idx: number, cell: HTMLDivElement): void => {
     cell.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0) return;
       ev.preventDefault();
-      beginDrag(idx, ev);
+      pointerSrc = idx;
+      pointerStart = { x: ev.clientX, y: ev.clientY };
     });
   };
   for (let i = 0; i < HOTBAR_SLOTS; i++) {
@@ -327,9 +352,21 @@ export function mountInventoryUi(
     wireSlotPointerDown(HOTBAR_SLOTS + i, panelCells[i]);
   }
 
-  // Cursor follow + drop resolution at document level so a drag that
-  // releases outside any slot cancels cleanly.
+  // Cursor follow + drag promotion + drop resolution at document level
+  // so a drag that releases outside any slot cancels cleanly. The first
+  // pointermove past the threshold promotes the pending gesture into a
+  // drag; once promoted (or once the source was empty), `pointerSrc`
+  // clears so the click path can't double-fire on pointerup.
   const onDocumentPointerMove = (ev: PointerEvent): void => {
+    if (pointerSrc !== null && dragSrc === null && pointerStart !== null) {
+      const dx = ev.clientX - pointerStart.x;
+      const dy = ev.clientY - pointerStart.y;
+      if (dx * dx + dy * dy >= DRAG_THRESHOLD_PX_SQ) {
+        beginDrag(pointerSrc, ev);
+        pointerSrc = null;
+        pointerStart = null;
+      }
+    }
     if (dragPreview === null) return;
     dragPreview.style.left = `${ev.clientX}px`;
     dragPreview.style.top = `${ev.clientY}px`;
@@ -337,28 +374,46 @@ export function mountInventoryUi(
   document.addEventListener("pointermove", onDocumentPointerMove);
 
   const onDocumentPointerUp = (ev: PointerEvent): void => {
-    if (dragSrc === null) return;
-    const src = dragSrc;
-    cancelDrag();
-    const targets = document.elementsFromPoint(ev.clientX, ev.clientY);
-    let dst: number | null = null;
-    for (const t of targets) {
-      if (t instanceof HTMLElement && t.classList.contains("anarchy-inventory-slot")) {
-        dst = slotIndexFromCell(t);
-        if (dst !== null) break;
+    const clickSrc = pointerSrc;
+    pointerSrc = null;
+    pointerStart = null;
+
+    if (dragSrc !== null) {
+      const src = dragSrc;
+      cancelDrag();
+      const targets = document.elementsFromPoint(ev.clientX, ev.clientY);
+      let dst: number | null = null;
+      for (const t of targets) {
+        if (t instanceof HTMLElement && t.classList.contains("anarchy-inventory-slot")) {
+          dst = slotIndexFromCell(t);
+          if (dst !== null) break;
+        }
       }
+      if (dst === null || dst === src) return;
+      options.sendMove(src, dst);
+      return;
     }
-    if (dst === null || dst === src) return;
-    options.sendMove(src, dst);
+
+    // No drag → was this a click on a non-empty panel cell? Hotbar cells
+    // own the click via their per-cell `click` listener (selection),
+    // so we only fire the swap on panel cells. Empty source is a
+    // silent no-op the server would reject anyway.
+    if (clickSrc === null) return;
+    if (clickSrc < HOTBAR_SLOTS) return;
+    const inv = options.getInventory();
+    if (inv.slot(clickSrc) === null) return;
+    options.sendMove(clickSrc, selectedSlot);
   };
   document.addEventListener("pointerup", onDocumentPointerUp);
 
-  // Escape during a drag aborts cleanly — no `sendMove` fires and the
-  // preview / drag-source highlight clears. Listener is captured so a
-  // game-side keydown handler can't preempt it.
+  // Escape during a drag (or pending click gesture) aborts cleanly — no
+  // `sendMove` fires and the preview / drag-source highlight clears.
+  // Listener is captured so a game-side keydown handler can't preempt it.
   const onDocumentKeydown = (ev: KeyboardEvent): void => {
     if (ev.key !== "Escape") return;
-    if (dragSrc === null) return;
+    if (dragSrc === null && pointerSrc === null) return;
+    pointerSrc = null;
+    pointerStart = null;
     cancelDrag();
   };
   document.addEventListener("keydown", onDocumentKeydown, true);
