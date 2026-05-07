@@ -1,6 +1,12 @@
 import * as THREE from "three";
 
-import { CAMERA_HEIGHT, PLAYER_RADIUS, ZOOM_OUT_CAMERA_HEIGHT } from "../config.js";
+import {
+  CAMERA_HEIGHT,
+  PLAYER_RADIUS,
+  ZOOM_OUT_CAMERA_HEIGHT,
+  ZOOM_STEP_FACTOR,
+  ZOOM_TWEEN_MS,
+} from "../config.js";
 import {
   BlockType,
   CHUNK_SIZE,
@@ -33,6 +39,7 @@ import {
   type TargetingStateEvent,
 } from "./effects/index.js";
 import { computeGhostState, type GhostState } from "./ghost.js";
+import { ZoomController, clampZoomHeight } from "./zoom.js";
 import {
   type BlockTextureSet,
   disposeBlockTextures,
@@ -298,6 +305,12 @@ export class Renderer {
   private readonly effects: EffectsLayer;
   private readonly beams: BeamLayer;
   private readonly chunkBorderGrid: THREE.LineSegments;
+  // Camera-height tween (see `render/zoom.ts`). Holds the source-of-truth
+  // for both the M preset toggle and the continuous +/- / Ctrl+Wheel
+  // bindings. Sampled once per frame in `updateCamera`. `zoomedOut` is
+  // kept around as a separate flag because it also gates the chunk-border
+  // grid (debug-only overlay), which is independent of the camera height.
+  private readonly zoom: ZoomController;
   private zoomedOut = false;
   // Wall-clock timestamp of the last `frame()` call. `null` until the first
   // frame so we can flag the initial sync as "no smoothing" (an unknown
@@ -400,6 +413,8 @@ export class Renderer {
     this.chunkBorderGrid.visible = false;
     this.scene.add(this.chunkBorderGrid);
 
+    this.zoom = new ZoomController(CAMERA_HEIGHT, ZOOM_TWEEN_MS, this.now());
+
     this.webgl.setAnimationLoop(this.frame);
   }
 
@@ -423,15 +438,33 @@ export class Renderer {
 
   /**
    * Debug zoom-out toggle (bound to `M` in `bootstrap.ts`). When on, the
-   * top-down camera floats at `ZOOM_OUT_CAMERA_HEIGHT` instead of
-   * `CAMERA_HEIGHT` and the chunk-border grid is shown. Instant snap; no
-   * animation. The grid is parked in the scene at construction time so
-   * toggling is just a `visible` flip — no allocation, no draw-call churn.
+   * top-down camera retargets to `ZOOM_OUT_CAMERA_HEIGHT` and the chunk-
+   * border grid is shown; off retargets back to `CAMERA_HEIGHT` and hides
+   * the grid. The retarget eases via `ZoomController` so the camera
+   * doesn't snap; the grid still toggles instantly because it's a debug
+   * overlay where fade-ins would just look fussy.
    */
   setZoomedOut(on: boolean): void {
     if (this.zoomedOut === on) return;
     this.zoomedOut = on;
     this.chunkBorderGrid.visible = on;
+    this.zoom.setTarget(
+      on ? ZOOM_OUT_CAMERA_HEIGHT : CAMERA_HEIGHT,
+      this.now(),
+    );
+  }
+
+  /**
+   * Continuous zoom step (`+` / `-` / `Ctrl+Wheel`). `direction` is +1 to
+   * zoom in (camera lower) or -1 to zoom out (camera higher). The new
+   * target is `current_target * ZOOM_STEP_FACTOR^(-direction)`, clamped
+   * to `[ZOOM_HEIGHT_MIN, ZOOM_HEIGHT_MAX]`. Mid-tween retargets stay
+   * continuous — see `ZoomController.setTarget`.
+   */
+  nudgeZoom(direction: 1 | -1): void {
+    const factor = direction > 0 ? 1 / ZOOM_STEP_FACTOR : ZOOM_STEP_FACTOR;
+    const next = clampZoomHeight(this.zoom.target() * factor);
+    this.zoom.setTarget(next, this.now());
   }
 
   /**
@@ -686,7 +719,7 @@ export class Renderer {
     const focus = local
       ? tileToScene(local.x, local.y)
       : new THREE.Vector3(0, 0, 0);
-    const height = this.zoomedOut ? ZOOM_OUT_CAMERA_HEIGHT : CAMERA_HEIGHT;
+    const height = this.zoom.sample(this.now());
     this.camera.position.set(focus.x, height, focus.z);
     this.camera.lookAt(focus);
   }

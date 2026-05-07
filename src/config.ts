@@ -63,6 +63,32 @@ export const CAMERA_HEIGHT = 14;
  */
 export const ZOOM_OUT_CAMERA_HEIGHT = 80;
 
+/**
+ * Bounds for continuous zoom (`+` / `-` keys, `Ctrl+Wheel`). Min sits a
+ * bit above `CAMERA_HEIGHT` floor (one tile is 1 world unit; the camera
+ * needs enough altitude to keep the player + neighbors on screen). Max
+ * goes a hair past `ZOOM_OUT_CAMERA_HEIGHT` so users who hit the M preset
+ * can still nudge a touch further out before clamping.
+ */
+export const ZOOM_HEIGHT_MIN = 4;
+export const ZOOM_HEIGHT_MAX = 100;
+
+/**
+ * Multiplicative step per `+` / `-` keypress (and per `Ctrl+Wheel` notch).
+ * 1.2 means each press changes the camera height by ±20%, so a handful of
+ * presses spans the full min↔max range without feeling either twitchy or
+ * sluggish.
+ */
+export const ZOOM_STEP_FACTOR = 1.2;
+
+/**
+ * Duration of the camera-height tween between zoom levels (presets via M
+ * and continuous via `+` / `-`). Ease-in-out cubic over this window — see
+ * `render/zoom.ts`. A new zoom command mid-tween retargets without
+ * snapping by re-anchoring the tween's start at the current sampled value.
+ */
+export const ZOOM_TWEEN_MS = 180;
+
 // ---- Input ----
 
 /**

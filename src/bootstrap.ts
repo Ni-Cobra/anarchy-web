@@ -368,6 +368,18 @@ export function runMain(
       renderer.setZoomedOut(zoomedOut);
       return;
     }
+    // `+` / `-` continuous zoom. We accept `Equal` (the unshifted `=`/`+`
+    // key on US layouts) and `Minus`, plus their numpad twins, so users
+    // don't have to hold Shift to nudge zoom. Ctrl+Wheel below covers the
+    // mouse / trackpad path. Plain mouse wheel keeps cycling the hotbar.
+    if (ev.code === "Equal" || ev.code === "NumpadAdd") {
+      renderer.nudgeZoom(1);
+      return;
+    }
+    if (ev.code === "Minus" || ev.code === "NumpadSubtract") {
+      renderer.nudgeZoom(-1);
+      return;
+    }
     // Digits 1..9 select hotbar slots 0..8. `event.code` keeps the binding
     // robust to keyboard layouts where the produced character differs.
     if (ev.code.startsWith("Digit")) {
@@ -382,14 +394,23 @@ export function runMain(
   teardowns.push(() => window.removeEventListener("keydown", onKeydown));
 
   // Mouse wheel cycles hotbar selection ±1 with wraparound. Up = previous.
+  // `Ctrl+Wheel` is intercepted as a zoom step instead — gives trackpad
+  // users a pinch-equivalent without fighting the hotbar binding. We
+  // can't be passive on this listener anymore because Ctrl+Wheel needs
+  // `preventDefault` to suppress the browser's page-zoom shortcut.
   const onWheel = (ev: WheelEvent): void => {
     if (ev.deltaY === 0) return;
+    if (ev.ctrlKey) {
+      ev.preventDefault();
+      renderer.nudgeZoom(ev.deltaY > 0 ? -1 : 1);
+      return;
+    }
     const cur = inventoryUi.selectedHotbarSlot();
     const step = ev.deltaY > 0 ? 1 : -1;
     const next = (cur + step + HOTBAR_SLOTS) % HOTBAR_SLOTS;
     inventoryUi.selectHotbarSlot(next);
   };
-  window.addEventListener("wheel", onWheel, { passive: true });
+  window.addEventListener("wheel", onWheel, { passive: false });
   teardowns.push(() => window.removeEventListener("wheel", onWheel));
 
   const onMousemove = (ev: MouseEvent): void => {
