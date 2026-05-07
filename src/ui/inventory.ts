@@ -3,6 +3,12 @@
  * left-side sliding panel that exposes the main grid (slots
  * `HOTBAR_SLOTS..INVENTORY_SIZE`).
  *
+ * Panel layout is **4 columns × 9 rows** (still 36 cells / `MAIN_SLOTS`),
+ * row-major: panel slot `n` lives at `(row n/4, col n%4)` so slot 0 is the
+ * top-left cell, slot 3 the top-right, slot 4 the start of the next row,
+ * etc. Row-major matches CSS grid's natural flow and keeps the visually-
+ * first cell aligned with wire-slot index `HOTBAR_SLOTS + 0`.
+ *
  * Network-free: the module reads inventory state through a `getInventory`
  * thunk passed in by `bootstrap.ts` and subscribes to the live `Inventory`
  * mirror so each `InventoryUpdate` from the server triggers a re-render.
@@ -41,7 +47,7 @@ const SLOT_PX = 48;
 const HOTBAR_GAP_PX = 4;
 const PANEL_PAD_PX = 16;
 const PANEL_GAP_PX = 4;
-const PANEL_COLS = HOTBAR_SLOTS;
+const PANEL_COLS = 4;
 const PANEL_WIDTH_PX =
   PANEL_COLS * SLOT_PX + (PANEL_COLS - 1) * PANEL_GAP_PX + PANEL_PAD_PX * 2;
 

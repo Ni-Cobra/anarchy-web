@@ -32,7 +32,7 @@ describe("inventory UI", () => {
     document.head.innerHTML = "";
   });
 
-  it("renders an empty inventory: 9 hotbar cells, 36 panel cells, panel hidden", () => {
+  it("renders an empty inventory: 9 hotbar cells, 36 panel cells laid out 4 cols × 9 rows, panel hidden", () => {
     const ui = mountInventoryUi({
       getInventory: () => inventory,
       sendSelect: () => {},
@@ -48,10 +48,15 @@ describe("inventory UI", () => {
     expect(hotbarCells).toHaveLength(HOTBAR_SLOTS);
     expect(panelCells).toHaveLength(INVENTORY_SIZE - HOTBAR_SLOTS);
 
+    // Panel grid is the transposed 4×9 layout (was 9×4). The CSS grid
+    // template carries the column count, and 36 cells / 4 cols = 9 rows.
+    const panel = document.querySelector(".anarchy-inventory-panel")! as HTMLElement;
+    const styleEl = document.getElementById("anarchy-inventory-style")!;
+    expect(styleEl.textContent).toContain("grid-template-columns: repeat(4, 48px)");
+
     const icons = document.querySelectorAll(".anarchy-inventory-icon");
     expect(icons).toHaveLength(0);
 
-    const panel = document.querySelector(".anarchy-inventory-panel")!;
     expect(panel.classList.contains("open")).toBe(false);
     expect(ui.isOpen()).toBe(false);
 
