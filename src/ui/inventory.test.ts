@@ -147,6 +147,51 @@ describe("inventory UI", () => {
     expect(panelCells[3].querySelector(".anarchy-inventory-icon")).toBeNull();
   });
 
+  it("renders task-090 tools with their own /textures/items/ icon URLs and a unit-count cell (no badge)", () => {
+    // Pickaxe + axe in five tiers — the seed loadout layout puts them in
+    // the lower half of the panel, but the renderer is layout-agnostic
+    // (panel slot N → flat index HOTBAR_SLOTS + N), so just slot one of
+    // each into a known grid cell and assert the icon URL + count badge.
+    const tools = [
+      ItemId.WoodPickaxe,
+      ItemId.StonePickaxe,
+      ItemId.CopperPickaxe,
+      ItemId.IronPickaxe,
+      ItemId.TungstenPickaxe,
+      ItemId.WoodAxe,
+      ItemId.StoneAxe,
+      ItemId.CopperAxe,
+      ItemId.IronAxe,
+      ItemId.TungstenAxe,
+    ];
+    const updates: Record<number, Slot> = {};
+    for (let i = 0; i < tools.length; i++) {
+      updates[HOTBAR_SLOTS + i] = { item: tools[i], count: 1 };
+    }
+    inventory.replaceFromWire(fillSlots(updates));
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+    });
+
+    const panelCells = document.querySelectorAll(
+      ".anarchy-inventory-panel .anarchy-inventory-slot",
+    );
+    const seenUrls = new Set<string>();
+    for (let i = 0; i < tools.length; i++) {
+      const cell = panelCells[i] as HTMLElement;
+      const icon = cell.querySelector<HTMLElement>(".anarchy-inventory-icon");
+      expect(icon).not.toBeNull();
+      const bg = icon!.style.backgroundImage;
+      expect(bg).toMatch(/\/textures\/items\/.+\.png/);
+      expect(seenUrls.has(bg)).toBe(false);
+      seenUrls.add(bg);
+      // count = 1 → no badge for tools (matches existing single-stack rule).
+      expect(cell.querySelector(".anarchy-inventory-count")).toBeNull();
+    }
+  });
+
   it("re-renders reactively when the inventory mutates", () => {
     mountInventoryUi({
       getInventory: () => inventory,

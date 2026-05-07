@@ -16,6 +16,16 @@ const ITEM_DISPLAY_NAMES: Record<ItemId, string> = {
   [ItemId.Wood]: "Wood",
   [ItemId.Stone]: "Stone",
   [ItemId.Gold]: "Gold",
+  [ItemId.WoodPickaxe]: "Wood Pickaxe",
+  [ItemId.StonePickaxe]: "Stone Pickaxe",
+  [ItemId.CopperPickaxe]: "Copper Pickaxe",
+  [ItemId.IronPickaxe]: "Iron Pickaxe",
+  [ItemId.TungstenPickaxe]: "Tungsten Pickaxe",
+  [ItemId.WoodAxe]: "Wood Axe",
+  [ItemId.StoneAxe]: "Stone Axe",
+  [ItemId.CopperAxe]: "Copper Axe",
+  [ItemId.IronAxe]: "Iron Axe",
+  [ItemId.TungstenAxe]: "Tungsten Axe",
 };
 
 /**

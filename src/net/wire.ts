@@ -192,6 +192,26 @@ function itemIdFromWire(
       return ItemId.Stone;
     case anarchy.v1.ItemId.ITEM_ID_GOLD:
       return ItemId.Gold;
+    case anarchy.v1.ItemId.ITEM_ID_WOOD_PICKAXE:
+      return ItemId.WoodPickaxe;
+    case anarchy.v1.ItemId.ITEM_ID_STONE_PICKAXE:
+      return ItemId.StonePickaxe;
+    case anarchy.v1.ItemId.ITEM_ID_COPPER_PICKAXE:
+      return ItemId.CopperPickaxe;
+    case anarchy.v1.ItemId.ITEM_ID_IRON_PICKAXE:
+      return ItemId.IronPickaxe;
+    case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_PICKAXE:
+      return ItemId.TungstenPickaxe;
+    case anarchy.v1.ItemId.ITEM_ID_WOOD_AXE:
+      return ItemId.WoodAxe;
+    case anarchy.v1.ItemId.ITEM_ID_STONE_AXE:
+      return ItemId.StoneAxe;
+    case anarchy.v1.ItemId.ITEM_ID_COPPER_AXE:
+      return ItemId.CopperAxe;
+    case anarchy.v1.ItemId.ITEM_ID_IRON_AXE:
+      return ItemId.IronAxe;
+    case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_AXE:
+      return ItemId.TungstenAxe;
     default:
       return null;
   }

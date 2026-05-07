@@ -36,10 +36,31 @@ export function textureUrlForBlock(kind: BlockType): string | null {
 }
 
 /**
+ * URL of the 16×16 PNG for each task-090 tool item. Sourced from
+ * `public/textures/items/<material>-<tool>.png` — produced by the same
+ * `anarchy-server dev_utils textures` pipeline that generates the block
+ * textures, so a re-skin is one edit per silhouette + a re-run of the
+ * script.
+ */
+const TOOL_TEXTURE_URLS: Partial<Record<ItemId, string>> = {
+  [ItemId.WoodPickaxe]: "/textures/items/wood-pickaxe.png",
+  [ItemId.StonePickaxe]: "/textures/items/stone-pickaxe.png",
+  [ItemId.CopperPickaxe]: "/textures/items/copper-pickaxe.png",
+  [ItemId.IronPickaxe]: "/textures/items/iron-pickaxe.png",
+  [ItemId.TungstenPickaxe]: "/textures/items/tungsten-pickaxe.png",
+  [ItemId.WoodAxe]: "/textures/items/wood-axe.png",
+  [ItemId.StoneAxe]: "/textures/items/stone-axe.png",
+  [ItemId.CopperAxe]: "/textures/items/copper-axe.png",
+  [ItemId.IronAxe]: "/textures/items/iron-axe.png",
+  [ItemId.TungstenAxe]: "/textures/items/tungsten-axe.png",
+};
+
+/**
  * Texture URL for an inventory `ItemId`. Items that place a block share
- * that block's texture; future tool / consumable items will return their
- * own paths or `null`. Mirrors the `places_block` mapping in the server's
- * item registry — keep in lockstep when adding items.
+ * that block's texture; tools use their own dedicated icon under
+ * `/textures/items/`; consumables (none yet) would slot into the same
+ * tool table or return `null`. Mirrors the `places_block` mapping in the
+ * server's item registry — keep in lockstep when adding items.
  */
 export function textureUrlForItem(item: ItemId): string | null {
   switch (item) {
@@ -51,6 +72,17 @@ export function textureUrlForItem(item: ItemId): string | null {
       return BLOCK_TEXTURE_URLS[BlockType.Stone] ?? null;
     case ItemId.Gold:
       return BLOCK_TEXTURE_URLS[BlockType.Gold] ?? null;
+    case ItemId.WoodPickaxe:
+    case ItemId.StonePickaxe:
+    case ItemId.CopperPickaxe:
+    case ItemId.IronPickaxe:
+    case ItemId.TungstenPickaxe:
+    case ItemId.WoodAxe:
+    case ItemId.StoneAxe:
+    case ItemId.CopperAxe:
+    case ItemId.IronAxe:
+    case ItemId.TungstenAxe:
+      return TOOL_TEXTURE_URLS[item] ?? null;
   }
   return null;
 }

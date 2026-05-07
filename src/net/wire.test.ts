@@ -450,6 +450,34 @@ describe("applyServerMessage — InventoryUpdate", () => {
     expect(inventory.slot(3)).toEqual({ item: ItemId.Gold, count: 4 });
   });
 
+  it("translates every task-090 tool variant to its game-side counterpart", () => {
+    const { deps, inventory } = makeInventoryFixture();
+    const tools = [
+      [anarchy.v1.ItemId.ITEM_ID_WOOD_PICKAXE, ItemId.WoodPickaxe],
+      [anarchy.v1.ItemId.ITEM_ID_STONE_PICKAXE, ItemId.StonePickaxe],
+      [anarchy.v1.ItemId.ITEM_ID_COPPER_PICKAXE, ItemId.CopperPickaxe],
+      [anarchy.v1.ItemId.ITEM_ID_IRON_PICKAXE, ItemId.IronPickaxe],
+      [anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_PICKAXE, ItemId.TungstenPickaxe],
+      [anarchy.v1.ItemId.ITEM_ID_WOOD_AXE, ItemId.WoodAxe],
+      [anarchy.v1.ItemId.ITEM_ID_STONE_AXE, ItemId.StoneAxe],
+      [anarchy.v1.ItemId.ITEM_ID_COPPER_AXE, ItemId.CopperAxe],
+      [anarchy.v1.ItemId.ITEM_ID_IRON_AXE, ItemId.IronAxe],
+      [anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_AXE, ItemId.TungstenAxe],
+    ] as const;
+    const overrides: Record<number, anarchy.v1.IItemSlot> = {};
+    for (let i = 0; i < tools.length; i++) {
+      overrides[i] = { item: tools[i][0], count: 1 };
+    }
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: { slots: buildWireSlots(overrides) },
+    });
+    applyServerMessage(msg, deps);
+    for (let i = 0; i < tools.length; i++) {
+      expect(inventory.slot(i)).toEqual({ item: tools[i][1], count: 1 });
+    }
+  });
+
   it("treats count=0 as the canonical empty regardless of item field", () => {
     const { deps, inventory } = makeInventoryFixture();
     const wireSlots = buildWireSlots({

@@ -29,12 +29,28 @@ export const INVENTORY_SIZE = HOTBAR_SLOTS + MAIN_SLOTS;
 /**
  * One kind of carryable item. Mirrors `crate::game::ItemId` and the proto
  * `ItemId` enum. Numeric values are arbitrary but stable; extend by appending.
+ *
+ * Variants 5..14 are the task-090 tool family — pickaxe and axe in five
+ * material tiers (Wood, Stone, Copper, Iron, Tungsten). Tools are inert in
+ * this iteration: holding one in the hotbar does not enable
+ * mining-with-tools yet (task 120). They have no `places_block`, so a
+ * right-click while a tool is selected is a server-side no-op.
  */
 export enum ItemId {
   Stick = 1,
   Wood = 2,
   Stone = 3,
   Gold = 4,
+  WoodPickaxe = 5,
+  StonePickaxe = 6,
+  CopperPickaxe = 7,
+  IronPickaxe = 8,
+  TungstenPickaxe = 9,
+  WoodAxe = 10,
+  StoneAxe = 11,
+  CopperAxe = 12,
+  IronAxe = 13,
+  TungstenAxe = 14,
 }
 
 /** A non-empty pile of one item kind. */

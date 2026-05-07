@@ -18,7 +18,25 @@ const ServerMessage = root.lookupType("anarchy.v1.ServerMessage");
 const WS_URL = "ws://localhost:8080/ws";
 
 const INVENTORY_SIZE = 45;
+const HOTBAR_SLOTS = 9;
 const ITEM_ID_GOLD = 4;
+
+// Task 090 tool wire numbers (mirrors `anarchy.proto`'s `ItemId`). Order is
+// the documented seed-loadout sequence: pickaxes Wood→Tungsten, then axes
+// Wood→Tungsten, occupying the last 10 panel slots (flat indices 35..44).
+const ITEM_ID_WOOD_PICKAXE = 5;
+const STARTER_TOOL_LOADOUT: { item: number; slot: number }[] = [
+  { item: 5, slot: HOTBAR_SLOTS + 26 }, // wood pickaxe
+  { item: 6, slot: HOTBAR_SLOTS + 27 }, // stone pickaxe
+  { item: 7, slot: HOTBAR_SLOTS + 28 }, // copper pickaxe
+  { item: 8, slot: HOTBAR_SLOTS + 29 }, // iron pickaxe
+  { item: 9, slot: HOTBAR_SLOTS + 30 }, // tungsten pickaxe
+  { item: 10, slot: HOTBAR_SLOTS + 31 }, // wood axe
+  { item: 11, slot: HOTBAR_SLOTS + 32 }, // stone axe
+  { item: 12, slot: HOTBAR_SLOTS + 33 }, // copper axe
+  { item: 13, slot: HOTBAR_SLOTS + 34 }, // iron axe
+  { item: 14, slot: HOTBAR_SLOTS + 35 }, // tungsten axe
+];
 
 type Frame = { kind: "open" } | { kind: "msg"; data: Uint8Array } | { kind: "close"; code: number };
 
@@ -112,6 +130,26 @@ function itemNameToInt(name: string): number {
       return 3;
     case "ITEM_ID_GOLD":
       return 4;
+    case "ITEM_ID_WOOD_PICKAXE":
+      return 5;
+    case "ITEM_ID_STONE_PICKAXE":
+      return 6;
+    case "ITEM_ID_COPPER_PICKAXE":
+      return 7;
+    case "ITEM_ID_IRON_PICKAXE":
+      return 8;
+    case "ITEM_ID_TUNGSTEN_PICKAXE":
+      return 9;
+    case "ITEM_ID_WOOD_AXE":
+      return 10;
+    case "ITEM_ID_STONE_AXE":
+      return 11;
+    case "ITEM_ID_COPPER_AXE":
+      return 12;
+    case "ITEM_ID_IRON_AXE":
+      return 13;
+    case "ITEM_ID_TUNGSTEN_AXE":
+      return 14;
     default:
       return 0;
   }
@@ -135,10 +173,38 @@ test("server ships an InventoryUpdate carrying the 10-Gold starter after Welcome
 
   const inventory = decodeInventory(inventoryFrame)!;
   expect(inventory.slots.length).toBe(INVENTORY_SIZE);
-  // Slot 0 carries 10 Gold; remaining slots are canonical empty (count=0).
+  // Slot 0 carries 10 Gold; the bottom-right of the panel carries the 10
+  // task-090 starter tools; every other slot is canonical empty (count=0).
   expect(inventory.slots[0]).toEqual({ item: ITEM_ID_GOLD, count: 10 });
+  const toolSlots = new Map(STARTER_TOOL_LOADOUT.map((t) => [t.slot, t.item]));
   for (let i = 1; i < INVENTORY_SIZE; i++) {
-    expect(inventory.slots[i].count).toBe(0);
+    if (toolSlots.has(i)) {
+      expect(inventory.slots[i]).toEqual({ item: toolSlots.get(i)!, count: 1 });
+    } else {
+      expect(inventory.slots[i].count).toBe(0);
+    }
+  }
+
+  ws.close();
+});
+
+test("fresh admit seeds the 10 task-090 tools at the documented panel slots", async () => {
+  const { ws, next } = await openSocket();
+  await sendHello(ws, "starter-tools");
+
+  const inventoryFrame = (await next((f) => {
+    if (f.kind !== "msg") return false;
+    return decodeInventory(f as Extract<Frame, { kind: "msg" }>) !== null;
+  })) as Extract<Frame, { kind: "msg" }>;
+
+  const inventory = decodeInventory(inventoryFrame)!;
+  for (const { item, slot } of STARTER_TOOL_LOADOUT) {
+    expect(inventory.slots[slot]).toEqual({ item, count: 1 });
+  }
+  // The hotbar (indices 0..8) must NOT carry any tools — they live in the
+  // panel so block-placement on slot 0 (Gold) keeps working.
+  for (let i = 0; i < HOTBAR_SLOTS; i++) {
+    expect(inventory.slots[i].item).not.toBe(ITEM_ID_WOOD_PICKAXE);
   }
 
   ws.close();

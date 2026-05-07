@@ -51,8 +51,46 @@ describe("textureUrlForItem", () => {
   });
 
   it("returns a URL for every defined ItemId", () => {
-    for (const item of [ItemId.Stick, ItemId.Wood, ItemId.Stone, ItemId.Gold]) {
+    for (const item of [
+      ItemId.Stick,
+      ItemId.Wood,
+      ItemId.Stone,
+      ItemId.Gold,
+      ItemId.WoodPickaxe,
+      ItemId.StonePickaxe,
+      ItemId.CopperPickaxe,
+      ItemId.IronPickaxe,
+      ItemId.TungstenPickaxe,
+      ItemId.WoodAxe,
+      ItemId.StoneAxe,
+      ItemId.CopperAxe,
+      ItemId.IronAxe,
+      ItemId.TungstenAxe,
+    ]) {
       expect(textureUrlForItem(item)).not.toBeNull();
+    }
+  });
+
+  it("each tool resolves to a distinct /textures/items/ URL", () => {
+    const tools = [
+      ItemId.WoodPickaxe,
+      ItemId.StonePickaxe,
+      ItemId.CopperPickaxe,
+      ItemId.IronPickaxe,
+      ItemId.TungstenPickaxe,
+      ItemId.WoodAxe,
+      ItemId.StoneAxe,
+      ItemId.CopperAxe,
+      ItemId.IronAxe,
+      ItemId.TungstenAxe,
+    ];
+    const seen = new Set<string>();
+    for (const item of tools) {
+      const url = textureUrlForItem(item);
+      expect(url).not.toBeNull();
+      expect(url!).toMatch(/^\/textures\/items\/.+\.png$/);
+      expect(seen.has(url!)).toBe(false);
+      seen.add(url!);
     }
   });
 });
