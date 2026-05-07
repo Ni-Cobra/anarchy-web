@@ -2,7 +2,9 @@ import * as THREE from "three";
 
 import { CAMERA_HEIGHT, PLAYER_RADIUS, ZOOM_OUT_CAMERA_HEIGHT } from "../config.js";
 import {
+  BlockType,
   CHUNK_SIZE,
+  type Inventory,
   paletteColorHex,
   type PlayerId,
   type SnapshotBuffer,
@@ -29,6 +31,7 @@ import {
   type BlockEditEvent,
   type TargetingStateEvent,
 } from "./effects/index.js";
+import { computeGhostState, type GhostState } from "./ghost.js";
 
 // The player's body sphere mirrors the authoritative collision radius
 // (`PLAYER_RADIUS` in `config.ts`, `crate::game::player::PLAYER_RADIUS`
@@ -100,13 +103,22 @@ const CHUNK_GRID_Y_OFFSET = AXIS_Y_OFFSET + 0.005;
 const CHUNK_GRID_COLOR = 0xa0a0a0;
 const CHUNK_GRID_OPACITY = 0.35;
 
-// Builder-mode placement ghost: a semi-transparent unit-cube preview at the
-// targeted top-layer cell. Sized to match a real placed top-layer block
+// Placement ghost: a semi-transparent unit-cube preview at the targeted
+// top-layer cell. Sized to match a real placed top-layer block
 // (`TOP_BOX_*` in `terrain.ts`) so what-you-see is what-you-get on click.
-const GHOST_COLOR = 0xf5c542;
+// Color is picked per-frame from the held block kind (see
+// `GHOST_COLOR_BY_KIND`); a fallback magenta surfaces unmapped kinds
+// loudly rather than silently rendering as black.
+const GHOST_FALLBACK_COLOR = 0xff00ff;
 const GHOST_OPACITY = 0.45;
 const GHOST_BOX_SIZE = 1.0;
 const GHOST_BOX_Y = 0.025 + GHOST_BOX_SIZE / 2;
+const GHOST_COLOR_BY_KIND: Partial<Record<BlockType, number>> = {
+  [BlockType.Wood]: 0x8b5a2b,
+  [BlockType.Stone]: 0x808080,
+  [BlockType.Gold]: 0xf5c542,
+  [BlockType.Sticks]: 0xa9774a,
+};
 
 const defaultFactory: PlayerMeshFactory = {
   create(entity: RenderableEntity, _isLocal: boolean) {
@@ -278,6 +290,10 @@ export class Renderer {
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
   private ghostMesh: THREE.Mesh | null = null;
+  private ghostMeshKind: BlockType | null = null;
+  private ghostState: GhostState | null = null;
+  private readonly inventory: Inventory | null;
+  private readonly getSelectedHotbarSlot: () => number;
   private readonly effects: EffectsLayer;
   private readonly chunkBorderGrid: THREE.LineSegments;
   private zoomedOut = false;
@@ -299,10 +315,14 @@ export class Renderer {
     terrain: Terrain | null = null,
     factory: PlayerMeshFactory = defaultFactory,
     now: () => number = () => Date.now(),
+    inventory: Inventory | null = null,
+    getSelectedHotbarSlot: () => number = () => 0,
   ) {
     this.terrain = terrain;
     this.factory = factory;
     this.now = now;
+    this.inventory = inventory;
+    this.getSelectedHotbarSlot = getSelectedHotbarSlot;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x202028);
@@ -429,17 +449,18 @@ export class Renderer {
   }
 
   /**
-   * Show or hide the builder-mode placement ghost. Pass a tile address to
-   * pin a translucent gold preview at that cell, or `null` to hide it. The
-   * caller (input layer) is responsible for deciding whether the ghost
-   * should be visible — this method just paints the result. The underlying
-   * mesh is reused across calls (only `visible` and position change) so a
-   * fast-flapping ghost on a tight refresh loop doesn't churn GPU resources.
+   * Latest ghost-preview state computed by the per-frame driver, or `null`
+   * when nothing is being previewed (no held block, no valid target). Read
+   * by Playwright via `__anarchy.getGhostState()` to assert visibility
+   * end-to-end without inspecting Three.js internals.
    */
-  setGhostCell(
-    cell: readonly [number, number, number, number] | null,
-  ): void {
-    if (cell === null) {
+  getGhostState(): GhostState | null {
+    return this.ghostState;
+  }
+
+  private applyGhostState(state: GhostState | null): void {
+    this.ghostState = state;
+    if (state === null) {
       if (this.ghostMesh) this.ghostMesh.visible = false;
       return;
     }
@@ -450,15 +471,20 @@ export class Renderer {
         GHOST_BOX_SIZE,
       );
       const mat = new THREE.MeshLambertMaterial({
-        color: GHOST_COLOR,
+        color: GHOST_COLOR_BY_KIND[state.kind] ?? GHOST_FALLBACK_COLOR,
         transparent: true,
         opacity: GHOST_OPACITY,
         depthWrite: false,
       });
       this.ghostMesh = new THREE.Mesh(geom, mat);
+      this.ghostMeshKind = state.kind;
       this.scene.add(this.ghostMesh);
+    } else if (this.ghostMeshKind !== state.kind) {
+      const mat = this.ghostMesh.material as THREE.MeshLambertMaterial;
+      mat.color.setHex(GHOST_COLOR_BY_KIND[state.kind] ?? GHOST_FALLBACK_COLOR);
+      this.ghostMeshKind = state.kind;
     }
-    const [cx, cy, lx, ly] = cell;
+    const [cx, cy, lx, ly] = state.cell;
     const scene = tileCenterToScene(cx, cy, lx, ly);
     this.ghostMesh.position.set(scene.x, GHOST_BOX_Y, scene.z);
     this.ghostMesh.visible = true;
@@ -569,9 +595,30 @@ export class Renderer {
     );
     this.updateCamera(entities);
     this.refreshHoverBillboards();
+    this.refreshGhostPreview();
     this.effects.update(nowMs);
     this.webgl.render(this.scene, this.camera);
   };
+
+  private refreshGhostPreview(): void {
+    if (this.inventory === null || this.terrain === null) {
+      this.applyGhostState(null);
+      return;
+    }
+    const slot = this.inventory.slot(this.getSelectedHotbarSlot());
+    const pick =
+      this.cursorNdc === null
+        ? null
+        : pickBlockUnderCursor(this.cursorNdc, this.camera, this.terrain);
+    const state = computeGhostState({
+      slot,
+      pick,
+      world: this.world,
+      terrain: this.terrain,
+      localPlayerId: this.localPlayerId,
+    });
+    this.applyGhostState(state);
+  }
 
   private refreshHoverBillboards(): void {
     // The picker uses `Raycaster.intersectObjects` which respects camera

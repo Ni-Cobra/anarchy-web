@@ -35,11 +35,12 @@ import {
   type WireBlockEditEvent,
   type WireTargetingStateEvent,
 } from "./net/index.js";
-import { Renderer } from "./render/index.js";
+import { Renderer, type GhostState } from "./render/index.js";
 import {
   mountInventoryUi,
   mountSidePanel,
   showRegisterModal,
+  type InventoryUiHandle,
   type RegisterModalHandle,
   type SidePanelAction,
 } from "./ui/index.js";
@@ -109,6 +110,19 @@ export interface AnarchyHandle {
    * inspecting renderer internals.
    */
   getObservedBlockEditCount: () => number;
+  /**
+   * Test handle (task 020): latest ghost-block preview state computed by
+   * the renderer's per-frame driver, or `null` when no preview is shown
+   * (held slot empty / non-placeable, or no valid target under cursor).
+   */
+  getGhostState: () => GhostState | null;
+  /**
+   * Test handle (task 020): drive the renderer's cursor NDC directly,
+   * bypassing the page's mouse event plumbing. Lets a Playwright spec aim
+   * the ghost preview at a known tile without computing screen-space
+   * coordinates from the live camera transform. Pass `null` to clear.
+   */
+  setCursorNdc: (ndc: { x: number; y: number } | null) => void;
   stop: () => void;
   readonly stopped: Promise<void>;
   /**
@@ -171,6 +185,12 @@ export function runMain(
   const buffer = new SnapshotBuffer();
   const terrain = new Terrain();
   const inventory = new Inventory();
+  // Forward-declared so the renderer's per-frame ghost driver can read the
+  // currently-selected hotbar slot. The UI is mounted later in this
+  // function (it depends on `sendSelectSlot` / `sendMoveSlot`, which in
+  // turn need `conn`); the renderer's animation loop only runs after the
+  // current synchronous tick finishes, by which time `inventoryUi` is set.
+  let inventoryUi!: InventoryUiHandle;
   const renderer = new Renderer(
     world,
     buffer,
@@ -181,6 +201,10 @@ export function runMain(
       pixelRatio: window.devicePixelRatio,
     },
     terrain,
+    undefined,
+    undefined,
+    inventory,
+    () => inventoryUi.selectedHotbarSlot(),
   );
   teardowns.push(() => renderer.dispose());
 
@@ -326,7 +350,7 @@ export function runMain(
   // forward reference. The UI ships authority-bound actions (SelectSlot,
   // MoveSlot) up via `sendSelectSlot` / `sendMoveSlot`; the server's
   // next `InventoryUpdate` is the canonical state.
-  const inventoryUi = mountInventoryUi({
+  inventoryUi = mountInventoryUi({
     getInventory: () => inventory,
     sendSelect: sendSelectSlot,
     sendMove: sendMoveSlot,
@@ -626,6 +650,8 @@ export function runMain(
     canPlaceAt,
     getActiveTargetingStates: () => activeTargets,
     getObservedBlockEditCount: () => observedBlockEditCount,
+    getGhostState: () => renderer.getGhostState(),
+    setCursorNdc: (ndc) => renderer.setCursorNdc(ndc),
     stop,
     stopped,
     lobbyReject,
