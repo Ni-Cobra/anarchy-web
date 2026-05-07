@@ -278,6 +278,62 @@ test("Returning with the wrong password re-renders the lobby with the password-i
   await expect(page.locator("#anarchy-username")).toHaveValue(TEST_USERNAME);
 });
 
+test("WASD typed into the register modal does not move the local player", async ({
+  page,
+}) => {
+  // Fresh username so this test doesn't collide with the registered
+  // `TEST_USERNAME` (the second test locks that one with a password and
+  // any New-mode Hello on it would now reject).
+  const FRESH = `gate-${Math.floor(Math.random() * 1e6)}`.slice(0, 16);
+  await page.goto(`/?${QUERY}&username=${encodeURIComponent(FRESH)}&color=0`);
+  await page.waitForFunction(() => window.__anarchy !== undefined);
+  await waitForSelfSpawn(page);
+
+  // Open the side panel and trigger the register modal.
+  await page.locator(".anarchy-side-panel-toggle").click();
+  await page.locator(".anarchy-side-panel-action", { hasText: "Register account" }).click();
+  await page.waitForSelector("#anarchy-register-modal-root");
+
+  // Modal mounts focused on the password field; snapshot the local
+  // player's position before tapping WASD into it. Without the input
+  // gate the bootstrap-level `window` keydown listener would fire
+  // (KeyM toggles the camera, digits select hotbar slots) and — more
+  // importantly — `InputController.keydown` would mark W/A/S/D held
+  // and ship a MoveIntent on the next tick (`InputController.flush`).
+  const before = await page.evaluate(() => {
+    const a = window.__anarchy!;
+    const id = a.getLocalPlayerId()!;
+    const me = a.world.getPlayer(id)!;
+    return { x: me.x, y: me.y };
+  });
+
+  const pw = page.locator("#anarchy-register-pw");
+  await pw.focus();
+  for (const k of ["w", "a", "s", "d"]) {
+    for (let i = 0; i < 4; i++) await pw.press(k);
+  }
+  // Hold long enough for several `INPUT_TICK_INTERVAL_MS` ticks
+  // (60 ms → 400 ms covers ~6 ticks) plus a few server ticks to surface
+  // any drift. With the gate working, the controller's held set stays
+  // empty, so no MoveIntent is sent and the server keeps the player
+  // stationary.
+  await page.waitForTimeout(400);
+
+  const after = await page.evaluate(() => {
+    const a = window.__anarchy!;
+    const id = a.getLocalPlayerId()!;
+    const me = a.world.getPlayer(id)!;
+    return { x: me.x, y: me.y };
+  });
+
+  expect(after.x).toBeCloseTo(before.x, 5);
+  expect(after.y).toBeCloseTo(before.y, 5);
+
+  // The password field still received the typed characters — the gate
+  // only blocks `window`-bound listeners, not the input element itself.
+  await expect(pw).toHaveValue("wwwwaaaassssdddd");
+});
+
 test("fresh Hello (New mode) on the registered username re-renders the lobby with username-taken-by-registration and switches to Returning", async ({
   page,
 }) => {

@@ -19,3 +19,5 @@ export type {
   RegisterModalHandle,
   RegisterModalOptions,
 } from "./register_modal.js";
+export { attachInputGate } from "./input_gate.js";
+export type { InputGateHandle } from "./input_gate.js";

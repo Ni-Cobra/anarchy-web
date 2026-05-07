@@ -8,7 +8,15 @@
  * caller is responsible for sending the wire frame and surfacing the
  * server's `RegisterAccountResult` via a separate notification — this
  * module does not touch the network.
+ *
+ * Input handling: the modal owns input while it's mounted. `attachInputGate`
+ * stops every keyboard / mouse / wheel event whose target lands inside the
+ * modal subtree from reaching the bootstrap-level `window` listeners, so
+ * typing into the password fields no longer drives WASD / hotbar / KeyE /
+ * destroy / place under the modal. See `input_gate.ts` for the rationale.
  */
+
+import { attachInputGate } from "./input_gate.js";
 
 const STYLE_ID = "anarchy-register-modal-style";
 
@@ -202,27 +210,32 @@ export function showRegisterModal(
     if (ev.key === "Enter" && !submit.disabled) submit.click();
   });
 
-  // Stop pointer events from reaching the bootstrap-level
-  // mousedown/contextmenu handlers so a click inside the modal doesn't
-  // trigger destroy/place behind it. Same pattern as the side panel.
-  for (const ev of ["mousedown", "mouseup", "click", "contextmenu"] as const) {
-    root.addEventListener(ev, (e) => e.stopPropagation());
-  }
+  // Gate every input event whose target is inside the modal subtree so
+  // the bootstrap-level `window` handlers don't fire — this covers both
+  // the prior pointer-event stops AND the missing keyboard coverage
+  // (typing WASD / digits / KeyE into the password fields used to drive
+  // the game underneath).
+  const gate = attachInputGate(root);
 
   function close(): void {
     if (closed) return;
     closed = true;
-    window.removeEventListener("keydown", onKeydown);
+    document.removeEventListener("keydown", onEscape, true);
+    gate.detach();
     root.remove();
   }
 
-  const onKeydown = (ev: KeyboardEvent): void => {
-    if (ev.code === "Escape") {
-      close();
-      options.onCancel?.();
-    }
+  // Escape closes the modal regardless of where focus lives. Document-
+  // capture so it fires even when the focus is inside the gated subtree
+  // (the gate's bubble-phase stop would otherwise eat any Escape on its
+  // way to the previous `window`-level listener). No `stopPropagation`
+  // here — peers like `inventory.ts`'s drag-cancel still see Escape.
+  const onEscape = (ev: KeyboardEvent): void => {
+    if (ev.code !== "Escape") return;
+    close();
+    options.onCancel?.();
   };
-  window.addEventListener("keydown", onKeydown);
+  document.addEventListener("keydown", onEscape, true);
 
   cancel.addEventListener("click", () => {
     close();
