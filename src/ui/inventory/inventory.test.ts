@@ -1173,6 +1173,48 @@ describe("inventory UI", () => {
       expect(moves).toEqual([]);
     });
 
+    it("re-renders equipment cells reactively when InventoryUpdate flips equip / unequip", () => {
+      // Task 130 contract: the equipment-slot UI must re-paint when an
+      // `InventoryUpdate` carries a different equipped tool — both for the
+      // empty → populated transition (equip) and the populated → empty
+      // transition (unequip). The hotbar / panel re-render path is tested
+      // separately above; here we scope the assertion to the equipment row.
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+
+      const empty: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+      // Initial state: both equipment slots empty.
+      let cells = equipmentCells();
+      expect(cells[0].classList.contains("empty")).toBe(true);
+      expect(cells[1].classList.contains("empty")).toBe(true);
+
+      // Equip a pickaxe — cells re-render, pickaxe slot lights up with an
+      // icon, axe slot stays empty.
+      inventory.replaceFromWire(empty, ItemId.IronPickaxe, null);
+      cells = equipmentCells();
+      expect(cells[0].classList.contains("empty")).toBe(false);
+      expect(cells[0].querySelector(".anarchy-inventory-icon")).not.toBeNull();
+      expect(cells[1].classList.contains("empty")).toBe(true);
+
+      // Equip an axe alongside — both populated.
+      inventory.replaceFromWire(empty, ItemId.IronPickaxe, ItemId.WoodAxe);
+      cells = equipmentCells();
+      expect(cells[0].classList.contains("empty")).toBe(false);
+      expect(cells[1].classList.contains("empty")).toBe(false);
+      expect(cells[1].querySelector(".anarchy-inventory-icon")).not.toBeNull();
+
+      // Unequip both — cells return to the empty silhouette state.
+      inventory.replaceFromWire(empty);
+      cells = equipmentCells();
+      expect(cells[0].classList.contains("empty")).toBe(true);
+      expect(cells[1].classList.contains("empty")).toBe(true);
+    });
+
     it("dragging from an equipment slot onto a panel slot ships an UnequipTool", () => {
       inventory.replaceFromWire(
         Array.from({ length: INVENTORY_SIZE }, () => null),

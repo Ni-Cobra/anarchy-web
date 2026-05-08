@@ -91,6 +91,47 @@ describe("Inventory", () => {
     expect(inv.countOf(ItemId.Stone)).toBe(0);
   });
 
+  it("replaceFromWire exposes equippedPickaxe and equippedAxe through the typed getters", () => {
+    // Task 100 wires equipment slots into `InventoryUpdate`. The mirror must
+    // surface them via the typed accessors so the UI layer can paint the
+    // mini-hotbar without reaching into private state.
+    const inv = new Inventory();
+    const empty: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    inv.replaceFromWire(empty, ItemId.IronPickaxe, ItemId.WoodAxe);
+    expect(inv.getEquippedPickaxe()).toBe(ItemId.IronPickaxe);
+    expect(inv.getEquippedAxe()).toBe(ItemId.WoodAxe);
+    expect(inv.getEquipped("pickaxe")).toBe(ItemId.IronPickaxe);
+    expect(inv.getEquipped("axe")).toBe(ItemId.WoodAxe);
+
+    // A frame with no equipment fields clears both slots — `null` is the
+    // canonical empty (matches the `count == 0` wire shape).
+    inv.replaceFromWire(empty);
+    expect(inv.getEquippedPickaxe()).toBeNull();
+    expect(inv.getEquippedAxe()).toBeNull();
+    expect(inv.getEquipped("pickaxe")).toBeNull();
+    expect(inv.getEquipped("axe")).toBeNull();
+  });
+
+  it("replaceFromWire fires subscribers when only the equipment slots changed", () => {
+    // Equip/unequip without changing main slots still mutates the mirror —
+    // the UI's equipment cells need to re-paint, so the change channel must
+    // fire even when only the equipment fields differ.
+    const inv = new Inventory();
+    const empty: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+    let calls = 0;
+    inv.subscribe(() => {
+      calls++;
+    });
+    inv.replaceFromWire(empty);
+    expect(calls).toBe(1);
+    inv.replaceFromWire(empty, ItemId.IronPickaxe, null);
+    expect(calls).toBe(2);
+    inv.replaceFromWire(empty, ItemId.IronPickaxe, ItemId.TungstenAxe);
+    expect(calls).toBe(3);
+    inv.replaceFromWire(empty);
+    expect(calls).toBe(4);
+  });
+
   it("subscribe fires on every replaceFromWire and the unsubscribe stops further notifications", () => {
     const inv = new Inventory();
     let calls = 0;
