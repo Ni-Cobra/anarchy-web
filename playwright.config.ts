@@ -11,14 +11,19 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [["list"]],
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: VITE_URL,
   },
   webServer: [
     {
-      command: "cargo run --manifest-path ../anarchy-server/Cargo.toml",
+      // Dedicated `e2e` world (not `default`) so the dev's local world stays
+      // untouched, and so `globalSetup` can safely wipe the save file before
+      // each run. `reuseExistingServer: false` avoids inheriting stale
+      // in-memory state from a leftover server.
+      command: "cargo run --manifest-path ../anarchy-server/Cargo.toml -- --world e2e",
       url: `${SERVER_URL}/hello`,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: "pipe",
       stderr: "pipe",

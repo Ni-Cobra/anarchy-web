@@ -30,6 +30,22 @@ const ClientMessage = root.lookupType("anarchy.v1.ClientMessage");
 const ServerMessage = root.lookupType("anarchy.v1.ServerMessage");
 
 const WS_URL = "ws://localhost:8080/ws";
+const HTTP_BASE = "http://localhost:8080";
+
+// These specs need a guaranteed-walkable strip out to chunk `cx = ±3` so the
+// players can actually reach the post-separation predicate. Worldgen's
+// `spawn` pass clears the top layer only inside `cx = ±2` (radius 2), so a
+// stone outcrop at `cx = ±3` along `y = 0` can stop a player one chunk short
+// of the assertion. Pre-clear the top layer of the test path via the debug
+// endpoint before any test in this file runs.
+test.beforeAll(async () => {
+  const res = await fetch(`${HTTP_BASE}/debug/clear-top-region/-5/-2/5/2`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`clear-top-region failed: ${res.status}`);
+  }
+});
 
 const VIEW_RADIUS_CHUNKS = 2;
 const VIEW_WINDOW_AREA = (2 * VIEW_RADIUS_CHUNKS + 1) ** 2;
