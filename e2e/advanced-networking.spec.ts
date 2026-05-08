@@ -416,8 +416,9 @@ test("rapid back-and-forth across a chunk boundary keeps player state consistent
       const self = carrier.players.find((p) => p.id === aId)!;
       expect(Math.floor(self.x / CHUNK_SIZE)).toBe(carrier.cx);
       expect(Math.floor(self.y / CHUNK_SIZE)).toBe(carrier.cy);
-      // y never moved.
-      expect(self.y).toBeCloseTo(0, 5);
+      // y never moved (starts at 0.5 — the spawn finder's tile-center pick
+      // under the e2e server's `--test-clear-spawn-region` mode).
+      expect(self.y).toBeCloseTo(0.5, 5);
       // x stays within the physics envelope.
       expect(self.x).toBeGreaterThan(-(SPEED * phaseMs / 1000) * 1.5);
       expect(self.x).toBeLessThan((SPEED * phaseMs / 1000) * 1.5);

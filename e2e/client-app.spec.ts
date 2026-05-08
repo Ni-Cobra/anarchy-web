@@ -40,8 +40,12 @@ test("a fresh client connects, spawns, and sees itself in the world", async ({ p
   await openClient(page);
   const me = await waitForSelfSpawn(page);
   expect(me.id).toBeGreaterThan(0);
-  expect(me.x).toBe(0);
-  expect(me.y).toBe(0);
+  // The e2e server starts with `--test-clear-spawn-region` so the spawn
+  // finder picks tile-center `(0.5, 0.5)` at radius zero. Production
+  // admission without that flag lands the player on whatever walkable
+  // tile the spawn finder picks; the test variant pins the result.
+  expect(me.x).toBe(0.5);
+  expect(me.y).toBe(0.5);
 });
 
 test("two browser clients each see the other in their world", async ({ browser }) => {

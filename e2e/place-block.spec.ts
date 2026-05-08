@@ -179,10 +179,13 @@ test("ghost: visible over a valid cell when held slot is placeable; gone when sl
   try {
     await openClient(a);
     const self = await waitForSelfSpawn(a);
-    // Single-client run: A spawns at (0, 0) without a peer to push it.
-    if (self.x !== 0 || self.y !== 0) {
+    // The e2e server starts with `--test-clear-spawn-region` (see
+    // `playwright.config.ts`), so the 5×5 chunk box around origin has an
+    // empty top layer and the spawn finder picks tile-center `(0.5, 0.5)`.
+    // The cursor offsets below assume that anchor.
+    if (self.x !== 0.5 || self.y !== 0.5) {
       throw new Error(
-        `expected solo spawn at (0, 0), got (${self.x}, ${self.y})`,
+        `expected solo spawn at (0.5, 0.5), got (${self.x}, ${self.y})`,
       );
     }
 
