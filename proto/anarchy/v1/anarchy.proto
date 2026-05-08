@@ -27,6 +27,7 @@ message ClientMessage {
     MoveSlot move_slot = 24;
     EquipTool equip_tool = 25;
     UnequipTool unequip_tool = 26;
+    CraftRequest craft = 27;
   }
 }
 
@@ -298,6 +299,21 @@ message EquipTool {
 // not a wire signal).
 message UnequipTool {
   ToolKind tool_kind = 1;
+  uint64 client_seq = 2;
+}
+
+// Client→server "craft the recipe named by `recipe_id`" (task 090). The
+// server owns the recipe set; the client picks a stable string id from the
+// per-player `craftable_recipe_ids` field shipped on every `InventoryUpdate`.
+// The server re-validates ingredient availability against the player's
+// pooled inventory + hotbar, deducts ingredients (main slots first so
+// equipped hotbar tools stay put), and inserts the output via the same
+// `try_add` path as a block-break drop. Failures are silently dropped —
+// recipe unknown, ingredients no longer satisfied (ate the last log),
+// inventory full to receive the output. The next `InventoryUpdate` reflects
+// any successful mutation.
+message CraftRequest {
+  string recipe_id = 1;
   uint64 client_seq = 2;
 }
 
@@ -575,4 +591,13 @@ message InventoryUpdate {
   // Inventory slot index of the equipped axe — see
   // `equipped_pickaxe_slot`.
   int32 equipped_axe_slot = 5;
+  // Recipes (task 090) the player can currently craft from their pooled
+  // inventory + hotbar contents. Stable string ids — `"sticks"`,
+  // `"wood-pickaxe"`, etc. — that the client looks up against its own
+  // recipe table for the display name + ingredient/output preview. Only
+  // an "ingredients are satisfied" check; the server still re-validates
+  // and may reject (e.g. inventory full to receive the output) at
+  // `CraftRequest` time. Re-emitted on every `InventoryUpdate` so the
+  // crafting panel stays current as the player picks up / drops items.
+  repeated string craftable_recipe_ids = 6;
 }
