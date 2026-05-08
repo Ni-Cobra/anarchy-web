@@ -434,6 +434,8 @@ function blockTypeFromWire(
       return BlockType.Tree;
     case anarchy.v1.BlockType.BLOCK_TYPE_STICKS:
       return BlockType.Sticks;
+    case anarchy.v1.BlockType.BLOCK_TYPE_HIDDEN:
+      return BlockType.Hidden;
     case anarchy.v1.BlockType.BLOCK_TYPE_AIR:
     default:
       return BlockType.Air;

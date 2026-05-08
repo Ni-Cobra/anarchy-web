@@ -21,7 +21,7 @@
  */
 
 import { BREAK_HEARTBEAT_TICKS, INPUT_TICK_INTERVAL_MS, REACH_BLOCKS } from "../config.js";
-import { CHUNK_SIZE, type World } from "../game/index.js";
+import { BlockType, CHUNK_SIZE, type World } from "../game/index.js";
 import { type Renderer } from "../render/index.js";
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
@@ -76,6 +76,11 @@ export function attachBreakAndPlace(
     };
     const pick = deps.renderer.pickAtCursor(ndc);
     if (!pick) return null;
+    // Hidden cells (task 060): the server masks the underlying kind and
+    // rejects break / place attempts on them. Reject client-side too so
+    // the held-break visuals don't paint a fake target on a cell that
+    // will never actually take damage.
+    if (pick.block.kind === BlockType.Hidden) return null;
     // Both top and ground picks are valid break / place targets — the
     // server resolves which authoritative path runs (top-break vs
     // ground-break-via-replace, task 030) per held-item, so the client

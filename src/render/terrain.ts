@@ -83,6 +83,10 @@ const FALLBACK_BLOCK_COLOR: Partial<Record<BlockType, number>> = {
   [BlockType.Gold]: 0xf5c542,
   [BlockType.Tree]: 0x2d6a2d,
   [BlockType.Sticks]: 0xa9774a,
+  // Hidden cells render as a uniform neutral grey so an attacker cannot
+  // distinguish underlying ore from underlying stone by inspecting pixels —
+  // the server never emits the true kind for occluded cells (task 060).
+  [BlockType.Hidden]: 0x4d4d4d,
 };
 
 const GROUND_THICKNESS = 0.02;

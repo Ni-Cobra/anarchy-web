@@ -174,6 +174,10 @@ export const DEFAULT_BREAK_PARTICLE_COLORS: Readonly<Record<BlockType, number>> 
   [BlockType.Gold]: 0xf5d042,
   [BlockType.Tree]: 0x3a8a3a,
   [BlockType.Sticks]: 0x6a4a2a,
+  // Hidden never reaches the break / particle path — the server rejects
+  // break attempts on hidden cells and the wire never carries Hidden in a
+  // BlockEdit attribution. Kept here for the exhaustive-Record typecheck.
+  [BlockType.Hidden]: 0x4d4d4d,
 };
 
 export function defaultBreakParticleColor(kind: BlockType): number {

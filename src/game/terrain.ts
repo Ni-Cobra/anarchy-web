@@ -26,6 +26,16 @@ export enum BlockType {
   Gold = 4,
   Tree = 5,
   Sticks = 6,
+  /**
+   * Anti-cheat occlusion sentinel (task 060). The server emits this for any
+   * cell the local player cannot see (top-layer block boxed in by four
+   * full neighbors, or ground cell directly under a full top block) so the
+   * underlying kind never reaches the client. Renders as a neutral
+   * occluder; targeting / breaking / placing onto a `Hidden` cell is
+   * rejected client-side, mirroring the server's validation. Wire-only —
+   * the server never holds this kind in authoritative state.
+   */
+  Hidden = 7,
 }
 
 /**
