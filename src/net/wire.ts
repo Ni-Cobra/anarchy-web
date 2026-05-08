@@ -60,6 +60,13 @@ export interface WireBlockEditEvent {
   readonly cy: number;
   readonly lx: number;
   readonly ly: number;
+  /**
+   * The top-layer block kind involved in this edit — placed kind for
+   * `placed`, removed kind for `broken`. Mirrors `BlockEdit.block_type`
+   * on the wire and lets the renderer specialize visuals (e.g. the
+   * break-particle tint) without re-reading the chunk.
+   */
+  readonly blockType: BlockType;
 }
 export interface WireTargetingStateEvent {
   readonly playerId: number;
@@ -340,6 +347,7 @@ function blockEditFromWire(
     cy: coord.cy ?? 0,
     lx: wire.localX ?? 0,
     ly: wire.localY ?? 0,
+    blockType: blockTypeFromWire(wire.blockType),
   };
 }
 

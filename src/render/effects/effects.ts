@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { paletteColorHex } from "../../game/index.js";
+import { type BlockType, paletteColorHex } from "../../game/index.js";
 import { tileCenterToScene } from "../terrain.js";
 
 /**
@@ -20,6 +20,8 @@ export interface BlockEditEvent {
   readonly cy: number;
   readonly lx: number;
   readonly ly: number;
+  /** Top-layer kind involved in the edit — see `WireBlockEditEvent`. */
+  readonly blockType: BlockType;
 }
 
 export interface TargetingStateEvent {

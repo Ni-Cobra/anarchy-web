@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { BlockType } from "../../game/index.js";
 import { EffectsLayer } from "./effects.js";
 
 /**
@@ -23,7 +24,7 @@ describe("EffectsLayer", () => {
     const layer = makeLayer();
     expect(countChildren(layer)).toBe(0);
     layer.onBlockEdit(
-      { playerId: 1, kind: "placed", cx: 0, cy: 0, lx: 0, ly: 0 },
+      { playerId: 1, kind: "placed", cx: 0, cy: 0, lx: 0, ly: 0, blockType: BlockType.Stone },
       0,
     );
     expect(countChildren(layer)).toBe(1);
@@ -32,7 +33,7 @@ describe("EffectsLayer", () => {
   it("spawns a break shatter on a broken block edit", () => {
     const layer = makeLayer();
     layer.onBlockEdit(
-      { playerId: 1, kind: "broken", cx: 1, cy: 2, lx: 3, ly: 4 },
+      { playerId: 1, kind: "broken", cx: 1, cy: 2, lx: 3, ly: 4, blockType: BlockType.Stone },
       0,
     );
     expect(countChildren(layer)).toBe(1);
@@ -41,7 +42,7 @@ describe("EffectsLayer", () => {
   it("expires a place pulse once its duration elapses", () => {
     const layer = makeLayer();
     layer.onBlockEdit(
-      { playerId: 1, kind: "placed", cx: 0, cy: 0, lx: 0, ly: 0 },
+      { playerId: 1, kind: "placed", cx: 0, cy: 0, lx: 0, ly: 0, blockType: BlockType.Stone },
       1_000,
     );
     expect(countChildren(layer)).toBe(1);
@@ -55,7 +56,7 @@ describe("EffectsLayer", () => {
   it("expires a break shatter once its duration elapses", () => {
     const layer = makeLayer();
     layer.onBlockEdit(
-      { playerId: 1, kind: "broken", cx: 0, cy: 0, lx: 0, ly: 0 },
+      { playerId: 1, kind: "broken", cx: 0, cy: 0, lx: 0, ly: 0, blockType: BlockType.Stone },
       0,
     );
     expect(countChildren(layer)).toBe(1);
@@ -112,7 +113,7 @@ describe("EffectsLayer", () => {
   it("clears all owned scene state on dispose", () => {
     const layer = makeLayer();
     layer.onBlockEdit(
-      { playerId: 1, kind: "placed", cx: 0, cy: 0, lx: 0, ly: 0 },
+      { playerId: 1, kind: "placed", cx: 0, cy: 0, lx: 0, ly: 0, blockType: BlockType.Stone },
       0,
     );
     layer.applyTargets([

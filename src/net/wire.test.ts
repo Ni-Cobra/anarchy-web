@@ -567,8 +567,24 @@ describe("applyServerMessage — TickUpdate effects feed (task 070)", () => {
     });
     applyServerMessage(msg, deps);
     expect(edits).toEqual([
-      { playerId: 17, kind: "placed", cx: -1, cy: 2, lx: 3, ly: 4 },
-      { playerId: 9, kind: "broken", cx: 5, cy: 6, lx: 7, ly: 8 },
+      {
+        playerId: 17,
+        kind: "placed",
+        cx: -1,
+        cy: 2,
+        lx: 3,
+        ly: 4,
+        blockType: BlockType.Gold,
+      },
+      {
+        playerId: 9,
+        kind: "broken",
+        cx: 5,
+        cy: 6,
+        lx: 7,
+        ly: 8,
+        blockType: BlockType.Tree,
+      },
     ]);
     expect(targetCalls).toEqual([[]]);
   });

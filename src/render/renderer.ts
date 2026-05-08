@@ -34,6 +34,8 @@ import {
 import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
 import {
   BeamLayer,
+  BreakParticles,
+  defaultBreakParticleColor,
   EffectsLayer,
   type BlockEditEvent,
   type TargetingStateEvent,
@@ -304,6 +306,7 @@ export class Renderer {
   private readonly getSelectedHotbarSlot: () => number;
   private readonly effects: EffectsLayer;
   private readonly beams: BeamLayer;
+  private readonly breakParticles: BreakParticles;
   private readonly chunkBorderGrid: THREE.LineSegments;
   // Camera-height tween (see `render/zoom.ts`). Holds the source-of-truth
   // for both the M preset toggle and the continuous +/- / Ctrl+Wheel
@@ -408,6 +411,13 @@ export class Renderer {
     // positions plumbed by `frame()` so the beam tracks moving actors.
     this.beams = new BeamLayer();
     this.scene.add(this.beams.scene());
+
+    // Break-particle puff (task 125): tinted shards scatter from the cell
+    // the moment a block transitions to Air. The wire layer feeds the
+    // same `BlockEdit` events the effects layer consumes; we cherry-pick
+    // the broken ones here.
+    this.breakParticles = new BreakParticles(defaultBreakParticleColor);
+    this.scene.add(this.breakParticles.scene());
 
     this.chunkBorderGrid = buildChunkBorderGrid();
     this.chunkBorderGrid.visible = false;
@@ -558,7 +568,12 @@ export class Renderer {
   onBlockEdit(event: BlockEditEvent): void {
     const nowMs = this.now();
     this.effects.onBlockEdit(event, nowMs);
-    if (event.kind === "placed") this.beams.onPlace(event, nowMs);
+    if (event.kind === "placed") {
+      this.beams.onPlace(event, nowMs);
+    } else {
+      const center = tileCenterToScene(event.cx, event.cy, event.lx, event.ly);
+      this.breakParticles.spawn(center.x, center.z, event.blockType, nowMs);
+    }
   }
 
   /**
@@ -637,6 +652,7 @@ export class Renderer {
     }
     this.effects.dispose();
     this.beams.dispose();
+    this.breakParticles.dispose();
     this.scene.remove(this.chunkBorderGrid);
     this.chunkBorderGrid.geometry.dispose();
     (this.chunkBorderGrid.material as THREE.Material).dispose();
@@ -662,6 +678,7 @@ export class Renderer {
     this.refreshHoverBillboards();
     this.refreshGhostPreview();
     this.effects.update(nowMs);
+    this.breakParticles.update(nowMs);
     // Beams aim at the same interpolated player positions that
     // `syncPlayerMeshes` just consumed so a beam stays glued to its
     // actor's body across remote-render delay.
