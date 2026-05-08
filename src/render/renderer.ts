@@ -2,36 +2,36 @@ import * as THREE from "three";
 
 import {
   CAMERA_HEIGHT,
-  PLAYER_RADIUS,
   ZOOM_OUT_CAMERA_HEIGHT,
   ZOOM_STEP_FACTOR,
   ZOOM_TWEEN_MS,
 } from "../config.js";
 import {
-  BlockType,
   CHUNK_SIZE,
   type Inventory,
-  paletteColorHex,
   type PlayerId,
   type SnapshotBuffer,
   type Terrain,
   type World,
 } from "../game/index.js";
-import { tileCenterToScene } from "./terrain.js";
 import { composePlayerEntities } from "./compose.js";
 import {
   disposePlayerMesh,
   syncPlayerMeshes,
   tileToScene,
   type PlayerMeshFactory,
-  type RenderableEntity,
 } from "./sync.js";
 import {
   pickBlockUnderCursor,
   pickPlayerUnderCursor,
   type PickResult,
 } from "./picker.js";
-import { buildChunkMesh, buildTerrainMesh, disposeTerrainMesh } from "./terrain.js";
+import {
+  buildChunkMesh,
+  buildTerrainMesh,
+  disposeTerrainMesh,
+  tileCenterToScene,
+} from "./terrain.js";
 import {
   BeamLayer,
   BreakParticles,
@@ -41,6 +41,8 @@ import {
   type TargetingStateEvent,
 } from "./effects/index.js";
 import { computeGhostState, type GhostState } from "./ghost.js";
+import { GhostMesh } from "./ghost_mesh.js";
+import { applyHoverBillboards, defaultPlayerMeshFactory } from "./player_mesh.js";
 import { ZoomController, clampZoomHeight } from "./zoom.js";
 import {
   type BlockTextureSet,
@@ -48,58 +50,6 @@ import {
   loadBlockTextures,
 } from "./texture_loader.js";
 
-// The player's body sphere mirrors the authoritative collision radius
-// (`PLAYER_RADIUS` in `config.ts`, `crate::game::player::PLAYER_RADIUS`
-// on the server) so visuals and authority agree on what "touching" means.
-const BODY_RADIUS = PLAYER_RADIUS;
-const BODY_SEGMENTS = 16;
-// Painted face. Eyes are drawn into the body's CanvasTexture instead of
-// being separate child meshes — drops two child meshes per player and
-// lets future expressions (blinks, emotes) become 2D texture edits with
-// no geometry churn. The body sphere's local +X is the player's "front"
-// (see `facingToYaw`), which on the default Three.js sphere UV maps to
-// the texture's horizontal midpoint, so eyes painted symmetrically
-// around `s = 0.5` always sit on the facing-forward hemisphere.
-const BODY_TEXTURE_W = 256;
-const BODY_TEXTURE_H = 128;
-// Eye texture coords derived from the previous child-eye offsets:
-// position (0.266, 0.126, ±0.14) projected to the unit sphere then
-// converted via the inverse of the default Three.js sphere UV mapping.
-// `EYE_T` is the texture's vertical coord (1 - latitude/π, with the
-// flipY default making canvas-Y = (1 - t) * H).
-const EYE_S_RIGHT = 0.423;
-const EYE_S_LEFT = 0.577;
-const EYE_T = 0.618;
-const EYE_WHITE_RADIUS_PX = 12;
-const EYE_PUPIL_RADIUS_PX = 5;
-const EYE_WHITE_COLOR = "#ffffff";
-const EYE_PUPIL_COLOR = "#101010";
-
-// Username billboard. `BILLBOARD_HEIGHT_OFFSET` is in scene units (Three.js
-// Y-up); the sprite parents to the body mesh so it follows the player. The
-// sprite uses a `CanvasTexture` of the rendered name so we can choose
-// font + outline + size without depending on a Three.js-side font loader.
-// The sprite size is sized in world units so it stays readable at default
-// camera zoom; sprites by definition always face the camera.
-//
-// The offset puts the *bottom* of the sprite just above the sphere top:
-// sphere top sits at `BODY_RADIUS` above the body center, the sprite is
-// anchored at its center with height `BILLBOARD_WORLD_HEIGHT`, so its
-// bottom is at `BILLBOARD_HEIGHT_OFFSET - BILLBOARD_WORLD_HEIGHT/2`. We
-// keep ~0.025 of clearance so the label feels attached without floating.
-const BILLBOARD_WORLD_HEIGHT = 0.45;
-const BILLBOARD_HEIGHT_OFFSET = BODY_RADIUS + BILLBOARD_WORLD_HEIGHT / 2 + 0.025;
-const BILLBOARD_FONT_PX = 56;
-const BILLBOARD_PAD_PX = 12;
-const BILLBOARD_TEXT_COLOR = "#ffffff";
-const BILLBOARD_OUTLINE_COLOR = "#000000";
-const BILLBOARD_OUTLINE_WIDTH = 6;
-// Property key on `mesh.userData` where the per-player billboard sprite is
-// stashed at create time. The frame loop reads this to toggle visibility
-// against the hovered-player id from the cursor picker; gating it through a
-// single key lets the sprite stay parented to the body (so it follows
-// movement automatically) without exposing a parallel sprite map.
-const BILLBOARD_USERDATA_KEY = "usernameBillboard";
 const AXIS_HALF_LENGTH = 10000;
 const AXIS_Y_OFFSET = 0.01;
 const AXIS_X_COLOR = 0xff5050;
@@ -117,151 +67,6 @@ const CHUNK_GRID_HALF = CHUNK_GRID_HALF_CHUNKS * CHUNK_SIZE;
 const CHUNK_GRID_Y_OFFSET = AXIS_Y_OFFSET + 0.005;
 const CHUNK_GRID_COLOR = 0xa0a0a0;
 const CHUNK_GRID_OPACITY = 0.35;
-
-// Placement ghost: a semi-transparent unit-cube preview at the targeted
-// top-layer cell. Sized to match a real placed top-layer block
-// (`TOP_BOX_*` in `terrain.ts`) so what-you-see is what-you-get on click.
-// The texture (sourced from the renderer's shared `BlockTextureSet`) is
-// swapped per-kind so the preview shows the same surface as the placed
-// block; a fallback flat color surfaces texture-less kinds loudly.
-const GHOST_FALLBACK_COLOR = 0xff00ff;
-const GHOST_OPACITY = 0.45;
-const GHOST_BOX_SIZE = 1.0;
-const GHOST_BOX_Y = 0.025 + GHOST_BOX_SIZE / 2;
-
-const defaultFactory: PlayerMeshFactory = {
-  create(entity: RenderableEntity, _isLocal: boolean) {
-    const bodyGeom = new THREE.SphereGeometry(
-      BODY_RADIUS,
-      BODY_SEGMENTS,
-      BODY_SEGMENTS,
-    );
-    // The body color is the player's lobby palette pick; both local and
-    // remote players are tinted the same way (the local player is
-    // distinguishable by camera follow + their own billboard).
-    const bodyMat = buildBodyMaterial(paletteColorHex(entity.colorIndex));
-    const body = new THREE.Mesh(bodyGeom, bodyMat);
-
-    if (entity.username.length > 0) {
-      const billboard = buildUsernameBillboard(entity.username);
-      // Hidden by default — the renderer's per-frame hover pass flips
-      // `visible` for whichever body is under the cursor.
-      billboard.visible = false;
-      body.userData[BILLBOARD_USERDATA_KEY] = billboard;
-      body.add(billboard);
-    }
-
-    return body;
-  },
-};
-
-/**
- * Build the body material with eyes painted into a `CanvasTexture` mapped
- * onto the sphere. Falls back to a flat-color material when no 2D canvas
- * context is available (headless test envs); the body still renders, just
- * without eyes — matching the renderer's prior fault-tolerant style for
- * the username billboard.
- */
-function buildBodyMaterial(bodyColorHex: number): THREE.MeshLambertMaterial {
-  const canvas = document.createElement("canvas");
-  canvas.width = BODY_TEXTURE_W;
-  canvas.height = BODY_TEXTURE_H;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return new THREE.MeshLambertMaterial({ color: bodyColorHex });
-
-  const r = (bodyColorHex >> 16) & 0xff;
-  const g = (bodyColorHex >> 8) & 0xff;
-  const b = bodyColorHex & 0xff;
-  ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-  ctx.fillRect(0, 0, BODY_TEXTURE_W, BODY_TEXTURE_H);
-
-  // CanvasTexture defaults to flipY = true, so canvas y = (1 - t) * H
-  // for a target texture coord t.
-  const eyeY = (1 - EYE_T) * BODY_TEXTURE_H;
-  for (const s of [EYE_S_LEFT, EYE_S_RIGHT]) {
-    const cx = s * BODY_TEXTURE_W;
-    ctx.fillStyle = EYE_WHITE_COLOR;
-    ctx.beginPath();
-    ctx.arc(cx, eyeY, EYE_WHITE_RADIUS_PX, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.fillStyle = EYE_PUPIL_COLOR;
-    ctx.beginPath();
-    ctx.arc(cx, eyeY, EYE_PUPIL_RADIUS_PX, 0, 2 * Math.PI);
-    ctx.fill();
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.needsUpdate = true;
-  return new THREE.MeshLambertMaterial({ map: texture });
-}
-
-/**
- * Render the username into an offscreen 2D canvas and wrap it as a
- * `THREE.Sprite` so it always faces the camera. The sprite parents to the
- * body so it follows the player; world height is fixed in scene units so
- * the label stays readable at default zoom regardless of canvas pixel
- * density. The body mesh is yawed each frame to track the player's facing,
- * so the sprite is parented to a wrapper that we counter-rotate inverse to
- * the body — without that, the billboard would orbit the body whenever the
- * player turned. Sprites already cancel rotation against the camera, but
- * the parent transform applies before that, hence the wrapper.
- */
-function buildUsernameBillboard(username: string): THREE.Object3D {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    // Headless / no-2d-canvas fallback — return an empty group rather
-    // than crashing. The renderer-level tests stub `THREE` and never see
-    // this path, but defensive rendering keeps a missing 2d ctx visible
-    // as "no name above head" rather than a thrown exception.
-    return new THREE.Group();
-  }
-  ctx.font = `${BILLBOARD_FONT_PX}px system-ui, sans-serif`;
-  const metrics = ctx.measureText(username);
-  const textWidth = Math.ceil(metrics.width);
-  const textHeight = BILLBOARD_FONT_PX;
-  canvas.width = textWidth + BILLBOARD_PAD_PX * 2;
-  canvas.height = textHeight + BILLBOARD_PAD_PX * 2;
-  // Re-set font after the canvas resize (mutating width/height resets ctx).
-  ctx.font = `${BILLBOARD_FONT_PX}px system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.lineWidth = BILLBOARD_OUTLINE_WIDTH;
-  ctx.strokeStyle = BILLBOARD_OUTLINE_COLOR;
-  ctx.fillStyle = BILLBOARD_TEXT_COLOR;
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  ctx.strokeText(username, cx, cy);
-  ctx.fillText(username, cx, cy);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.needsUpdate = true;
-
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthTest: false,
-  });
-  const sprite = new THREE.Sprite(material);
-  // The body counter-rotates with facing (see `syncPlayerMeshes`); wrap the
-  // sprite in a group so we can compensate for the body's local Y rotation
-  // each frame in `Renderer.frame` if needed. Today the sprite parent is
-  // the body itself, but Sprite always faces the camera in world space, so
-  // the body's yaw is irrelevant for the sprite's orientation — the offset
-  // position is what we care about, and that's a Z-up offset in body-local
-  // space that we set once.
-  const aspect = canvas.width / canvas.height;
-  sprite.scale.set(BILLBOARD_WORLD_HEIGHT * aspect, BILLBOARD_WORLD_HEIGHT, 1);
-  sprite.position.set(0, BILLBOARD_HEIGHT_OFFSET, 0);
-  // Render on top so the label isn't hidden by the body sphere when the
-  // player is partially behind a top-layer block.
-  sprite.renderOrder = 999;
-  return sprite;
-}
 
 /**
  * Initial viewport state passed in from the caller. Keeps the renderer
@@ -299,9 +104,7 @@ export class Renderer {
   private terrain: Terrain | null;
   private terrainGroup: THREE.Group | null = null;
   private readonly blockTextures: BlockTextureSet;
-  private ghostMesh: THREE.Mesh | null = null;
-  private ghostMeshKind: BlockType | null = null;
-  private ghostState: GhostState | null = null;
+  private readonly ghost: GhostMesh;
   private readonly inventory: Inventory | null;
   private readonly getSelectedHotbarSlot: () => number;
   private readonly effects: EffectsLayer;
@@ -331,7 +134,7 @@ export class Renderer {
     container: HTMLElement,
     viewport: Viewport,
     terrain: Terrain | null = null,
-    factory: PlayerMeshFactory = defaultFactory,
+    factory: PlayerMeshFactory = defaultPlayerMeshFactory,
     now: () => number = () => Date.now(),
     inventory: Inventory | null = null,
     getSelectedHotbarSlot: () => number = () => 0,
@@ -394,6 +197,8 @@ export class Renderer {
       this.terrainGroup = buildTerrainMesh(terrain, this.blockTextures);
       this.scene.add(this.terrainGroup);
     }
+
+    this.ghost = new GhostMesh(this.scene, this.blockTextures);
 
     // Effects layer (task 070): place pulses, break shatters, and held-
     // break targeting overlays. Tinted by the actor's lobby color via the
@@ -509,55 +314,7 @@ export class Renderer {
    * end-to-end without inspecting Three.js internals.
    */
   getGhostState(): GhostState | null {
-    return this.ghostState;
-  }
-
-  private applyGhostState(state: GhostState | null): void {
-    this.ghostState = state;
-    if (state === null) {
-      if (this.ghostMesh) this.ghostMesh.visible = false;
-      return;
-    }
-    if (!this.ghostMesh) {
-      const geom = new THREE.BoxGeometry(
-        GHOST_BOX_SIZE,
-        GHOST_BOX_SIZE,
-        GHOST_BOX_SIZE,
-      );
-      this.ghostMesh = new THREE.Mesh(geom, this.buildGhostMaterial(state.kind));
-      this.ghostMeshKind = state.kind;
-      this.scene.add(this.ghostMesh);
-    } else if (this.ghostMeshKind !== state.kind) {
-      // Swap the material wholesale on kind change so a texture-backed
-      // and a flat-color preview can switch cleanly without leaking the
-      // previous material's GPU resources.
-      const oldMat = this.ghostMesh.material as THREE.Material;
-      this.ghostMesh.material = this.buildGhostMaterial(state.kind);
-      oldMat.dispose();
-      this.ghostMeshKind = state.kind;
-    }
-    const [cx, cy, lx, ly] = state.cell;
-    const scene = tileCenterToScene(cx, cy, lx, ly);
-    this.ghostMesh.position.set(scene.x, GHOST_BOX_Y, scene.z);
-    this.ghostMesh.visible = true;
-  }
-
-  private buildGhostMaterial(kind: BlockType): THREE.MeshLambertMaterial {
-    const tex = this.blockTextures.get(kind) ?? null;
-    if (tex) {
-      return new THREE.MeshLambertMaterial({
-        map: tex,
-        transparent: true,
-        opacity: GHOST_OPACITY,
-        depthWrite: false,
-      });
-    }
-    return new THREE.MeshLambertMaterial({
-      color: GHOST_FALLBACK_COLOR,
-      transparent: true,
-      opacity: GHOST_OPACITY,
-      depthWrite: false,
-    });
+    return this.ghost.getState();
   }
 
   /**
@@ -644,12 +401,7 @@ export class Renderer {
       disposeTerrainMesh(this.terrainGroup, this.scene);
       this.terrainGroup = null;
     }
-    if (this.ghostMesh) {
-      this.scene.remove(this.ghostMesh);
-      this.ghostMesh.geometry.dispose();
-      (this.ghostMesh.material as THREE.Material).dispose();
-      this.ghostMesh = null;
-    }
+    this.ghost.dispose();
     this.effects.dispose();
     this.beams.dispose();
     this.breakParticles.dispose();
@@ -690,7 +442,7 @@ export class Renderer {
 
   private refreshGhostPreview(): void {
     if (this.inventory === null || this.terrain === null) {
-      this.applyGhostState(null);
+      this.ghost.apply(null);
       return;
     }
     const slot = this.inventory.slot(this.getSelectedHotbarSlot());
@@ -705,7 +457,7 @@ export class Renderer {
       terrain: this.terrain,
       localPlayerId: this.localPlayerId,
     });
-    this.applyGhostState(state);
+    this.ghost.apply(state);
   }
 
   private refreshHoverBillboards(): void {
@@ -716,13 +468,7 @@ export class Renderer {
       this.cursorNdc === null
         ? null
         : pickPlayerUnderCursor(this.cursorNdc, this.camera, this.meshes);
-    for (const [id, mesh] of this.meshes) {
-      const billboard = mesh.userData[BILLBOARD_USERDATA_KEY] as
-        | THREE.Object3D
-        | undefined;
-      if (!billboard) continue;
-      billboard.visible = id === hoveredId;
-    }
+    applyHoverBillboards(this.meshes, hoveredId);
   }
 
   private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {
