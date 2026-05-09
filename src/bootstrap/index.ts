@@ -56,6 +56,7 @@ import {
 } from "../ui/index.js";
 import { attachBreakAndPlace } from "./break_place.js";
 import { attachKeybindings } from "./keybindings.js";
+import { mountToastHost } from "./toast.js";
 
 /**
  * Test handle exposed on `window.__anarchy`. Kept narrow on purpose: only
@@ -478,30 +479,8 @@ export function runMain(
     }),
   );
 
-  // Tiny in-session toast for the register flow's result. Stays on
-  // screen for ~3 s, then fades. Created on demand so an empty session
-  // pays no DOM cost.
-  function showToast(text: string, kind: "ok" | "error"): void {
-    let host = document.getElementById("anarchy-toast-host");
-    if (!host) {
-      host = document.createElement("div");
-      host.id = "anarchy-toast-host";
-      host.style.cssText =
-        "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9700;display:flex;flex-direction:column;gap:8px;align-items:center;font-family:system-ui,-apple-system,sans-serif;";
-      document.body.appendChild(host);
-    }
-    const toast = document.createElement("div");
-    toast.textContent = text;
-    toast.style.cssText = `padding:10px 16px;border-radius:6px;font-size:13px;color:#fff;background:${
-      kind === "ok" ? "#1e7a3a" : "#a32d2d"
-    };box-shadow:0 4px 12px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.18s ease;`;
-    host.appendChild(toast);
-    requestAnimationFrame(() => (toast.style.opacity = "1"));
-    setTimeout(() => {
-      toast.style.opacity = "0";
-      setTimeout(() => toast.remove(), 250);
-    }, 3000);
-  }
+  const toast = mountToastHost();
+  teardowns.push(() => toast.unmount());
 
   let openRegisterModal: () => void = () => {};
   let registerModal: RegisterModalHandle | null = null;
@@ -509,7 +488,6 @@ export function runMain(
     registerModal?.close();
     registerModal = null;
     pendingRegisterResult = null;
-    document.getElementById("anarchy-toast-host")?.remove();
   });
 
   // Action registry for the side panel. New in-game actions go here as
@@ -550,12 +528,12 @@ export function runMain(
         pendingRegisterResult = (status) => {
           if (status === "ok") {
             registered = true;
-            showToast("Account registered.", "ok");
+            toast.show("Account registered.", "ok");
             rebuildSidePanel();
           } else if (status === "already-registered") {
-            showToast("This username is already registered.", "error");
+            toast.show("This username is already registered.", "error");
           } else {
-            showToast("Registration failed. Please try again.", "error");
+            toast.show("Registration failed. Please try again.", "error");
           }
         };
         sendRegisterAccount(password);
