@@ -1,31 +1,127 @@
 /**
- * Single source of truth for human-readable `ItemId` names. Lives at the top
- * of `src/` (alongside `textures.ts`) because it straddles surfaces:
- * inventory tooltips today, equipment slots / hotbar callouts / future
- * crafting UI tomorrow. Keeping the strings in one place avoids drift when a
- * new item kind lands.
+ * Client-side mirror of the server's `ITEM_REGISTRY`
+ * (see `anarchy-server/src/game/item/mod.rs`). One [`ItemMeta`] entry per
+ * `ItemId` carrying the fields the client UI consumes (display name,
+ * texture URL, places-a-block hint). Runtime behaviour (validation, drops,
+ * crafting outcomes) still asks the server — this table is purely the
+ * client's render-time lookup.
  *
  * Names are display-only — wire / mirror code uses the `ItemId` enum and
- * never these strings.
+ * never these strings. Keep the table in lockstep with the server registry
+ * whenever an item kind lands.
  */
 
-import { ItemId } from "./game/index.js";
+import { BlockType, ItemId } from "./game/index.js";
 
-const ITEM_DISPLAY_NAMES: Record<ItemId, string> = {
-  [ItemId.Stick]: "Stick",
-  [ItemId.Wood]: "Wood",
-  [ItemId.Stone]: "Stone",
-  [ItemId.Gold]: "Gold",
-  [ItemId.WoodPickaxe]: "Wood Pickaxe",
-  [ItemId.StonePickaxe]: "Stone Pickaxe",
-  [ItemId.CopperPickaxe]: "Copper Pickaxe",
-  [ItemId.IronPickaxe]: "Iron Pickaxe",
-  [ItemId.TungstenPickaxe]: "Tungsten Pickaxe",
-  [ItemId.WoodAxe]: "Wood Axe",
-  [ItemId.StoneAxe]: "Stone Axe",
-  [ItemId.CopperAxe]: "Copper Axe",
-  [ItemId.IronAxe]: "Iron Axe",
-  [ItemId.TungstenAxe]: "Tungsten Axe",
+/**
+ * Per-item static data the client needs at render time. Mirrors
+ * `ItemMetadata` on the server — only the rendering-relevant subset is
+ * carried (display string, what block the item places, and the texture URL).
+ */
+export interface ItemMeta {
+  readonly id: ItemId;
+  readonly displayName: string;
+  /** Block the item places when the player right-clicks. `null` for tools. */
+  readonly placesBlock: BlockType | null;
+  /** URL of the 16×16 PNG icon, or `null` if there's no rendered texture. */
+  readonly textureUrl: string | null;
+}
+
+const BLOCK_TEXTURES_BASE = "/textures/blocks";
+const ITEM_TEXTURES_BASE = "/textures/items";
+
+/**
+ * Single source of truth for per-`ItemId` static metadata on the client.
+ * Keys are the `ItemId` numeric enum; the table covers every variant. Items
+ * that place a block share that block's texture; tools have their own
+ * dedicated icon under `/textures/items/<material>-<tool>.png`. Adding an
+ * `ItemId` variant requires a matching entry here and on the server.
+ */
+export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
+  [ItemId.Stick]: {
+    id: ItemId.Stick,
+    displayName: "Stick",
+    placesBlock: BlockType.Sticks,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/sticks.png`,
+  },
+  [ItemId.Wood]: {
+    id: ItemId.Wood,
+    displayName: "Wood",
+    placesBlock: BlockType.Wood,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/wood.png`,
+  },
+  [ItemId.Stone]: {
+    id: ItemId.Stone,
+    displayName: "Stone",
+    placesBlock: BlockType.Stone,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/stone.png`,
+  },
+  [ItemId.Gold]: {
+    id: ItemId.Gold,
+    displayName: "Gold",
+    placesBlock: BlockType.Gold,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/gold.png`,
+  },
+  [ItemId.WoodPickaxe]: {
+    id: ItemId.WoodPickaxe,
+    displayName: "Wood Pickaxe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/wood-pickaxe.png`,
+  },
+  [ItemId.StonePickaxe]: {
+    id: ItemId.StonePickaxe,
+    displayName: "Stone Pickaxe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/stone-pickaxe.png`,
+  },
+  [ItemId.CopperPickaxe]: {
+    id: ItemId.CopperPickaxe,
+    displayName: "Copper Pickaxe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/copper-pickaxe.png`,
+  },
+  [ItemId.IronPickaxe]: {
+    id: ItemId.IronPickaxe,
+    displayName: "Iron Pickaxe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/iron-pickaxe.png`,
+  },
+  [ItemId.TungstenPickaxe]: {
+    id: ItemId.TungstenPickaxe,
+    displayName: "Tungsten Pickaxe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/tungsten-pickaxe.png`,
+  },
+  [ItemId.WoodAxe]: {
+    id: ItemId.WoodAxe,
+    displayName: "Wood Axe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/wood-axe.png`,
+  },
+  [ItemId.StoneAxe]: {
+    id: ItemId.StoneAxe,
+    displayName: "Stone Axe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/stone-axe.png`,
+  },
+  [ItemId.CopperAxe]: {
+    id: ItemId.CopperAxe,
+    displayName: "Copper Axe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/copper-axe.png`,
+  },
+  [ItemId.IronAxe]: {
+    id: ItemId.IronAxe,
+    displayName: "Iron Axe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/iron-axe.png`,
+  },
+  [ItemId.TungstenAxe]: {
+    id: ItemId.TungstenAxe,
+    displayName: "Tungsten Axe",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/tungsten-axe.png`,
+  },
 };
 
 /**
@@ -34,5 +130,5 @@ const ITEM_DISPLAY_NAMES: Record<ItemId, string> = {
  * UI render in the rare case the wire ships an item ahead of a UI rebuild.
  */
 export function itemDisplayName(item: ItemId): string {
-  return ITEM_DISPLAY_NAMES[item] ?? "Unknown item";
+  return ITEM_REGISTRY[item]?.displayName ?? "Unknown item";
 }

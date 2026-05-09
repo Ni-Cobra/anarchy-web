@@ -1,10 +1,14 @@
 /**
  * Block-texture path map. Single source of truth for which file each
  * `BlockType` is rendered as — both the world renderer and the inventory
- * UI consume this. Lives at the top of `src/` (alongside `lobby.ts`,
- * `config.ts`) precisely because it straddles `render/` and `ui/`: keeping
- * the path strings out of `render/` means UI code can import them without
- * pulling `three` into its bundle.
+ * UI consume this.
+ *
+ * This file owns the client-side mirror of the server's `BLOCK_REGISTRY`
+ * (see `anarchy-server/src/game/terrain/block.rs`): one [`BlockMeta`] entry
+ * per `BlockType` keyed by the enum, with the texture path derived from the
+ * server's `texture_name` basename. `textureUrlForBlock`, `textureUrlForItem`,
+ * and `BLOCK_TEXTURE_URLS` are thin facades over this registry — keep the
+ * registry table in lockstep with the server's whenever a kind lands.
  *
  * Texture bytes are produced by `anarchy-server/dev_utils textures` and
  * checked into `public/textures/blocks/<kind>.png`. Vite serves the
@@ -12,77 +16,105 @@
  */
 
 import { BlockType, ItemId } from "./game/index.js";
+import { ITEM_REGISTRY } from "./item_names.js";
 
 /**
- * URL of the 16×16 PNG for each visible block kind. `Air` deliberately has
- * no entry — there's no texture for "no block", and the renderer's per-kind
- * branches all guard against `Air` before reaching the texture lookup.
+ * Per-kind static data the renderer / UI needs about a block. Mirrors
+ * `BlockMeta` on the server; carries only the fields the client uses
+ * (rendered texture URL today, display name for future tooltips).
  */
-export const BLOCK_TEXTURE_URLS: Partial<Record<BlockType, string>> = {
-  [BlockType.Grass]: "/textures/blocks/grass.png",
-  [BlockType.Stone]: "/textures/blocks/stone.png",
-  [BlockType.Wood]: "/textures/blocks/wood.png",
-  [BlockType.Gold]: "/textures/blocks/gold.png",
-  [BlockType.Tree]: "/textures/blocks/tree.png",
-  [BlockType.Sticks]: "/textures/blocks/sticks.png",
+export interface BlockMeta {
+  readonly kind: BlockType;
+  /** URL of the 16×16 PNG, or `null` for kinds with no rendered texture. */
+  readonly textureUrl: string | null;
+  /** Tooltip / billboard string. */
+  readonly displayName: string;
+}
+
+const BLOCK_TEXTURES_BASE = "/textures/blocks";
+
+/**
+ * Single source of truth for per-`BlockType` static metadata on the client.
+ * Keyed by `BlockType` (numeric enum) — accessing a missing variant returns
+ * `undefined`, but [`blockMeta`] guards against that and falls back to a
+ * neutral entry. Adding a `BlockType` variant requires a matching entry
+ * here and on the server.
+ *
+ * `Air` and `Hidden` carry `textureUrl: null` — neither has a renderable
+ * face. Wire-occlusion sentinel `Hidden` (task 060) stays in the registry
+ * because the renderer's per-kind branches still consult the metadata for
+ * naming.
+ */
+export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
+  [BlockType.Air]: {
+    kind: BlockType.Air,
+    textureUrl: null,
+    displayName: "Air",
+  },
+  [BlockType.Grass]: {
+    kind: BlockType.Grass,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/grass.png`,
+    displayName: "Grass",
+  },
+  [BlockType.Wood]: {
+    kind: BlockType.Wood,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/wood.png`,
+    displayName: "Wood",
+  },
+  [BlockType.Stone]: {
+    kind: BlockType.Stone,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/stone.png`,
+    displayName: "Stone",
+  },
+  [BlockType.Gold]: {
+    kind: BlockType.Gold,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/gold.png`,
+    displayName: "Gold",
+  },
+  [BlockType.Tree]: {
+    kind: BlockType.Tree,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/tree.png`,
+    displayName: "Tree",
+  },
+  [BlockType.Sticks]: {
+    kind: BlockType.Sticks,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/sticks.png`,
+    displayName: "Sticks",
+  },
+  [BlockType.Hidden]: {
+    kind: BlockType.Hidden,
+    textureUrl: null,
+    displayName: "Hidden",
+  },
 };
+
+/**
+ * URL of the 16×16 PNG for each visible block kind. Compatibility facade —
+ * driven by `BLOCK_REGISTRY`. `Air` / `Hidden` are deliberately absent
+ * (neither has a texture); the renderer's per-kind branches all guard
+ * against `Air` before reaching the texture lookup.
+ */
+export const BLOCK_TEXTURE_URLS: Partial<Record<BlockType, string>> =
+  Object.fromEntries(
+    Object.values(BLOCK_REGISTRY)
+      .filter((m): m is BlockMeta & { textureUrl: string } => m.textureUrl !== null)
+      .map((m) => [m.kind, m.textureUrl] as const),
+  ) as Partial<Record<BlockType, string>>;
 
 /**
  * Texture URL for a `BlockType`, or `null` if the kind has no rendered
- * texture (today: only `Air`).
+ * texture (today: `Air` and the `Hidden` occlusion sentinel).
  */
 export function textureUrlForBlock(kind: BlockType): string | null {
-  return BLOCK_TEXTURE_URLS[kind] ?? null;
+  return BLOCK_REGISTRY[kind]?.textureUrl ?? null;
 }
 
 /**
- * URL of the 16×16 PNG for each task-090 tool item. Sourced from
- * `public/textures/items/<material>-<tool>.png` — produced by the same
- * `anarchy-server dev_utils textures` pipeline that generates the block
- * textures, so a re-skin is one edit per silhouette + a re-run of the
- * script.
- */
-const TOOL_TEXTURE_URLS: Partial<Record<ItemId, string>> = {
-  [ItemId.WoodPickaxe]: "/textures/items/wood-pickaxe.png",
-  [ItemId.StonePickaxe]: "/textures/items/stone-pickaxe.png",
-  [ItemId.CopperPickaxe]: "/textures/items/copper-pickaxe.png",
-  [ItemId.IronPickaxe]: "/textures/items/iron-pickaxe.png",
-  [ItemId.TungstenPickaxe]: "/textures/items/tungsten-pickaxe.png",
-  [ItemId.WoodAxe]: "/textures/items/wood-axe.png",
-  [ItemId.StoneAxe]: "/textures/items/stone-axe.png",
-  [ItemId.CopperAxe]: "/textures/items/copper-axe.png",
-  [ItemId.IronAxe]: "/textures/items/iron-axe.png",
-  [ItemId.TungstenAxe]: "/textures/items/tungsten-axe.png",
-};
-
-/**
- * Texture URL for an inventory `ItemId`. Items that place a block share
- * that block's texture; tools use their own dedicated icon under
- * `/textures/items/`; consumables (none yet) would slot into the same
- * tool table or return `null`. Mirrors the `places_block` mapping in the
- * server's item registry — keep in lockstep when adding items.
+ * Texture URL for an inventory `ItemId`. The `textureUrl` field on each
+ * item-registry entry is the source of truth: items that place a block
+ * point at that block's texture; tools point at their own dedicated icon
+ * under `/textures/items/`.
  */
 export function textureUrlForItem(item: ItemId): string | null {
-  switch (item) {
-    case ItemId.Stick:
-      return BLOCK_TEXTURE_URLS[BlockType.Sticks] ?? null;
-    case ItemId.Wood:
-      return BLOCK_TEXTURE_URLS[BlockType.Wood] ?? null;
-    case ItemId.Stone:
-      return BLOCK_TEXTURE_URLS[BlockType.Stone] ?? null;
-    case ItemId.Gold:
-      return BLOCK_TEXTURE_URLS[BlockType.Gold] ?? null;
-    case ItemId.WoodPickaxe:
-    case ItemId.StonePickaxe:
-    case ItemId.CopperPickaxe:
-    case ItemId.IronPickaxe:
-    case ItemId.TungstenPickaxe:
-    case ItemId.WoodAxe:
-    case ItemId.StoneAxe:
-    case ItemId.CopperAxe:
-    case ItemId.IronAxe:
-    case ItemId.TungstenAxe:
-      return TOOL_TEXTURE_URLS[item] ?? null;
-  }
-  return null;
+  return ITEM_REGISTRY[item]?.textureUrl ?? null;
 }
