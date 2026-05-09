@@ -18,14 +18,20 @@ export default defineConfig({
   webServer: [
     {
       // Dedicated `e2e` world (not `default`) so the dev's local world stays
-      // untouched, and so `globalSetup` can safely wipe the save file before
-      // each run. `reuseExistingServer: false` avoids inheriting stale
+      // untouched. `reuseExistingServer: false` avoids inheriting stale
       // in-memory state from a leftover server. `--test-clear-spawn-region`
       // wipes the top layer of the 5×5 chunk box around origin at fresh-
       // world generation time so specs can rely on a known walkable spawn
       // anchor (the spawn finder picks tile-center `(0.5, 0.5)`); production
       // never sets this flag.
-      command: "cargo run --manifest-path ../anarchy-server/Cargo.toml -- --world e2e --test-clear-spawn-region",
+      //
+      // Task 110: `--testing` puts the server in testing mode — the world
+      // and the accounts registry are in-memory only, no save file is read
+      // or written, and the `/admin/*` HTTP surface (teleport-player,
+      // give-item, set-block) becomes reachable. The `globalSetup` wipe is
+      // kept as belt-and-suspenders defense for the case where this flag
+      // gets dropped.
+      command: "cargo run --manifest-path ../anarchy-server/Cargo.toml -- --world e2e --testing --test-clear-spawn-region",
       url: `${SERVER_URL}/hello`,
       reuseExistingServer: false,
       timeout: 120_000,

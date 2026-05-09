@@ -4,13 +4,12 @@ import { fileURLToPath } from "node:url";
 
 // Wipe the Playwright-managed server's world before each e2e run.
 //
-// The shared server uses `--world e2e` (see `playwright.config.ts`); its
-// save files live alongside the dev `default` world but are dedicated to the
-// e2e harness. Without this scrub, every successful test run leaves block
-// placements, parked players, and account registrations on disk; the next run
-// loads the polluted state and any spec that assumes a clean spawn region or
-// a fresh accounts registry breaks. Spawn protection only fires at chunk
-// generation, so loaded chunks keep whatever the previous run wrote.
+// The shared server uses `--world e2e --testing` (see `playwright.config.ts`).
+// Task 110's testing-mode flag means the server never reads or writes
+// `worlds/e2e.json` (or its `.accounts.json` sibling), so this wipe is
+// defensive belt-and-suspenders: if a future change drops `--testing` or
+// the wrong world name slips into a spec, the next run starts clean rather
+// than inheriting a polluted save.
 //
 // `force: true` makes the rm a no-op when the file is absent (first run on a
 // fresh checkout). `reuseExistingServer: false` in the config ensures a stale
