@@ -54,6 +54,7 @@ import {
   type RegisterModalHandle,
   type SidePanelAction,
 } from "../ui/index.js";
+import { createActionSenders } from "./actions.js";
 import { attachBreakAndPlace } from "./break_place.js";
 import { attachKeybindings } from "./keybindings.js";
 import { mountToastHost } from "./toast.js";
@@ -247,11 +248,6 @@ export function runMain(
   teardowns.push(() => window.removeEventListener("resize", onResize));
 
   let localPlayerId: number | null = null;
-  // Per-client monotonic action sequence. Mirrored into every outbound
-  // `ClientAction.client_seq`. Per ADR 0003 prediction is removed; the
-  // client no longer reconciles against the seq, but the server still
-  // expects a monotonic counter and may surface it again later.
-  let actionSeq = 0;
 
   // Test-handle observability for the task 070 effects feed. The
   // renderer-visible effects layer is internal; these mirrors give
@@ -318,84 +314,17 @@ export function runMain(
   );
   teardowns.push(() => conn.close());
 
-  function sendRegisterAccount(password: string): void {
-    conn.send({ registerAccount: { password } });
-  }
-
-  function sendMoveIntent(dx: number, dy: number): void {
-    const seq = ++actionSeq;
-    conn.send({ action: { moveIntent: { dx, dy }, clientSeq: seq } });
-  }
-
-  function sendBreakIntent(
-    target: { cx: number; cy: number; lx: number; ly: number } | null,
-  ): void {
-    const seq = ++actionSeq;
-    if (target === null) {
-      conn.send({ breakIntent: { clientSeq: seq } });
-    } else {
-      conn.send({
-        breakIntent: {
-          target: {
-            chunkCoord: { cx: target.cx, cy: target.cy },
-            localX: target.lx,
-            localY: target.ly,
-          },
-          clientSeq: seq,
-        },
-      });
-    }
-  }
-
-  function sendPlaceBlock(cx: number, cy: number, lx: number, ly: number): void {
-    conn.send({
-      placeBlock: {
-        chunkCoord: { cx, cy },
-        localX: lx,
-        localY: ly,
-      },
-    });
-  }
-
-  function sendSelectSlot(slot: number): void {
-    const seq = ++actionSeq;
-    conn.send({ selectSlot: { slot, clientSeq: seq } });
-  }
-
-  function sendMoveSlot(src: number, dst: number): void {
-    const seq = ++actionSeq;
-    conn.send({ moveSlot: { src, dst, clientSeq: seq } });
-  }
-
-  function sendCraft(recipeId: string): void {
-    const seq = ++actionSeq;
-    conn.send({ craft: { recipeId, clientSeq: seq } });
-  }
-
-  function toolKindToWire(kind: ToolKind): number {
-    // Mirrors `proto::v1::ToolKind`. The wire enum lives in
-    // `src/gen/anarchy.js`; we use the numeric codes directly so callers
-    // outside the wire bridge don't need to import generated types.
-    return kind === "pickaxe" ? 1 : 2;
-  }
-
-  function sendEquipTool(sourceSlot: number, kind: ToolKind): void {
-    const seq = ++actionSeq;
-    conn.send({
-      equipTool: {
-        sourceSlot,
-        toolKind: toolKindToWire(kind),
-        clientSeq: seq,
-      },
-    });
-  }
-
-  function sendUnequipTool(kind: ToolKind): void {
-    const seq = ++actionSeq;
-    conn.send({
-      unequipTool: { toolKind: toolKindToWire(kind), clientSeq: seq },
-    });
-  }
+  const {
+    sendMoveIntent,
+    sendBreakIntent,
+    sendPlaceBlock,
+    sendSelectSlot,
+    sendMoveSlot,
+    sendCraft,
+    sendEquipTool,
+    sendUnequipTool,
+    sendRegisterAccount,
+  } = createActionSenders(conn);
 
   const input = new InputController({ sendMoveIntent });
   const stopInput = input.start(window);

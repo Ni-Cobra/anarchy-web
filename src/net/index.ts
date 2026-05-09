@@ -8,6 +8,7 @@
  */
 export { connect } from "./connection.js";
 export type {
+  Connection,
   LobbyIdentity,
   LobbyRejectReason,
   ConnectHooks,
