@@ -1,0 +1,97 @@
+/**
+ * Client-side mirror of the server's crafting recipe table (task 090).
+ *
+ * The wire surface only ships *recipe ids* — stable strings like
+ * `"wood-pickaxe"` — so the client can render the ingredient/output preview
+ * for each currently-craftable recipe without any wire growth. This module
+ * is the lookup table that turns those ids into the data the crafting panel
+ * paints. Mirrors `anarchy-server/src/game/player/crafting.rs::RECIPES`
+ * exactly; the two tables are the only redundant copy in the project (per
+ * the charter: "Avoid redundancy *except* across the client/server
+ * boundary").
+ *
+ * Lives at the top of `src/` (alongside `textures.ts` / `item_names.ts`)
+ * because it straddles the network mirror (the `Inventory` ships recipe
+ * ids that need this lookup) and the UI (`ui/crafting/` paints the rows).
+ */
+
+import { ItemId } from "./game/index.js";
+
+/** One ingredient or output of a recipe. */
+export interface RecipeStack {
+  readonly item: ItemId;
+  readonly count: number;
+}
+
+/**
+ * One recipe row: a stable string id, the pooled ingredients required, and
+ * the single-stack output the server inserts on a successful craft. The
+ * client paints the row as `[ingredients] → [output]`; clicking it ships a
+ * `CraftRequest(id)` to the server, which is authoritative.
+ */
+export interface Recipe {
+  readonly id: string;
+  readonly ingredients: readonly RecipeStack[];
+  readonly output: RecipeStack;
+}
+
+/**
+ * Recipe table. Order matches the server table so a recipe id served by
+ * the server resolves cheaply via [`recipeById`]. Keep in lockstep with
+ * `crafting.rs::RECIPES` — when a new recipe lands server-side, mirror it
+ * here in the same iteration (the charter pins this kind of cross-boundary
+ * redundancy as expected).
+ */
+export const RECIPES: readonly Recipe[] = [
+  {
+    id: "sticks",
+    ingredients: [{ item: ItemId.Wood, count: 1 }],
+    output: { item: ItemId.Stick, count: 4 },
+  },
+  {
+    id: "wood-pickaxe",
+    ingredients: [
+      { item: ItemId.Wood, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.WoodPickaxe, count: 1 },
+  },
+  {
+    id: "wood-axe",
+    ingredients: [
+      { item: ItemId.Wood, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.WoodAxe, count: 1 },
+  },
+  {
+    id: "stone-pickaxe",
+    ingredients: [
+      { item: ItemId.Stone, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.StonePickaxe, count: 1 },
+  },
+  {
+    id: "stone-axe",
+    ingredients: [
+      { item: ItemId.Stone, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.StoneAxe, count: 1 },
+  },
+];
+
+const RECIPES_BY_ID: ReadonlyMap<string, Recipe> = new Map(
+  RECIPES.map((r) => [r.id, r]),
+);
+
+/**
+ * Lookup a recipe by stable id. Returns `undefined` if the id is unknown
+ * — the crafting UI ignores unknown ids defensively so a server that adds
+ * a recipe ahead of a client rebuild simply hides the row instead of
+ * throwing on render.
+ */
+export function recipeById(id: string): Recipe | undefined {
+  return RECIPES_BY_ID.get(id);
+}

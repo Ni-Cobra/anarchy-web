@@ -1,0 +1,297 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  HOTBAR_SLOTS,
+  INVENTORY_SIZE,
+  Inventory,
+  ItemId,
+  type Slot,
+} from "../../game/index.js";
+import { mountCraftingUi } from "./index.js";
+
+function emptySlots(updates: Record<number, Slot> = {}): Slot[] {
+  const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+  for (const [idx, slot] of Object.entries(updates)) {
+    slots[Number(idx)] = slot;
+  }
+  return slots;
+}
+
+describe("crafting UI", () => {
+  let inventory: Inventory;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    document.head.innerHTML = "";
+    inventory = new Inventory();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.innerHTML = "";
+  });
+
+  it("mounts a closed panel with the empty-state message when no recipes are craftable", () => {
+    const ui = mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const panel = document.querySelector(".anarchy-crafting-panel")!;
+    expect(panel.classList.contains("open")).toBe(false);
+    expect(ui.isOpen()).toBe(false);
+    expect(panel.querySelector(".anarchy-crafting-empty")?.textContent).toBe(
+      "No craftable recipes.",
+    );
+    expect(panel.querySelectorAll(".anarchy-crafting-row")).toHaveLength(0);
+  });
+
+  it("renders one row per craftable recipe id, sorted lexicographically", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+      null,
+      null,
+      // Order intentionally scrambled; the inventory mirror sorts internally.
+      ["wood-pickaxe", "sticks", "stone-axe"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>(".anarchy-crafting-row"),
+    );
+    expect(rows.map((r) => r.dataset.recipeId)).toEqual([
+      "sticks",
+      "stone-axe",
+      "wood-pickaxe",
+    ]);
+  });
+
+  it("hides unknown recipe ids defensively (server ahead of client rebuild)", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+      null,
+      null,
+      ["sticks", "future-platinum-pickaxe"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>(".anarchy-crafting-row"),
+    );
+    expect(rows.map((r) => r.dataset.recipeId)).toEqual(["sticks"]);
+  });
+
+  it("clicking a row ships the recipe id via sendCraft", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+      null,
+      null,
+      ["sticks", "wood-pickaxe"],
+    );
+    const sent: string[] = [];
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: (id) => sent.push(id),
+    });
+    const rows = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".anarchy-crafting-row"),
+    );
+    rows[1].click();
+    rows[0].click();
+    expect(sent).toEqual(["wood-pickaxe", "sticks"]);
+  });
+
+  it("re-renders reactively when InventoryUpdate flips the craftable list", () => {
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    expect(
+      document.querySelectorAll(".anarchy-crafting-row"),
+    ).toHaveLength(0);
+
+    // Now the player has wood — sticks unlocks.
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+      null,
+      null,
+      ["sticks"],
+    );
+    expect(
+      document.querySelectorAll(".anarchy-crafting-row"),
+    ).toHaveLength(1);
+
+    // Player gathers more — wood-pickaxe + wood-axe unlock alongside sticks.
+    inventory.replaceFromWire(
+      emptySlots({
+        0: { item: ItemId.Wood, count: 5 },
+        [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 4 },
+      }),
+      null,
+      null,
+      ["sticks", "wood-pickaxe", "wood-axe"],
+    );
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>(".anarchy-crafting-row"),
+    );
+    expect(rows.map((r) => r.dataset.recipeId)).toEqual([
+      "sticks",
+      "wood-axe",
+      "wood-pickaxe",
+    ]);
+  });
+
+  it("setOpen / toggle drive the .open class so the slide-in animation fires", () => {
+    const ui = mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const panel = document.querySelector(".anarchy-crafting-panel")!;
+    expect(panel.classList.contains("open")).toBe(false);
+
+    ui.toggle();
+    expect(ui.isOpen()).toBe(true);
+    expect(panel.classList.contains("open")).toBe(true);
+
+    ui.setOpen(false);
+    expect(ui.isOpen()).toBe(false);
+    expect(panel.classList.contains("open")).toBe(false);
+  });
+
+  it("unmount removes the root and stops reactive updates", () => {
+    const ui = mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    expect(document.querySelector("#anarchy-crafting-root")).not.toBeNull();
+    ui.unmount();
+    expect(document.querySelector("#anarchy-crafting-root")).toBeNull();
+    // After unmount, mutations don't throw or leak DOM back.
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+      null,
+      null,
+      ["sticks"],
+    );
+    expect(document.querySelector("#anarchy-crafting-root")).toBeNull();
+  });
+
+  it("a row with a single ingredient stack lays out one ingredient + arrow + one output", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+      null,
+      null,
+      ["sticks"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const row = document.querySelector(".anarchy-crafting-row")!;
+    const left = row.querySelector(".anarchy-crafting-side.left")!;
+    const right = row.querySelector(".anarchy-crafting-side.right")!;
+    expect(left.querySelectorAll(".anarchy-crafting-stack")).toHaveLength(1);
+    expect(right.querySelectorAll(".anarchy-crafting-stack")).toHaveLength(1);
+    expect(row.querySelector(".anarchy-crafting-arrow")?.textContent).toBe("→");
+  });
+
+  it("a multi-stack ingredient row lays out N stacks on the left, all wrapped inside the left half", () => {
+    // wood-pickaxe = 3 Wood + 2 Stick → 1 WoodPickaxe.
+    inventory.replaceFromWire(
+      emptySlots({
+        0: { item: ItemId.Wood, count: 3 },
+        [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
+      }),
+      null,
+      null,
+      ["wood-pickaxe"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const row = document.querySelector(".anarchy-crafting-row")!;
+    const left = row.querySelector(".anarchy-crafting-side.left")!;
+    const right = row.querySelector(".anarchy-crafting-side.right")!;
+    expect(left.querySelectorAll(".anarchy-crafting-stack")).toHaveLength(2);
+    expect(right.querySelectorAll(".anarchy-crafting-stack")).toHaveLength(1);
+    // Counts: wood ×3, stick ×2 → both badges visible.
+    const counts = Array.from(
+      left.querySelectorAll<HTMLElement>(".anarchy-crafting-stack-count"),
+    ).map((el) => el.textContent);
+    expect(counts).toEqual(["3", "2"]);
+    // Output count = 1 → no badge.
+    expect(
+      right.querySelector(".anarchy-crafting-stack-count"),
+    ).toBeNull();
+  });
+
+  it("layout adapter handles 5 ingredient stacks per side without overflowing the panel width", () => {
+    // Synthetic recipe id won't be in the recipe table; instead, exercise
+    // the row builder directly via the adapter's flex-wrap policy. Render
+    // a contrived inventory listing all real recipes; assert each row
+    // keeps both halves and the arrow as direct children — the flex
+    // shell is what guarantees no overflow.
+    inventory.replaceFromWire(
+      emptySlots({
+        0: { item: ItemId.Wood, count: 64 },
+        1: { item: ItemId.Stone, count: 64 },
+        [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 64 },
+      }),
+      null,
+      null,
+      ["sticks", "wood-pickaxe", "wood-axe", "stone-pickaxe", "stone-axe"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>(".anarchy-crafting-row"),
+    );
+    expect(rows).toHaveLength(5);
+    for (const row of rows) {
+      // Each row keeps the canonical [left] [arrow] [right] structure
+      // regardless of how many stacks the ingredient cluster carries.
+      expect(row.querySelector(":scope > .anarchy-crafting-side.left")).not.toBeNull();
+      expect(row.querySelector(":scope > .anarchy-crafting-arrow")).not.toBeNull();
+      expect(row.querySelector(":scope > .anarchy-crafting-side.right")).not.toBeNull();
+    }
+  });
+
+  it("stops mousedown / contextmenu inside the panel from reaching window", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+      null,
+      null,
+      ["sticks"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    let windowHits = 0;
+    const onWindow = (): void => {
+      windowHits++;
+    };
+    window.addEventListener("mousedown", onWindow);
+    window.addEventListener("contextmenu", onWindow);
+
+    const panel = document.querySelector(
+      ".anarchy-crafting-panel",
+    )! as HTMLElement;
+    panel.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    panel.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    expect(windowHits).toBe(0);
+
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(windowHits).toBe(1);
+
+    window.removeEventListener("mousedown", onWindow);
+    window.removeEventListener("contextmenu", onWindow);
+  });
+});

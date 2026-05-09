@@ -119,10 +119,23 @@ export class Inventory {
   private slots: Slot[];
   private equippedPickaxeSlot: number | null = null;
   private equippedAxeSlot: number | null = null;
+  private craftable: readonly string[] = [];
   private listeners: Array<() => void> = [];
 
   constructor() {
     this.slots = Array.from({ length: INVENTORY_SIZE }, () => null);
+  }
+
+  /**
+   * Stable recipe ids (e.g. `"wood-pickaxe"`) that the server most recently
+   * advertised as currently craftable from this inventory's pooled counts.
+   * The client recipe table in [`../recipes.ts`] looks these up to render
+   * the crafting panel's ingredient / output preview. The server still
+   * re-validates at `CraftRequest` time, so this is purely an affordance
+   * filter.
+   */
+  getCraftableRecipeIds(): readonly string[] {
+    return this.craftable;
   }
 
   /**
@@ -191,11 +204,18 @@ export class Inventory {
    * pointers (task 010 rework). Either may be `null` to mean "nothing
    * equipped"; out-of-range or non-tool-bearing indices are normalized
    * to `null` defensively so the UI never paints a wrong-color highlight.
+   *
+   * `craftableRecipeIds` carries the server's per-tick advertise of recipes
+   * whose ingredients are currently covered (task 090). The list is stored
+   * verbatim — the recipe-id space is the server's responsibility — and
+   * sorted before storage so the crafting panel's render order is stable
+   * across ticks.
    */
   replaceFromWire(
     slots: readonly Slot[],
     equippedPickaxeSlot: number | null = null,
     equippedAxeSlot: number | null = null,
+    craftableRecipeIds: readonly string[] = [],
   ): void {
     if (slots.length !== INVENTORY_SIZE) {
       throw new Error(
@@ -205,6 +225,7 @@ export class Inventory {
     this.slots = slots.slice();
     this.equippedPickaxeSlot = normalizeEquipped(this.slots, equippedPickaxeSlot, "pickaxe");
     this.equippedAxeSlot = normalizeEquipped(this.slots, equippedAxeSlot, "axe");
+    this.craftable = [...craftableRecipeIds].sort();
     for (const listener of this.listeners) listener();
   }
 

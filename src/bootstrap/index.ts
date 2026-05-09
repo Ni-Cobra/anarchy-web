@@ -45,9 +45,11 @@ import {
 import { Renderer, type GhostState } from "../render/index.js";
 import {
   mountCoordsHud,
+  mountCraftingUi,
   mountInventoryUi,
   mountSidePanel,
   showRegisterModal,
+  type CraftingUiHandle,
   type InventoryUiHandle,
   type RegisterModalHandle,
   type SidePanelAction,
@@ -98,6 +100,13 @@ export interface AnarchyHandle {
   sendSelectSlot: (slot: number) => void;
   /** Send an inventory drag-drop action; bumps the local action seq. */
   sendMoveSlot: (src: number, dst: number) => void;
+  /**
+   * Ship a `CraftRequest(recipe_id)` action up to the server (task 090
+   * client wiring). The server re-validates ingredient availability and
+   * inventory fit; failures are silently dropped, success surfaces in the
+   * next `InventoryUpdate`.
+   */
+  sendCraft: (recipeId: string) => void;
   /**
    * Equip the tool at `sourceSlot` into the equipment slot named by
    * `kind` (task 100). Server validates that the source slot holds a
@@ -212,6 +221,7 @@ export function runMain(
   // turn need `conn`); the renderer's animation loop only runs after the
   // current synchronous tick finishes, by which time `inventoryUi` is set.
   let inventoryUi!: InventoryUiHandle;
+  let craftingUi!: CraftingUiHandle;
   const renderer = new Renderer(
     world,
     buffer,
@@ -356,6 +366,11 @@ export function runMain(
     conn.send({ moveSlot: { src, dst, clientSeq: seq } });
   }
 
+  function sendCraft(recipeId: string): void {
+    const seq = ++actionSeq;
+    conn.send({ craft: { recipeId, clientSeq: seq } });
+  }
+
   function toolKindToWire(kind: ToolKind): number {
     // Mirrors `proto::v1::ToolKind`. The wire enum lives in
     // `src/gen/anarchy.js`; we use the numeric codes directly so callers
@@ -394,14 +409,44 @@ export function runMain(
   // forward reference. The UI ships authority-bound actions (SelectSlot,
   // MoveSlot) up via `sendSelectSlot` / `sendMoveSlot`; the server's
   // next `InventoryUpdate` is the canonical state.
-  inventoryUi = mountInventoryUi({
+  const inventoryUiInner = mountInventoryUi({
     getInventory: () => inventory,
     sendSelect: sendSelectSlot,
     sendMove: sendMoveSlot,
     sendEquip: sendEquipTool,
     sendUnequip: sendUnequipTool,
   });
-  teardowns.push(() => inventoryUi.unmount());
+  teardowns.push(() => inventoryUiInner.unmount());
+
+  // Crafting panel slides in alongside the inventory side panel — same
+  // open/close lifecycle, mirrored on the right edge. Server snapshots
+  // (`InventoryUpdate.craftable_recipe_ids`) drive the row list; clicking
+  // a row ships a `CraftRequest`.
+  craftingUi = mountCraftingUi({
+    getInventory: () => inventory,
+    sendCraft,
+  });
+  teardowns.push(() => craftingUi.unmount());
+
+  // Wrap the inventory handle so every open/close path also drives the
+  // crafting panel. Both panels carry the same `open` state — the
+  // crafting panel is a sibling widget, not a child.
+  inventoryUi = {
+    isOpen: () => inventoryUiInner.isOpen(),
+    setOpen: (open) => {
+      inventoryUiInner.setOpen(open);
+      craftingUi.setOpen(open);
+    },
+    toggle: () => {
+      const next = !inventoryUiInner.isOpen();
+      inventoryUiInner.setOpen(next);
+      craftingUi.setOpen(next);
+    },
+    selectedHotbarSlot: () => inventoryUiInner.selectedHotbarSlot(),
+    selectHotbarSlot: (slot) => inventoryUiInner.selectHotbarSlot(slot),
+    render: () => inventoryUiInner.render(),
+    unmount: () => inventoryUiInner.unmount(),
+  };
 
   // Top-left coordinates readout. Pumped from a dedicated rAF loop that
   // reads the latest authoritative `World` snapshot — independent of the
@@ -530,6 +575,7 @@ export function runMain(
     sendPlaceBlock,
     sendSelectSlot,
     sendMoveSlot,
+    sendCraft,
     sendEquipTool,
     sendUnequipTool,
     getSelectedHotbarSlot: () => inventoryUi.selectedHotbarSlot(),

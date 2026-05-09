@@ -14,6 +14,11 @@ export type {
   InventoryUiHandle,
   InventoryUiOptions,
 } from "./inventory/index.js";
+export { mountCraftingUi } from "./crafting/index.js";
+export type {
+  CraftingUiHandle,
+  CraftingUiOptions,
+} from "./crafting/index.js";
 export { showRegisterModal, MIN_PASSWORD_LEN } from "./register_modal.js";
 export type {
   RegisterModalHandle,

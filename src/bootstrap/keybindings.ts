@@ -38,6 +38,15 @@ export function attachKeybindings(
       deps.inventoryUi.toggle();
       return;
     }
+    // Escape closes the inventory side panel + crafting panel together —
+    // matches the task-100 spec ("inventory closes (E or Escape)"). The
+    // dragdrop module already owns Escape during an active drag (capture
+    // listener that returns early when no drag is in flight), so this
+    // bubble-phase branch only fires when no drag gesture is pending.
+    if (ev.code === "Escape" && deps.inventoryUi.isOpen()) {
+      deps.inventoryUi.setOpen(false);
+      return;
+    }
     if (ev.code === "KeyM") {
       zoomedOut = !zoomedOut;
       deps.renderer.setZoomedOut(zoomedOut);

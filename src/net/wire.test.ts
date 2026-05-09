@@ -523,6 +523,54 @@ describe("applyServerMessage — InventoryUpdate", () => {
     });
     expect(() => applyServerMessage(msg, deps)).not.toThrow();
   });
+
+  it("forwards craftable_recipe_ids onto the inventory mirror", () => {
+    // Task 100 wiring: every InventoryUpdate carries the per-player
+    // currently-craftable recipe-id list. The wire bridge stores it on
+    // the Inventory mirror so the crafting panel can render rows without
+    // a separate request frame.
+    const { deps, inventory } = makeInventoryFixture();
+    const wireSlots = buildWireSlots({
+      0: { item: anarchy.v1.ItemId.ITEM_ID_WOOD, count: 5 },
+    });
+    const msg = decodeRoundtrip({
+      seq: 2,
+      inventoryUpdate: {
+        slots: wireSlots,
+        craftableRecipeIds: ["wood-pickaxe", "sticks"],
+      },
+    });
+    applyServerMessage(msg, deps);
+    expect(inventory.getCraftableRecipeIds()).toEqual([
+      "sticks",
+      "wood-pickaxe",
+    ]);
+  });
+
+  it("clears the craftable list when the field is absent / empty", () => {
+    const { deps, inventory } = makeInventoryFixture();
+    const slots = buildWireSlots({
+      0: { item: anarchy.v1.ItemId.ITEM_ID_WOOD, count: 5 },
+    });
+    // Plant a non-empty list first so the absent-field overwrite is observable.
+    applyServerMessage(
+      decodeRoundtrip({
+        seq: 2,
+        inventoryUpdate: { slots, craftableRecipeIds: ["sticks"] },
+      }),
+      deps,
+    );
+    expect(inventory.getCraftableRecipeIds()).toEqual(["sticks"]);
+
+    applyServerMessage(
+      decodeRoundtrip({
+        seq: 3,
+        inventoryUpdate: { slots: buildWireSlots() },
+      }),
+      deps,
+    );
+    expect(inventory.getCraftableRecipeIds()).toEqual([]);
+  });
 });
 
 describe("applyServerMessage — TickUpdate effects feed (task 070)", () => {

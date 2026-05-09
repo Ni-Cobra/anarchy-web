@@ -190,7 +190,13 @@ function applyInventoryUpdate(
   // stale or non-tool indices to `null` defensively.
   const equippedPickaxeSlot = equippedSlotFromWire(update.equippedPickaxeSlot);
   const equippedAxeSlot = equippedSlotFromWire(update.equippedAxeSlot);
-  deps.inventory.replaceFromWire(slots, equippedPickaxeSlot, equippedAxeSlot);
+  const craftableRecipeIds = update.craftableRecipeIds ?? [];
+  deps.inventory.replaceFromWire(
+    slots,
+    equippedPickaxeSlot,
+    equippedAxeSlot,
+    craftableRecipeIds,
+  );
 }
 
 function equippedSlotFromWire(slot: number | null | undefined): number | null {
