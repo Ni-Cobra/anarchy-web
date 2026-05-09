@@ -111,6 +111,31 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
     textureUrl: `${BLOCK_TEXTURES_BASE}/bush.png`,
     displayName: "Bush",
   },
+  [BlockType.Dirt]: {
+    kind: BlockType.Dirt,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/dirt.png`,
+    displayName: "Dirt",
+  },
+  [BlockType.Sand]: {
+    kind: BlockType.Sand,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/sand.png`,
+    displayName: "Sand",
+  },
+  [BlockType.Gravel]: {
+    kind: BlockType.Gravel,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/gravel.png`,
+    displayName: "Gravel",
+  },
+  [BlockType.StoneLight]: {
+    kind: BlockType.StoneLight,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/stone-light.png`,
+    displayName: "Light Stone",
+  },
+  [BlockType.StoneDark]: {
+    kind: BlockType.StoneDark,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/stone-dark.png`,
+    displayName: "Dark Stone",
+  },
 };
 
 /**

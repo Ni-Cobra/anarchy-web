@@ -248,6 +248,16 @@ function itemIdFromWire(
       return ItemId.FlowerWhite;
     case anarchy.v1.ItemId.ITEM_ID_BUSH:
       return ItemId.Bush;
+    case anarchy.v1.ItemId.ITEM_ID_DIRT:
+      return ItemId.Dirt;
+    case anarchy.v1.ItemId.ITEM_ID_SAND:
+      return ItemId.Sand;
+    case anarchy.v1.ItemId.ITEM_ID_GRAVEL:
+      return ItemId.Gravel;
+    case anarchy.v1.ItemId.ITEM_ID_STONE_LIGHT:
+      return ItemId.StoneLight;
+    case anarchy.v1.ItemId.ITEM_ID_STONE_DARK:
+      return ItemId.StoneDark;
     default:
       return null;
   }
@@ -462,6 +472,16 @@ function blockTypeFromWire(
       return BlockType.FlowerWhite;
     case anarchy.v1.BlockType.BLOCK_TYPE_BUSH:
       return BlockType.Bush;
+    case anarchy.v1.BlockType.BLOCK_TYPE_DIRT:
+      return BlockType.Dirt;
+    case anarchy.v1.BlockType.BLOCK_TYPE_SAND:
+      return BlockType.Sand;
+    case anarchy.v1.BlockType.BLOCK_TYPE_GRAVEL:
+      return BlockType.Gravel;
+    case anarchy.v1.BlockType.BLOCK_TYPE_STONE_LIGHT:
+      return BlockType.StoneLight;
+    case anarchy.v1.BlockType.BLOCK_TYPE_STONE_DARK:
+      return BlockType.StoneDark;
     case anarchy.v1.BlockType.BLOCK_TYPE_AIR:
     default:
       return BlockType.Air;

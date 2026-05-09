@@ -501,6 +501,16 @@ enum BlockType {
   // alternative stick source that does not scatter onto neighboring tiles
   // the way a Tree felling does.
   BLOCK_TYPE_BUSH = 12;
+  // Ground-layer block-variety expansion (task 140). All five behave like
+  // existing solid full blocks (placeable, walkable top, faster with a
+  // pickaxe). `STONE_LIGHT` and `STONE_DARK` are render-only sibling variants
+  // of `STONE` — same gameplay, different texture — so worldgen can paint
+  // visual variety into stoney biomes without touching mining or drops.
+  BLOCK_TYPE_DIRT = 13;
+  BLOCK_TYPE_SAND = 14;
+  BLOCK_TYPE_GRAVEL = 15;
+  BLOCK_TYPE_STONE_LIGHT = 16;
+  BLOCK_TYPE_STONE_DARK = 17;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper
@@ -579,6 +589,13 @@ enum ItemId {
   ITEM_ID_FLOWER_BLUE = 17;
   ITEM_ID_FLOWER_WHITE = 18;
   ITEM_ID_BUSH = 19;
+  // Task 140 ground-block-variety drops. Each kind drops a matching item;
+  // the item places its block.
+  ITEM_ID_DIRT = 20;
+  ITEM_ID_SAND = 21;
+  ITEM_ID_GRAVEL = 22;
+  ITEM_ID_STONE_LIGHT = 23;
+  ITEM_ID_STONE_DARK = 24;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server

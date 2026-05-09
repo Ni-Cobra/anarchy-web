@@ -152,6 +152,36 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: BlockType.Bush,
     textureUrl: `${BLOCK_TEXTURES_BASE}/bush.png`,
   },
+  [ItemId.Dirt]: {
+    id: ItemId.Dirt,
+    displayName: "Dirt",
+    placesBlock: BlockType.Dirt,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/dirt.png`,
+  },
+  [ItemId.Sand]: {
+    id: ItemId.Sand,
+    displayName: "Sand",
+    placesBlock: BlockType.Sand,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/sand.png`,
+  },
+  [ItemId.Gravel]: {
+    id: ItemId.Gravel,
+    displayName: "Gravel",
+    placesBlock: BlockType.Gravel,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/gravel.png`,
+  },
+  [ItemId.StoneLight]: {
+    id: ItemId.StoneLight,
+    displayName: "Light Stone",
+    placesBlock: BlockType.StoneLight,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/stone-light.png`,
+  },
+  [ItemId.StoneDark]: {
+    id: ItemId.StoneDark,
+    displayName: "Dark Stone",
+    placesBlock: BlockType.StoneDark,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/stone-dark.png`,
+  },
 };
 
 /**

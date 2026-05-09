@@ -63,6 +63,16 @@ export enum ItemId {
   FlowerBlue = 17,
   FlowerWhite = 18,
   Bush = 19,
+  /**
+   * Task 140 ground-block-variety drops. Each places its matching block.
+   * `StoneLight` / `StoneDark` are sibling variants of `Stone` — same item
+   * stacking shape, different placed block.
+   */
+  Dirt = 20,
+  Sand = 21,
+  Gravel = 22,
+  StoneLight = 23,
+  StoneDark = 24,
 }
 
 /** A non-empty pile of one item kind. */

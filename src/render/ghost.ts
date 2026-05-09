@@ -47,6 +47,16 @@ export function placeableBlockForItem(item: ItemId): BlockType | null {
       return BlockType.Stone;
     case ItemId.Gold:
       return BlockType.Gold;
+    case ItemId.Dirt:
+      return BlockType.Dirt;
+    case ItemId.Sand:
+      return BlockType.Sand;
+    case ItemId.Gravel:
+      return BlockType.Gravel;
+    case ItemId.StoneLight:
+      return BlockType.StoneLight;
+    case ItemId.StoneDark:
+      return BlockType.StoneDark;
   }
   return null;
 }

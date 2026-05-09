@@ -52,6 +52,17 @@ export enum BlockType {
    * server-side.
    */
   Bush = 12,
+  /**
+   * Task 140 ground-block-variety set. All five behave like existing solid
+   * full blocks (placeable, walkable top, faster-with-pickaxe). `StoneLight`
+   * and `StoneDark` are render-only sibling variants of `Stone` — same
+   * gameplay, different texture.
+   */
+  Dirt = 13,
+  Sand = 14,
+  Gravel = 15,
+  StoneLight = 16,
+  StoneDark = 17,
 }
 
 /**
