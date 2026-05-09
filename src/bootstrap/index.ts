@@ -16,12 +16,18 @@
  *
  * ## Submodules
  *
- * The window-level listener wiring is split out so this entry stays
- * focused on construction, the action-send seam, and lifecycle:
+ * Logical concerns are split into siblings so this entry stays focused
+ * on construction + the lifecycle dance. New code should land in the
+ * narrowest sibling rather than growing this file:
  * - [`./keybindings`] — `keydown` + `wheel` (inventory toggle, hotbar
  *   select, zoom toggles).
  * - [`./break_place`] — `mousemove` + `mousedown` + `mouseup` + the
  *   `contextmenu` suppression that drive held-break and place-block.
+ * - [`./actions`] — wire-frame senders for every player action; owns
+ *   the per-session `actionSeq` counter.
+ * - [`./register_flow`] — in-game `RegisterAccount` flow (ADR 0007);
+ *   owns the modal + pending-result + `registered` latch.
+ * - [`./toast`] — tiny in-session toast banner mounted near the bottom.
  */
 
 import {

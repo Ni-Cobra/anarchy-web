@@ -33,9 +33,9 @@ Boundaries have been audited; new code must respect them.
   Playwright.
 - **`src/bootstrap/`** — sibling of `main.ts`. `index.ts` constructs the
   world / buffer / terrain / renderer / connection / input controller /
-  inventory overlay, owns the per-client monotonic `actionSeq`, owns the
-  side-panel + register-modal + toast wiring, and exposes
-  `runMain` / `runApp`. Window-level listener wiring is split out:
+  inventory overlay, mounts UI overlays, and exposes `runMain` /
+  `runApp`. Logical concerns are split into siblings so the entry stays
+  focused on construction + lifecycle:
   - `bootstrap/keybindings.ts` — `keydown` (E inventory toggle, M zoom-out
     toggle, +/-/numpad zoom, Digit1..9 hotbar select) and `wheel` (hotbar
     cycling, Ctrl+Wheel zoom). Owns the local `zoomedOut` flag.
@@ -43,6 +43,18 @@ Boundaries have been audited; new code must respect them.
     held-break + heartbeat state machine (mousedown / mouseup / retarget
     on mousemove), the right-click place-block reach gate, and the
     `contextmenu` suppression.
+  - `bootstrap/actions.ts` — wire-frame senders for every player action
+    (`sendMoveIntent`, `sendBreakIntent`, `sendPlaceBlock`, `sendSelectSlot`,
+    `sendMoveSlot`, `sendCraft`, `sendEquipTool`, `sendUnequipTool`,
+    `sendRegisterAccount`). Owns the per-session monotonic `actionSeq`
+    counter — bootstrap no longer juggles it.
+  - `bootstrap/register_flow.ts` — in-game `RegisterAccount` flow (ADR
+    0007). Owns the modal handle + pending `RegisterAccountResult`
+    callback + `registered` flag. Side-panel action list reads
+    `isRegistered()`; on success an `onRegisteredChanged` callback drives
+    the panel rebuild.
+  - `bootstrap/toast.ts` — tiny in-session toast banner used by the
+    register flow (lazy host element, ~3s fade).
   Together with `main.ts` and `dev/terrain_stub.ts`, these are the only
   modules allowed to touch `window` / `document` directly.
 - **`src/config.ts`** — operator-tunable constants (speeds, intervals,
