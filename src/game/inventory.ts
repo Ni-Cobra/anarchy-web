@@ -51,6 +51,18 @@ export enum ItemId {
   CopperAxe = 12,
   IronAxe = 13,
   TungstenAxe = 14,
+  /**
+   * Task 130 decorative drops. Each flower variant has its own item form so
+   * a player can replant the variant they picked up. `Bush` exists for
+   * symmetry with the place-from-inventory affordance, but bushes drop
+   * sticks rather than themselves so a Bush item is not normally obtainable
+   * through gameplay.
+   */
+  FlowerRed = 15,
+  FlowerYellow = 16,
+  FlowerBlue = 17,
+  FlowerWhite = 18,
+  Bush = 19,
 }
 
 /** A non-empty pile of one item kind. */

@@ -36,6 +36,22 @@ export enum BlockType {
    * the server never holds this kind in authoritative state.
    */
   Hidden = 7,
+  /**
+   * Decorative top-layer flowers (task 130). Non-solid (players walk
+   * through), single-tick break, drop their matching `ItemId.Flower*`. The
+   * client renders them as a low-profile decal hugging the ground similar
+   * to `Sticks`, with a per-variant color accent.
+   */
+  FlowerRed = 8,
+  FlowerYellow = 9,
+  FlowerBlue = 10,
+  FlowerWhite = 11,
+  /**
+   * Decorative top-layer bush (task 130). Non-solid; breaks in two damage
+   * ticks and drops 1-2 `ItemId.Stick`s into the breaker's inventory
+   * server-side.
+   */
+  Bush = 12,
 }
 
 /**

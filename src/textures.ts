@@ -86,6 +86,31 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
     textureUrl: null,
     displayName: "Hidden",
   },
+  [BlockType.FlowerRed]: {
+    kind: BlockType.FlowerRed,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-red.png`,
+    displayName: "Red Flower",
+  },
+  [BlockType.FlowerYellow]: {
+    kind: BlockType.FlowerYellow,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-yellow.png`,
+    displayName: "Yellow Flower",
+  },
+  [BlockType.FlowerBlue]: {
+    kind: BlockType.FlowerBlue,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-blue.png`,
+    displayName: "Blue Flower",
+  },
+  [BlockType.FlowerWhite]: {
+    kind: BlockType.FlowerWhite,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-white.png`,
+    displayName: "White Flower",
+  },
+  [BlockType.Bush]: {
+    kind: BlockType.Bush,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/bush.png`,
+    displayName: "Bush",
+  },
 };
 
 /**

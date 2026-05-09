@@ -488,6 +488,19 @@ enum BlockType {
   // break/place rejection. Reads of unknown wire variants by older clients
   // fall through to AIR, which is a visually-confusing-but-safe default.
   BLOCK_TYPE_HIDDEN = 7;
+  // Decorative top-layer flowers (task 130). Non-solid (players walk
+  // through), single-tick break, drop their matching `ITEM_ID_FLOWER_*` so
+  // the player can replant. Worldgen scatters them sparsely on Air-on-Grass
+  // tiles via the `flower_pass`.
+  BLOCK_TYPE_FLOWER_RED = 8;
+  BLOCK_TYPE_FLOWER_YELLOW = 9;
+  BLOCK_TYPE_FLOWER_BLUE = 10;
+  BLOCK_TYPE_FLOWER_WHITE = 11;
+  // Decorative top-layer bush (task 130). Non-solid, single-tick break.
+  // Breaking drops 1-2 `ITEM_ID_STICK`s into the breaker's inventory — an
+  // alternative stick source that does not scatter onto neighboring tiles
+  // the way a Tree felling does.
+  BLOCK_TYPE_BUSH = 12;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper
@@ -556,6 +569,16 @@ enum ItemId {
   ITEM_ID_COPPER_AXE = 12;
   ITEM_ID_IRON_AXE = 13;
   ITEM_ID_TUNGSTEN_AXE = 14;
+  // Task 130 decorative content drops. Each flower kind has its own item
+  // form so a player can replant the variant they picked up. The bush has
+  // its own item form for symmetry with the place-from-inventory affordance,
+  // but bushes drop sticks rather than themselves so a bush item is not
+  // normally obtainable through gameplay.
+  ITEM_ID_FLOWER_RED = 15;
+  ITEM_ID_FLOWER_YELLOW = 16;
+  ITEM_ID_FLOWER_BLUE = 17;
+  ITEM_ID_FLOWER_WHITE = 18;
+  ITEM_ID_BUSH = 19;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server

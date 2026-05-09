@@ -238,6 +238,16 @@ function itemIdFromWire(
       return ItemId.IronAxe;
     case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_AXE:
       return ItemId.TungstenAxe;
+    case anarchy.v1.ItemId.ITEM_ID_FLOWER_RED:
+      return ItemId.FlowerRed;
+    case anarchy.v1.ItemId.ITEM_ID_FLOWER_YELLOW:
+      return ItemId.FlowerYellow;
+    case anarchy.v1.ItemId.ITEM_ID_FLOWER_BLUE:
+      return ItemId.FlowerBlue;
+    case anarchy.v1.ItemId.ITEM_ID_FLOWER_WHITE:
+      return ItemId.FlowerWhite;
+    case anarchy.v1.ItemId.ITEM_ID_BUSH:
+      return ItemId.Bush;
     default:
       return null;
   }
@@ -442,6 +452,16 @@ function blockTypeFromWire(
       return BlockType.Sticks;
     case anarchy.v1.BlockType.BLOCK_TYPE_HIDDEN:
       return BlockType.Hidden;
+    case anarchy.v1.BlockType.BLOCK_TYPE_FLOWER_RED:
+      return BlockType.FlowerRed;
+    case anarchy.v1.BlockType.BLOCK_TYPE_FLOWER_YELLOW:
+      return BlockType.FlowerYellow;
+    case anarchy.v1.BlockType.BLOCK_TYPE_FLOWER_BLUE:
+      return BlockType.FlowerBlue;
+    case anarchy.v1.BlockType.BLOCK_TYPE_FLOWER_WHITE:
+      return BlockType.FlowerWhite;
+    case anarchy.v1.BlockType.BLOCK_TYPE_BUSH:
+      return BlockType.Bush;
     case anarchy.v1.BlockType.BLOCK_TYPE_AIR:
     default:
       return BlockType.Air;

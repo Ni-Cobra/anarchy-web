@@ -178,6 +178,11 @@ export const DEFAULT_BREAK_PARTICLE_COLORS: Readonly<Record<BlockType, number>> 
   // break attempts on hidden cells and the wire never carries Hidden in a
   // BlockEdit attribution. Kept here for the exhaustive-Record typecheck.
   [BlockType.Hidden]: 0x4d4d4d,
+  [BlockType.FlowerRed]: 0xe03333,
+  [BlockType.FlowerYellow]: 0xf6ce42,
+  [BlockType.FlowerBlue]: 0x4a6ee0,
+  [BlockType.FlowerWhite]: 0xf2f4f8,
+  [BlockType.Bush]: 0x336a2a,
 };
 
 export function defaultBreakParticleColor(kind: BlockType): number {

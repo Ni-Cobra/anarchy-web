@@ -87,6 +87,11 @@ const FALLBACK_BLOCK_COLOR: Partial<Record<BlockType, number>> = {
   // distinguish underlying ore from underlying stone by inspecting pixels —
   // the server never emits the true kind for occluded cells (task 060).
   [BlockType.Hidden]: 0x4d4d4d,
+  [BlockType.FlowerRed]: 0xe03333,
+  [BlockType.FlowerYellow]: 0xf6ce42,
+  [BlockType.FlowerBlue]: 0x4a6ee0,
+  [BlockType.FlowerWhite]: 0xf2f4f8,
+  [BlockType.Bush]: 0x336a2a,
 };
 
 const GROUND_THICKNESS = 0.02;
@@ -128,6 +133,21 @@ const STICKS_THICKNESS = 0.06;
 const STICKS_COLOR = 0xa9774a;
 const STICKS_Y = GROUND_Y + GROUND_THICKNESS / 2 + STICKS_THICKNESS / 2;
 
+// Decorative content (task 130). Flowers render as thin upright slabs so the
+// player perceives a stem-with-petals rather than a wall — they're non-solid
+// server-side and the visual carries that affordance. Bushes render as a
+// wider, shorter mound. Both are rendered as plain boxes textured with the
+// per-kind PNG so the painted detail (petals / leaves) does the heavy
+// lifting; the box silhouette just sets the read.
+const FLOWER_WIDTH = 0.5;
+const FLOWER_HEIGHT = 0.7;
+const FLOWER_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
+const FLOWER_Y = FLOWER_BOTTOM + FLOWER_HEIGHT / 2;
+const BUSH_WIDTH = 0.85;
+const BUSH_HEIGHT = 0.55;
+const BUSH_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
+const BUSH_Y = BUSH_BOTTOM + BUSH_HEIGHT / 2;
+
 /**
  * Build a per-chunk sub-group named `chunk:cx,cy`. Exported so the renderer
  * can rebuild a single chunk on a `ChunkLoaded` event without throwing away
@@ -167,6 +187,12 @@ export function buildChunkMesh(
   // Sticks-specific resources, allocated lazily for the same reason.
   let sticksGeom: THREE.BoxGeometry | null = null;
   let sticksMat: THREE.Material | null = null;
+
+  // Decorative content (task 130). Flowers and bushes share their geometry
+  // across instances of the same kind in a chunk, so the per-build allocation
+  // count stays small even on a flowery hilltop.
+  let flowerGeom: THREE.BoxGeometry | null = null;
+  let bushGeom: THREE.BoxGeometry | null = null;
 
   const group = new THREE.Group();
   group.name = `chunk:${cx},${cy}`;
@@ -214,6 +240,23 @@ export function buildChunkMesh(
         const decal = new THREE.Mesh(sticksGeom, sticksMat);
         decal.position.set(scene.x, STICKS_Y, scene.z);
         group.add(decal);
+      } else if (
+        topBlock.kind === BlockType.FlowerRed ||
+        topBlock.kind === BlockType.FlowerYellow ||
+        topBlock.kind === BlockType.FlowerBlue ||
+        topBlock.kind === BlockType.FlowerWhite
+      ) {
+        if (!flowerGeom)
+          flowerGeom = new THREE.BoxGeometry(FLOWER_WIDTH, FLOWER_HEIGHT, FLOWER_WIDTH);
+        const mesh = new THREE.Mesh(flowerGeom, materialFor(topBlock.kind));
+        mesh.position.set(scene.x, FLOWER_Y, scene.z);
+        group.add(mesh);
+      } else if (topBlock.kind === BlockType.Bush) {
+        if (!bushGeom)
+          bushGeom = new THREE.BoxGeometry(BUSH_WIDTH, BUSH_HEIGHT, BUSH_WIDTH);
+        const mesh = new THREE.Mesh(bushGeom, materialFor(BlockType.Bush));
+        mesh.position.set(scene.x, BUSH_Y, scene.z);
+        group.add(mesh);
       } else {
         const mesh = new THREE.Mesh(topGeom, materialFor(topBlock.kind));
         mesh.position.set(scene.x, TOP_BOX_Y, scene.z);

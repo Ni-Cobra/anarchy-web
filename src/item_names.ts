@@ -122,6 +122,36 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: null,
     textureUrl: `${ITEM_TEXTURES_BASE}/tungsten-axe.png`,
   },
+  [ItemId.FlowerRed]: {
+    id: ItemId.FlowerRed,
+    displayName: "Red Flower",
+    placesBlock: BlockType.FlowerRed,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-red.png`,
+  },
+  [ItemId.FlowerYellow]: {
+    id: ItemId.FlowerYellow,
+    displayName: "Yellow Flower",
+    placesBlock: BlockType.FlowerYellow,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-yellow.png`,
+  },
+  [ItemId.FlowerBlue]: {
+    id: ItemId.FlowerBlue,
+    displayName: "Blue Flower",
+    placesBlock: BlockType.FlowerBlue,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-blue.png`,
+  },
+  [ItemId.FlowerWhite]: {
+    id: ItemId.FlowerWhite,
+    displayName: "White Flower",
+    placesBlock: BlockType.FlowerWhite,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/flower-white.png`,
+  },
+  [ItemId.Bush]: {
+    id: ItemId.Bush,
+    displayName: "Bush",
+    placesBlock: BlockType.Bush,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/bush.png`,
+  },
 };
 
 /**
