@@ -93,3 +93,14 @@ export async function adminTeleport(
 ): Promise<void> {
   await postOk(`${SERVER_URL}/admin/teleport-player/${playerId}/${x}/${y}`);
 }
+
+/**
+ * Overwrite the world's authoritative `time_of_day_seconds` scalar (task
+ * 330). The natural per-tick advance still applies; this just lets a
+ * spec jump to a known phase (midnight to assert the night view radius,
+ * dusk to watch the transition) instead of waiting ~10 minutes per
+ * rotation.
+ */
+export async function adminSetTimeOfDay(seconds: number): Promise<void> {
+  await postOk(`${SERVER_URL}/admin/set-time-of-day/${seconds}`);
+}
