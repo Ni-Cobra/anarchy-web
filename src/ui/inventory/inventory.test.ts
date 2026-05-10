@@ -74,6 +74,21 @@ describe("inventory UI", () => {
     }
   });
 
+  it("injects a :hover border-color rule for inventory cells (cursor-on-cell affordance)", () => {
+    mountInventoryUi({
+      getInventory: () => inventory,
+      sendSelect: () => {},
+      sendMove: () => {},
+      sendEquip: () => {},
+      sendUnequip: () => {},
+    });
+    const styleEl = document.getElementById("anarchy-inventory-style")!;
+    // Compact-whitespace match so the assertion isn't tied to exact
+    // formatting of the injected CSS string.
+    const css = styleEl.textContent!.replace(/\s+/g, " ");
+    expect(css).toMatch(/\.anarchy-inventory-slot:hover \{ border-color:/);
+  });
+
   it("renders 10 gold in slot 0 with a count badge", () => {
     inventory.replaceFromWire(
       fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
@@ -635,7 +650,7 @@ describe("inventory UI", () => {
       expect(moves).toEqual([[HOTBAR_SLOTS, 0]]);
     });
 
-    it("clicking an empty panel cell is a no-op", () => {
+    it("clicking an empty panel cell with an empty hotbar slot is still a no-op (server would NOOP — skip the wire frame)", () => {
       const moves: Array<[number, number]> = [];
       mountInventoryUi({
         getInventory: () => inventory,
@@ -649,6 +664,32 @@ describe("inventory UI", () => {
       );
       clickGesture(panelCells[0] as HTMLElement);
       expect(moves).toEqual([]);
+    });
+
+    it("clicking an empty panel cell with a populated hotbar ships MoveSlot(panel → selectedHotbar) — swap-with-air case", () => {
+      // Hotbar slot 0 holds Gold; panel slot 0 is empty. Click on the
+      // empty panel cell → server runs `swap_slots` (merge fails on empty
+      // src) and the Gold relocates into the panel cell. Mirrors the
+      // forward direction of the existing "non-empty panel + empty
+      // hotbar" test.
+      inventory.replaceFromWire(
+        fillSlots({
+          0: { item: ItemId.Gold, count: 10 },
+        }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      const panelCells = document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      );
+      clickGesture(panelCells[0] as HTMLElement);
+      expect(moves).toEqual([[HOTBAR_SLOTS, 0]]);
     });
 
     it("targets the *currently-selected* hotbar slot, not just slot 0", () => {

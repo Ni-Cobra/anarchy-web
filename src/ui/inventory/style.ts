@@ -90,6 +90,12 @@ const STYLE = `
     align-items: center;
     justify-content: center;
   }
+  /* Cursor-on-cell affordance — placed before the modifier rules below
+     so .selected / .equipped-* / .drag-reject continue to win on cells
+     that already carry their own border-color. */
+  .anarchy-inventory-slot:hover {
+    border-color: rgba(255, 255, 255, 0.5);
+  }
   .anarchy-inventory-slot.selected {
     border-color: #ffffff;
     box-shadow: 0 0 0 2px #5aa0ff inset;

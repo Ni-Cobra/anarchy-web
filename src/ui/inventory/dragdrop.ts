@@ -211,15 +211,20 @@ export function attachDragDrop(ctx: DragDropContext): DragDropHandle {
     if (clickSrc < HOTBAR_SLOTS) return;
     const inv = ctx.getInventory();
     const stack = inv.slot(clickSrc);
-    if (stack === null) return;
-    const tool = toolKindOf(stack.item);
+    const tool = stack !== null ? toolKindOf(stack.item) : null;
     if (tool !== null) {
       // Tool click: equip into the matching equipment slot. The server's
       // atomic swap returns whatever was there into the source slot.
       ctx.sendEquip(clickSrc, tool);
       return;
     }
-    ctx.sendMove(clickSrc, ctx.getSelectedHotbarSlot());
+    // Swap-with-air: an empty endpoint on either side is still a valid
+    // swap (server's `try_move_slot` runs `merge_stacks || swap_slots`,
+    // which moves the non-empty stack into the empty cell). Skip the
+    // wire frame only when both ends are empty — the server would NOOP.
+    const dst = ctx.getSelectedHotbarSlot();
+    if (stack === null && inv.slot(dst) === null) return;
+    ctx.sendMove(clickSrc, dst);
   };
   document.addEventListener("pointerup", onDocumentPointerUp);
 
