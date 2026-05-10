@@ -16,16 +16,19 @@ import { PANEL_GAP_PX, PANEL_PAD_PX, SLOT_PX } from "../inventory/style.js";
 export const STYLE_ID = "anarchy-crafting-style";
 
 /**
- * Width of one ingredient / output icon in a recipe row. Smaller than the
- * inventory slot (`SLOT_PX`) so a 5-stack ingredient cluster fits without
- * pushing the arrow off-center.
+ * Width of one ingredient / output icon in a recipe row. Sized so two
+ * stacks plus their gap fit on one line per side at the panel's stock
+ * width — a recipe with three or more stacks per side flex-wraps inside
+ * its half rather than pushing the arrow off-center.
  */
-export const RECIPE_ICON_PX = 28;
+export const RECIPE_ICON_PX = 44;
 
 /**
- * Width of the crafting panel (CSS pixels). Sized so a row holds five
- * `RECIPE_ICON_PX` icons per side plus the arrow without horizontal scroll.
- * The two halves are flex-1 so they share the leftover space evenly.
+ * Width of the crafting panel (CSS pixels). Re-uses the inventory grid's
+ * dimensions (5-slot equivalent) so the panel reads at the same visual
+ * weight as the inventory side panel. The two halves are flex-1 so they
+ * share the leftover space evenly; rows wider than that still flex-wrap
+ * inside their half.
  */
 export const CRAFTING_PANEL_WIDTH_PX = 5 * SLOT_PX + 4 * PANEL_GAP_PX + PANEL_PAD_PX * 2;
 
@@ -70,8 +73,8 @@ const STYLE = `
     all: unset;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 8px;
+    padding: 8px 10px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
@@ -117,9 +120,9 @@ const STYLE = `
   }
   .anarchy-crafting-stack-count {
     position: absolute;
-    bottom: 1px;
-    right: 2px;
-    font-size: 10px;
+    bottom: 2px;
+    right: 4px;
+    font-size: 13px;
     font-weight: 600;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
     pointer-events: none;
@@ -127,7 +130,7 @@ const STYLE = `
   .anarchy-crafting-arrow {
     flex: 0 0 auto;
     color: rgba(240, 240, 240, 0.7);
-    font-size: 18px;
+    font-size: 22px;
     line-height: 1;
     padding: 0 2px;
     user-select: none;

@@ -8,6 +8,13 @@
  *   browser's page-zoom shortcut can be suppressed when the modifier is
  *   held).
  *
+ * Letter-key actions (`E`, `M`) match on `event.key` so they bind to the
+ * physical key the user sees labelled. `event.code === "KeyM"` is the
+ * QWERTY position, which on AZERTY corresponds to the comma key — using
+ * `.key === "m"` keeps the binding glued to the labelled `M` regardless
+ * of layout. Non-letter keys (Escape, +/-, Digit1..9) still match on
+ * `.code` since they're position-stable across letter-shuffling layouts.
+ *
  * Owned local state is the toggled `zoomedOut` flag — the renderer holds
  * the actual camera mode; this module just remembers what to flip to next.
  */
@@ -34,7 +41,14 @@ export function attachKeybindings(
 
   const onKeydown = (ev: KeyboardEvent): void => {
     if (ev.repeat) return;
-    if (ev.code === "KeyE") {
+    // Letter-key actions dispatch on `event.key` (the produced character)
+    // rather than `event.code` (the QWERTY-position label) so the binding
+    // tracks the key the user actually sees on their keyboard. On AZERTY
+    // the physical M key produces "m"; on QWERTY it also produces "m";
+    // either way the action lives on the key labelled `M`. We lowercase
+    // to absorb Shift / CapsLock without needing two branches.
+    const key = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    if (key === "e") {
       deps.inventoryUi.toggle();
       return;
     }
@@ -43,11 +57,11 @@ export function attachKeybindings(
     // dragdrop module already owns Escape during an active drag (capture
     // listener that returns early when no drag is in flight), so this
     // bubble-phase branch only fires when no drag gesture is pending.
-    if (ev.code === "Escape" && deps.inventoryUi.isOpen()) {
+    if (key === "Escape" && deps.inventoryUi.isOpen()) {
       deps.inventoryUi.setOpen(false);
       return;
     }
-    if (ev.code === "KeyM") {
+    if (key === "m") {
       zoomedOut = !zoomedOut;
       deps.renderer.setZoomedOut(zoomedOut);
       return;

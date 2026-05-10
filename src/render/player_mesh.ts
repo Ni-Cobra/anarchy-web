@@ -39,9 +39,7 @@ const EYE_S_RIGHT = 0.423;
 const EYE_S_LEFT = 0.577;
 const EYE_T = 0.618;
 const EYE_WHITE_RADIUS_PX = 12;
-const EYE_PUPIL_RADIUS_PX = 5;
 const EYE_WHITE_COLOR = "#ffffff";
-const EYE_PUPIL_COLOR = "#101010";
 
 // Username billboard. `BILLBOARD_HEIGHT_OFFSET` is in scene units (Three.js
 // Y-up); the sprite parents to the body mesh so it follows the player. The
@@ -124,10 +122,6 @@ function buildBodyMaterial(bodyColorHex: number): THREE.MeshLambertMaterial {
     ctx.fillStyle = EYE_WHITE_COLOR;
     ctx.beginPath();
     ctx.arc(cx, eyeY, EYE_WHITE_RADIUS_PX, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.fillStyle = EYE_PUPIL_COLOR;
-    ctx.beginPath();
-    ctx.arc(cx, eyeY, EYE_PUPIL_RADIUS_PX, 0, 2 * Math.PI);
     ctx.fill();
   }
 
