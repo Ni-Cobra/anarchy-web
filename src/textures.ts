@@ -6,8 +6,8 @@
  * This file owns the client-side mirror of the server's `BLOCK_REGISTRY`
  * (see `anarchy-server/src/game/terrain/block.rs`): one [`BlockMeta`] entry
  * per `BlockType` keyed by the enum, with the texture path derived from the
- * server's `texture_name` basename. `textureUrlForBlock`, `textureUrlForItem`,
- * and `BLOCK_TEXTURE_URLS` are thin facades over this registry — keep the
+ * server's `texture_name` basename. `textureUrlForBlock` and
+ * `textureUrlForItem` are thin facades over this registry — keep the
  * registry table in lockstep with the server's whenever a kind lands.
  *
  * Texture bytes are produced by `anarchy-server/dev_utils textures` and
@@ -17,36 +17,7 @@
 
 import { BlockType, ItemId } from "./game/index.js";
 import { ITEM_REGISTRY } from "./item_names.js";
-
-/**
- * Material tier of a tool item. Mirrors the server's `ToolTier` enum.
- * Variants are ordered ascending by progression — the numeric ordering
- * matches the server's derived `Ord` so a comparison `a >= b` reads
- * "tier `a` is at or above tier `b`".
- */
-export enum ToolTier {
-  Wood = 0,
-  Stone = 1,
-  Copper = 2,
-  Iron = 3,
-  Tungsten = 4,
-}
-
-/** Display string for a `ToolTier` — used by the client tier-gate hint. */
-export function toolTierDisplayName(tier: ToolTier): string {
-  switch (tier) {
-    case ToolTier.Wood:
-      return "Wood";
-    case ToolTier.Stone:
-      return "Stone";
-    case ToolTier.Copper:
-      return "Copper";
-    case ToolTier.Iron:
-      return "Iron";
-    case ToolTier.Tungsten:
-      return "Tungsten";
-  }
-}
+import { ToolTier } from "./tool_tier.js";
 
 /**
  * Per-kind static data the renderer / UI needs about a block. Mirrors
@@ -75,9 +46,8 @@ const BLOCK_TEXTURES_BASE = "/textures/blocks";
 /**
  * Single source of truth for per-`BlockType` static metadata on the client.
  * Keyed by `BlockType` (numeric enum) — accessing a missing variant returns
- * `undefined`, but [`blockMeta`] guards against that and falls back to a
- * neutral entry. Adding a `BlockType` variant requires a matching entry
- * here and on the server.
+ * `undefined`, but [`textureUrlForBlock`] guards against that. Adding a
+ * `BlockType` variant requires a matching entry here and on the server.
  *
  * `Air` and `Hidden` carry `textureUrl: null` — neither has a renderable
  * face. Wire-occlusion sentinel `Hidden` (task 060) stays in the registry
@@ -224,19 +194,6 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
     minToolTier: ToolTier.Iron,
   },
 };
-
-/**
- * URL of the 64×64 PNG for each visible block kind. Compatibility facade —
- * driven by `BLOCK_REGISTRY`. `Air` / `Hidden` are deliberately absent
- * (neither has a texture); the renderer's per-kind branches all guard
- * against `Air` before reaching the texture lookup.
- */
-export const BLOCK_TEXTURE_URLS: Partial<Record<BlockType, string>> =
-  Object.fromEntries(
-    Object.values(BLOCK_REGISTRY)
-      .filter((m): m is BlockMeta & { textureUrl: string } => m.textureUrl !== null)
-      .map((m) => [m.kind, m.textureUrl] as const),
-  ) as Partial<Record<BlockType, string>>;
 
 /**
  * Texture URL for a `BlockType`, or `null` if the kind has no rendered

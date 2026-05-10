@@ -15,10 +15,11 @@
 import * as THREE from "three";
 
 import { BlockType } from "../game/index.js";
-import { BLOCK_TEXTURE_URLS } from "../textures.js";
+import { BLOCK_REGISTRY } from "../textures.js";
 
-/** Loaded texture per `BlockType`. Keys absent from `BLOCK_TEXTURE_URLS`
- *  (notably `Air`) are absent here too — callers must guard. */
+/** Loaded texture per `BlockType`. Kinds whose `BLOCK_REGISTRY` entry has a
+ *  null `textureUrl` (notably `Air` and `Hidden`) are absent — callers
+ *  must guard. */
 export type BlockTextureSet = ReadonlyMap<BlockType, THREE.Texture>;
 
 /**
@@ -30,15 +31,14 @@ export function loadBlockTextures(
   loader: THREE.TextureLoader = new THREE.TextureLoader(),
 ): BlockTextureSet {
   const out = new Map<BlockType, THREE.Texture>();
-  for (const [kindStr, url] of Object.entries(BLOCK_TEXTURE_URLS)) {
-    if (!url) continue;
-    const kind = Number(kindStr) as BlockType;
-    const tex = loader.load(url);
+  for (const meta of Object.values(BLOCK_REGISTRY)) {
+    if (meta.textureUrl === null) continue;
+    const tex = loader.load(meta.textureUrl);
     tex.minFilter = THREE.NearestFilter;
     tex.magFilter = THREE.NearestFilter;
     tex.generateMipmaps = false;
     tex.colorSpace = THREE.SRGBColorSpace;
-    out.set(kind, tex);
+    out.set(meta.kind, tex);
   }
   return out;
 }

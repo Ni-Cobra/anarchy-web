@@ -23,7 +23,8 @@
 import { BREAK_HEARTBEAT_TICKS, INPUT_TICK_INTERVAL_MS, REACH_BLOCKS } from "../config.js";
 import { BlockType, CHUNK_SIZE, type Inventory, ItemId, type World } from "../game/index.js";
 import { type Renderer } from "../render/index.js";
-import { BLOCK_REGISTRY, ToolTier, toolTierDisplayName } from "../textures.js";
+import { BLOCK_REGISTRY } from "../textures.js";
+import { ToolTier, toolTierDisplayName } from "../tool_tier.js";
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
 

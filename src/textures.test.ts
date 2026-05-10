@@ -4,7 +4,6 @@ import { BlockType, ItemId } from "./game/index.js";
 import { ITEM_REGISTRY } from "./item_names.js";
 import {
   BLOCK_REGISTRY,
-  BLOCK_TEXTURE_URLS,
   textureUrlForBlock,
   textureUrlForItem,
 } from "./textures.js";
@@ -52,10 +51,10 @@ describe("textureUrlForBlock", () => {
 
   it("each visible kind has a distinct URL", () => {
     const seen = new Set<string>();
-    for (const url of Object.values(BLOCK_TEXTURE_URLS)) {
-      if (!url) continue;
-      expect(seen.has(url)).toBe(false);
-      seen.add(url);
+    for (const meta of Object.values(BLOCK_REGISTRY)) {
+      if (meta.textureUrl === null) continue;
+      expect(seen.has(meta.textureUrl)).toBe(false);
+      seen.add(meta.textureUrl);
     }
   });
 });

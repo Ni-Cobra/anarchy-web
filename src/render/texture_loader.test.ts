@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 
 import { BlockType } from "../game/index.js";
-import { BLOCK_TEXTURE_URLS } from "../textures.js";
+import { BLOCK_REGISTRY } from "../textures.js";
 import { disposeBlockTextures, loadBlockTextures } from "./texture_loader.js";
 
 /**
@@ -25,10 +25,11 @@ describe("loadBlockTextures", () => {
     const loader = new StubLoader();
     const set = loadBlockTextures(loader);
 
-    // Every URL in the path map should have produced a `load` call.
-    const expectedUrls = Object.values(BLOCK_TEXTURE_URLS).filter(
-      (u): u is string => Boolean(u),
-    );
+    // Every kind with a non-null textureUrl in the registry should have
+    // produced a `load` call.
+    const expectedUrls = Object.values(BLOCK_REGISTRY)
+      .map((m) => m.textureUrl)
+      .filter((u): u is string => u !== null);
     expect(loader.loaded.sort()).toEqual([...expectedUrls].sort());
 
     for (const kind of [
