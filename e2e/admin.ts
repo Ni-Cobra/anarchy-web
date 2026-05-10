@@ -41,6 +41,11 @@ export const AdminItemId = {
   CopperAxe: 12,
   IronAxe: 13,
   TungstenAxe: 14,
+  // Task 370 e2e: only the items the lantern recipe needs. Add other
+  // items here as future specs require them.
+  IronIngot: 31,
+  Torch: 33,
+  Lantern: 34,
 } as const;
 
 export type AdminItemId = (typeof AdminItemId)[keyof typeof AdminItemId];

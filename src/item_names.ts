@@ -236,6 +236,12 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: BlockType.Torch,
     textureUrl: `${BLOCK_TEXTURES_BASE}/torch.png`,
   },
+  [ItemId.Lantern]: {
+    id: ItemId.Lantern,
+    displayName: "Lantern",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/lantern.png`,
+  },
 };
 
 /**

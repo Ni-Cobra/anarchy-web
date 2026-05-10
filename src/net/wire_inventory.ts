@@ -56,7 +56,14 @@ function equippedSlotFromWire(slot: number | null | undefined): number | null {
   return slot;
 }
 
-function itemIdFromWire(
+/**
+ * Translate a proto `ItemId` enum value into the client's [`ItemId`] enum,
+ * or `null` for the proto3 sentinel and any unknown id (forwards-compat
+ * against an older client). Exported so other wire handlers
+ * (notably `wire_tick`'s `PlayerSnapshot.equipped_utility` decode) share
+ * the single mapping table.
+ */
+export function itemIdFromWire(
   item: anarchy.v1.ItemId | null | undefined,
 ): ItemId | null {
   switch (item) {
@@ -126,6 +133,8 @@ function itemIdFromWire(
       return ItemId.TungstenIngot;
     case anarchy.v1.ItemId.ITEM_ID_TORCH:
       return ItemId.Torch;
+    case anarchy.v1.ItemId.ITEM_ID_LANTERN:
+      return ItemId.Lantern;
     default:
       return null;
   }

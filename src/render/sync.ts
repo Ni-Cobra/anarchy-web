@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-import { Direction8, type PlayerId } from "../game/index.js";
+import { Direction8, type ItemId, type PlayerId } from "../game/index.js";
 
 /**
  * Builds a fresh `THREE.Mesh` for a player. `isLocal` lets the factory pick a
@@ -41,6 +41,12 @@ export interface RenderableEntity {
   readonly facing: Direction8;
   readonly username: string;
   readonly colorIndex: number;
+  /**
+   * Item the server reports equipped in this player's Utility slot, or
+   * `null`. Today only [`ItemId.Lantern`] flows through; the renderer
+   * uses it to attach a player-local point light at head height.
+   */
+  readonly equippedUtility: ItemId | null;
 }
 
 /**

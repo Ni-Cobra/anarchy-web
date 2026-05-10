@@ -32,6 +32,7 @@ export function composePlayerEntities(
       facing: player.facing,
       username: player.username,
       colorIndex: player.colorIndex,
+      equippedUtility: player.equippedUtility,
     });
   }
   return out;

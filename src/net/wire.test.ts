@@ -108,7 +108,7 @@ describe("applyServerMessage — Welcome", () => {
   it("publishes the local player id and clears any prior state", () => {
     const { deps, world, buffer, localCalls } = makeFixture();
     world.applySnapshot([
-      { id: 99, x: 5, y: 5, facing: DEFAULT_FACING, username: "", colorIndex: 0 },
+      { id: 99, x: 5, y: 5, facing: DEFAULT_FACING, username: "", colorIndex: 0, equippedUtility: null },
     ]);
     buffer.push(99, 5, 5, 100);
 
@@ -189,6 +189,7 @@ describe("applyServerMessage — TickUpdate", () => {
       facing: Direction8.E,
       username: "",
       colorIndex: 0,
+      equippedUtility: null,
     });
     expect(buffer.samplesOf(1)).toHaveLength(1);
     expect(buffer.samplesOf(1)[0]).toMatchObject({ x: 1.5, y: 2.5, timeMs: 5_000 });
@@ -336,6 +337,7 @@ describe("applyServerMessage — TickUpdate", () => {
       facing: Direction8.E,
       username: "",
       colorIndex: 0,
+      equippedUtility: null,
     });
     expect(terrain.size()).toBe(1);
   });
@@ -378,6 +380,7 @@ describe("applyServerMessage — TickUpdate", () => {
       facing: Direction8.S,
       username: "",
       colorIndex: 0,
+      equippedUtility: null,
     });
   });
 

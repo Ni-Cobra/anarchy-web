@@ -12,6 +12,8 @@
  * it alone otherwise. Clients render from this — they never compute or
  * predict it locally.
  */
+import type { ItemId } from "./inventory.js";
+
 export type PlayerId = number;
 
 /**
@@ -54,4 +56,12 @@ export interface Player {
    * are synced today).
    */
   colorIndex: number;
+  /**
+   * Item the server reports equipped in this player's Utility slot, or
+   * `null` when nothing is. Visible to every observer (carried on
+   * `PlayerSnapshot`, not the per-client `InventoryUpdate`) so the
+   * lantern's player-attached point light renders for remote players too.
+   * Today only [`ItemId.Lantern`] flows through this path.
+   */
+  equippedUtility: ItemId | null;
 }

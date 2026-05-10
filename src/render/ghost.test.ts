@@ -47,6 +47,7 @@ function setupWorld(playerId: number, x: number, y: number): { world: World; ter
       facing: DEFAULT_FACING,
       colorIndex: 0,
       username: "tester",
+      equippedUtility: null,
     },
   ]);
   const terrain = new Terrain();

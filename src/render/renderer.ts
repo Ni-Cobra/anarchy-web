@@ -9,6 +9,7 @@ import {
 import {
   CHUNK_SIZE,
   type Inventory,
+  type ItemId,
   type PlayerId,
   type SnapshotBuffer,
   type Terrain,
@@ -35,6 +36,7 @@ import {
 } from "./terrain.js";
 import { sampleDaylight } from "./daylight.js";
 import { TorchLights } from "./torch_lights.js";
+import { LanternLights } from "./lantern_lights.js";
 import {
   BeamLayer,
   BreakParticles,
@@ -134,6 +136,11 @@ export class Renderer {
   // loaded chunk and per-frame illuminates the 32 nearest around the
   // local player at intensity scaled by the day-cycle's `nightFactor`.
   private readonly torchLights: TorchLights;
+  // Per-player lantern-light pool (task 370). One warm point light per
+  // visible player whose `equippedUtility` is `ItemId.Lantern`, pinned
+  // at head height and moved each frame to track their position. Scales
+  // with the same `nightFactor` as the torches so day reads dark.
+  private readonly lanternLights: LanternLights;
   // Latest synced `time_of_day_seconds` from the wire layer. The renderer
   // reads this every frame to compute the current sample. Initialised to
   // `0` (sunrise) so the very first frame, before any TickUpdate has
@@ -240,6 +247,9 @@ export class Renderer {
 
     this.torchLights = new TorchLights();
     this.scene.add(this.torchLights.scene());
+
+    this.lanternLights = new LanternLights();
+    this.scene.add(this.lanternLights.scene());
 
     if (terrain !== null) {
       this.terrainGroup = buildTerrainMesh(terrain, this.blockTextures);
@@ -388,6 +398,18 @@ export class Renderer {
   }
 
   /**
+   * Test handle (task 370): number of player-attached lantern lights
+   * currently visible in the scene. Visible means `nightFactor > 0` AND
+   * the player is wearing a lantern; a daylight scene with lantern-
+   * wearers reports `0`. Lets a Playwright spec assert "the lantern
+   * light is in the scene at night" without poking at Three.js
+   * internals.
+   */
+  getLanternLightCount(): number {
+    return this.lanternLights.visibleCount();
+  }
+
+  /**
    * The wire layer just observed a per-tick block-edit (place / break)
    * attributed to a player. Spawns a one-shot effect at the cell tinted
    * by the actor's color. See `EffectsLayer.onBlockEdit`.
@@ -483,6 +505,8 @@ export class Renderer {
     this.breakParticles.dispose();
     this.torchLights.dispose();
     this.scene.remove(this.torchLights.scene());
+    this.lanternLights.dispose();
+    this.scene.remove(this.lanternLights.scene());
     this.scene.remove(this.chunkBorderGrid);
     this.chunkBorderGrid.geometry.dispose();
     (this.chunkBorderGrid.material as THREE.Material).dispose();
@@ -559,7 +583,12 @@ export class Renderer {
    * shadow-render cost.
    */
   private updateDaylight(
-    entities: readonly { id: PlayerId; x: number; y: number }[],
+    entities: readonly {
+      id: PlayerId;
+      x: number;
+      y: number;
+      equippedUtility: ItemId | null;
+    }[],
   ): void {
     const sample = sampleDaylight(this.timeOfDaySeconds);
     this.ambient.color.setHex(sample.ambientColor);
@@ -592,6 +621,10 @@ export class Renderer {
     // player keeps the "32 nearest torches" pick stable as the world
     // streams in around them.
     this.torchLights.update({ x: focus.x, z: focus.z }, sample.nightFactor);
+    // Lanterns (task 370): one light per player wearing one. Driven by
+    // the same `nightFactor` so the day cycle reads consistent across
+    // every warm light source.
+    this.lanternLights.update(entities, sample.nightFactor);
   }
 
   private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {

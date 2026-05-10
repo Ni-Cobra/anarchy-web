@@ -444,6 +444,13 @@ message PlayerSnapshot {
   // Index into the shared lobby palette (`game::lobby::PALETTE`). Validated
   // server-side; the renderer tints the player body by this entry.
   uint32 color_index = 7;
+  // Item currently equipped in the player's Utility slot (task 360 / 370),
+  // or `ITEM_ID_UNSPECIFIED` when nothing is. Visible to every observer (the
+  // chunk-delivery snapshot, not the per-client `InventoryUpdate`) so the
+  // lantern's player-attached point light renders for remote players too.
+  // Today only `ITEM_ID_LANTERN` ships through this path; future utility
+  // items can plug in without further wire change.
+  ItemId equipped_utility = 8;
 }
 
 // 8-way facing for the sphere-with-eyes player model. Cardinal first, then
@@ -643,6 +650,11 @@ enum ItemId {
   // Task 350 placed-light source. Crafted from 1 Stick + 1 Coal → 4 Torches
   // and placed via the standard right-click flow.
   ITEM_ID_TORCH = 33;
+  // Task 370 first Utility item. Crafted from 1 Torch + 1 IronIngot → 1
+  // Lantern. Equipped into the Utility slot — a worn item, not a placed
+  // block. Carried on `PlayerSnapshot.equipped_utility` so every observer
+  // (not just the originating client) can render the player-attached light.
+  ITEM_ID_LANTERN = 34;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server

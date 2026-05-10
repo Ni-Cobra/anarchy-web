@@ -162,6 +162,14 @@ export interface AnarchyHandle {
    */
   getGhostState: () => GhostState | null;
   /**
+   * Test handle (task 370): number of player-attached lantern lights the
+   * renderer is currently showing. Lets a Playwright spec assert the
+   * lantern's player-attached point light lands in the scene without
+   * poking at Three.js internals. Always 0 at noon (intensity scales
+   * with `nightFactor`).
+   */
+  getLanternLightCount: () => number;
+  /**
    * Test handle (task 020): drive the renderer's cursor NDC directly,
    * bypassing the page's mouse event plumbing. Lets a Playwright spec aim
    * the ghost preview at a known tile without computing screen-space
@@ -489,6 +497,7 @@ export function runMain(
     getObservedBlockEditCount: () => observedBlockEditCount,
     getTimeOfDaySeconds: () => lastTimeOfDaySeconds,
     getGhostState: () => renderer.getGhostState(),
+    getLanternLightCount: () => renderer.getLanternLightCount(),
     setCursorNdc: (ndc) => renderer.setCursorNdc(ndc),
     stop,
     stopped,

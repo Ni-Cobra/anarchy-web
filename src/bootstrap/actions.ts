@@ -37,7 +37,14 @@ export interface ActionSenders {
  * outside the wire bridge don't need to import generated types.
  */
 function toolKindToWire(kind: ToolKind): number {
-  return kind === "pickaxe" ? 1 : 2;
+  switch (kind) {
+    case "pickaxe":
+      return 1;
+    case "axe":
+      return 2;
+    case "utility":
+      return 3;
+  }
 }
 
 export function createActionSenders(conn: Connection): ActionSenders {

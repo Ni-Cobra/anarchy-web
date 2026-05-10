@@ -42,6 +42,7 @@ import {
   facingFromWire,
   toNumber,
 } from "./wire_codec.js";
+import { itemIdFromWire } from "./wire_inventory.js";
 
 /**
  * Notifications for the renderer (or any other observer) when chunks
@@ -288,6 +289,7 @@ function chunkFromWire(
       facing: facingFromWire(p.facing),
       username: p.username ?? "",
       colorIndex: p.colorIndex ?? 0,
+      equippedUtility: itemIdFromWire(p.equippedUtility),
     });
   }
   return [[cx, cy] as const, { ground, top, players }];

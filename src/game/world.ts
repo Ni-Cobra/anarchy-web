@@ -29,6 +29,7 @@ export class World {
         facing: p.facing,
         username: p.username,
         colorIndex: p.colorIndex,
+        equippedUtility: p.equippedUtility,
       });
     }
   }

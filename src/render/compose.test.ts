@@ -25,6 +25,7 @@ const player = (
   facing,
   username: "",
   colorIndex: 0,
+  equippedUtility: null,
 });
 
 function setup() {
@@ -78,6 +79,7 @@ describe("composePlayerEntities", () => {
         facing: DEFAULT_FACING,
         username: "",
         colorIndex: 0,
+        equippedUtility: null,
       },
     ]);
   });

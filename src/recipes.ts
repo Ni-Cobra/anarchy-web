@@ -154,6 +154,15 @@ export const RECIPES: readonly Recipe[] = [
     ],
     output: { item: ItemId.Torch, count: 4 },
   },
+  // Task 370 first Utility item: 1 Torch + 1 IronIngot → 1 Lantern.
+  {
+    id: "lantern",
+    ingredients: [
+      { item: ItemId.Torch, count: 1 },
+      { item: ItemId.IronIngot, count: 1 },
+    ],
+    output: { item: ItemId.Lantern, count: 1 },
+  },
 ];
 
 const RECIPES_BY_ID: ReadonlyMap<string, Recipe> = new Map(

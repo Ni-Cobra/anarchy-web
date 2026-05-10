@@ -94,6 +94,14 @@ export enum ItemId {
    * and placed via the standard right-click flow.
    */
   Torch = 33,
+  /**
+   * Task 370 first Utility item. Crafted from 1 Torch + 1 IronIngot → 1
+   * Lantern. Equipped into the Utility slot — a worn item, not a placed
+   * block. The renderer reads the equipped utility from each
+   * `PlayerSnapshot` and attaches a warm point light at the player's head
+   * when this ItemId is set.
+   */
+  Lantern = 34,
 }
 
 /** A non-empty pile of one item kind. */
@@ -144,13 +152,11 @@ export function isAxe(item: ItemId): boolean {
 }
 
 /**
- * `true` iff `item` is a utility-slot item (task 360). No utility items
- * exist in this iteration — the lantern lands in task 370 — so this
- * always returns `false` today; the slot's wiring still ships so the
- * server schema, equipment routing, and UI cells are in place.
+ * `true` iff `item` is a utility-slot item (task 360). The lantern (task
+ * 370) is the first such item; future utility items extend this predicate.
  */
-export function isUtility(_item: ItemId): boolean {
-  return false;
+export function isUtility(item: ItemId): boolean {
+  return item === ItemId.Lantern;
 }
 
 /** Tool family the item belongs to, or `null` for non-tool items. */
