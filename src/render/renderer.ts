@@ -353,7 +353,7 @@ export class Renderer {
     if (!chunk) return;
     const root = this.terrainGroupOrCreate();
     this.disposeChunkSubgroup(cx, cy, root);
-    root.add(buildChunkMesh(cx, cy, chunk, this.blockTextures));
+    root.add(buildChunkMesh(cx, cy, chunk, this.blockTextures, this.terrain));
   }
 
   /**

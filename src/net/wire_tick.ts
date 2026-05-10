@@ -127,18 +127,26 @@ export function applyTickUpdate(
     }
   }
 
-  // Apply each full-state chunk and push samples for its players.
+  // Apply each full-state chunk and push samples for its players. Insert
+  // every chunk into `terrain` first, then fan out `onChunkLoaded` in a
+  // second pass — the renderer reads neighbour chunks via `terrain` during
+  // mesh build (Hidden-AO pass, task 290), so we want sibling chunks
+  // arriving in the same tick to be visible to each other.
+  const inserted: ChunkCoord[] = [];
   for (const wireChunk of fullStateChunks) {
     const decoded = chunkFromWire(wireChunk);
     if (!decoded) continue;
     const [[cx, cy], chunk] = decoded;
     if (deps.terrain) {
       deps.terrain.insert(cx, cy, chunk);
-      deps.terrainSink?.onChunkLoaded?.(cx, cy);
+      inserted.push([cx, cy]);
     }
     for (const p of chunk.players.values()) {
       deps.buffer.push(p.id, p.x, p.y, timeMs);
     }
+  }
+  for (const [cx, cy] of inserted) {
+    deps.terrainSink?.onChunkLoaded?.(cx, cy);
   }
 
   // Rebuild the World player set from the union across post-tick terrain.

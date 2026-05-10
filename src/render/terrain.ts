@@ -10,6 +10,20 @@ import {
 } from "../game/index.js";
 import type { BlockTextureSet } from "./texture_loader.js";
 
+// Fake-ambient-occlusion against `BlockType.Hidden` neighbours (task 290).
+// Each side of a top-layer cell that borders a Hidden cell darkens the two
+// top-face corners on that edge; THREE's vertex-color interpolation fades the
+// darkening back to the block's normal albedo across the cell. Multiple
+// adjacent Hidden sides multiply, so a corner pinched between two Hidden
+// neighbours darkens twice. The mask is a 4-bit set; bit positions are
+// scene-space because that's how the geometry vertices are addressed.
+const AO_X_NEG = 1;
+const AO_X_POS = 1 << 1;
+const AO_Z_NEG = 1 << 2;
+const AO_Z_POS = 1 << 3;
+const AO_MASK_NONE = 0;
+const AO_DARKEN = 0.3;
+
 /**
  * Build a Three.js group for a `Terrain` snapshot. Each loaded chunk becomes
  * a sub-group; each ground tile is a thin colored slab and each non-Air top
@@ -34,7 +48,7 @@ export function buildTerrainMesh(
   group.name = "terrain";
   for (const [coord, chunk] of terrain.iter()) {
     const [cx, cy] = coord;
-    group.add(buildChunkMesh(cx, cy, chunk, textures));
+    group.add(buildChunkMesh(cx, cy, chunk, textures, terrain));
   }
   return group;
 }
@@ -83,10 +97,14 @@ const FALLBACK_BLOCK_COLOR: Partial<Record<BlockType, number>> = {
   [BlockType.Gold]: 0xf5c542,
   [BlockType.Tree]: 0x2d6a2d,
   [BlockType.Sticks]: 0xa9774a,
-  // Hidden cells render as a uniform neutral grey so an attacker cannot
-  // distinguish underlying ore from underlying stone by inspecting pixels —
-  // the server never emits the true kind for occluded cells (task 060).
-  [BlockType.Hidden]: 0x4d4d4d,
+  // Hidden cells render as pitch black (task 290): the server never emits
+  // the true kind for occluded cells (task 060) so an attacker can't
+  // distinguish underlying ore from stone by sampling pixels — pitch black
+  // makes that an obvious solid void rather than a coy grey placeholder.
+  // Adjacent visible top blocks pick up a faked AO darkening towards Hidden
+  // neighbours so the void reads as "things you could mine into" rather
+  // than a flat sticker.
+  [BlockType.Hidden]: 0x000000,
   [BlockType.FlowerRed]: 0xe03333,
   [BlockType.FlowerYellow]: 0xf6ce42,
   [BlockType.FlowerBlue]: 0x4a6ee0,
@@ -160,12 +178,19 @@ const BUSH_Y = BUSH_BOTTOM + BUSH_HEIGHT / 2;
  *
  * `textures` is the shared `BlockTextureSet` from the renderer; when
  * `null` the chunk falls back to flat-color materials (unit-test path).
+ *
+ * `terrain` is the surrounding world snapshot used to read top-layer
+ * neighbours across chunk borders for the `Hidden`-adjacent AO pass (task
+ * 290). When `null`, neighbour cells in adjacent chunks are treated as
+ * "not Hidden" — the spec's "unloaded neighbour leaves that edge unshaded"
+ * rule, also the unit-test path.
  */
 export function buildChunkMesh(
   cx: number,
   cy: number,
   chunk: Chunk,
   textures: BlockTextureSet | null = null,
+  terrain: Terrain | null = null,
 ): THREE.Group {
   // Per-chunk shared geometries + materials. Sharing keeps the per-build
   // allocation count proportional to "kinds present" rather than "tiles" —
@@ -178,6 +203,32 @@ export function buildChunkMesh(
     if (!m) {
       m = buildBlockMaterial(kind, textures);
       matCache.set(kind, m);
+    }
+    return m;
+  };
+
+  // AO-side caches (task 290). Sibling of the regular geom/mat caches:
+  // `aoGeomFor` clones the top geometry and bakes vertex colors per
+  // 4-bit Hidden-neighbour mask — at most 15 distinct non-zero masks —
+  // and `aoMaterialFor` clones the per-kind material with `vertexColors`
+  // turned on so the bake actually attenuates the texture/color. Blocks
+  // with no Hidden neighbour (`mask == 0`) keep using the shared topGeom
+  // + plain material, so a chunk with no Hidden cells pays nothing.
+  const aoGeomCache = new Map<number, THREE.BoxGeometry>();
+  const aoGeomFor = (mask: number): THREE.BoxGeometry => {
+    let g = aoGeomCache.get(mask);
+    if (!g) {
+      g = buildAoTopGeometry(mask);
+      aoGeomCache.set(mask, g);
+    }
+    return g;
+  };
+  const aoMatCache = new Map<BlockType, THREE.Material>();
+  const aoMaterialFor = (kind: BlockType): THREE.Material => {
+    let m = aoMatCache.get(kind);
+    if (!m) {
+      m = buildBlockMaterial(kind, textures, undefined, true);
+      aoMatCache.set(kind, m);
     }
     return m;
   };
@@ -263,16 +314,30 @@ export function buildChunkMesh(
         mesh.position.set(scene.x, BUSH_Y, scene.z);
         group.add(mesh);
       } else {
-        const mesh = new THREE.Mesh(topGeom, materialFor(topBlock.kind));
-        mesh.position.set(scene.x, TOP_BOX_Y, scene.z);
-        group.add(mesh);
+        // Standard full-cell top block. Tree/Sticks/flowers/bushes branch
+        // away above; we don't AO those because they aren't `is_full` on
+        // the server, so a Hidden cell can never have one as a neighbour
+        // (the cell would fail the all-four-full predicate). The branches
+        // above therefore cannot border Hidden in practice.
+        const mask = hiddenMaskAt(chunk, terrain, cx, cy, x, y);
+        if (mask === AO_MASK_NONE) {
+          const mesh = new THREE.Mesh(topGeom, materialFor(topBlock.kind));
+          mesh.position.set(scene.x, TOP_BOX_Y, scene.z);
+          group.add(mesh);
+        } else {
+          const mesh = new THREE.Mesh(aoGeomFor(mask), aoMaterialFor(topBlock.kind));
+          mesh.position.set(scene.x, TOP_BOX_Y, scene.z);
+          group.add(mesh);
+        }
       }
     }
   }
 
   // If a chunk happened to be all-Air on both layers, drop the unused
   // shared geometries so they don't leak. Tree resources are only
-  // allocated on demand, so they don't need a fallback path.
+  // allocated on demand, so they don't need a fallback path. AO geom +
+  // material caches are only populated lazily, so empty chunks don't pay
+  // for them either.
   if (group.children.length === 0) {
     groundGeom.dispose();
     topGeom.dispose();
@@ -286,18 +351,124 @@ export function buildChunkMesh(
  * loader); falls back to the per-kind flat color when `textures` is
  * `null` (test path) or the kind is missing from the set. `colorOverride`
  * is for the tree-trunk / sticks special cases that want their historical
- * accent color in the no-texture fallback.
+ * accent color in the no-texture fallback. `vertexColors` enables the
+ * per-vertex tint multiply that the Hidden-AO geometry pass (task 290)
+ * uses to darken edges near the void; off by default so the regular
+ * shared materials stay untouched.
  */
 function buildBlockMaterial(
   kind: BlockType,
   textures: BlockTextureSet | null,
   colorOverride?: number,
+  vertexColors = false,
 ): THREE.MeshLambertMaterial {
   const tex = textures?.get(kind) ?? null;
-  if (tex) return new THREE.MeshLambertMaterial({ map: tex });
+  if (tex) return new THREE.MeshLambertMaterial({ map: tex, vertexColors });
   const color =
     colorOverride ?? FALLBACK_BLOCK_COLOR[kind] ?? 0xff00ff;
-  return new THREE.MeshLambertMaterial({ color });
+  return new THREE.MeshLambertMaterial({ color, vertexColors });
+}
+
+/**
+ * Compute the 4-bit Hidden-neighbour mask for the top-layer cell at
+ * `(lx, ly)` inside chunk `(cx, cy)`. Each set bit means "the top-layer
+ * neighbour on that side is `BlockType.Hidden`". Cross-chunk neighbours
+ * read from `terrain` if loaded; an absent neighbour chunk leaves that
+ * side unset (per the task spec — unloaded ≠ Hidden).
+ */
+function hiddenMaskAt(
+  chunk: Chunk,
+  terrain: Terrain | null,
+  cx: number,
+  cy: number,
+  lx: number,
+  ly: number,
+): number {
+  let mask = AO_MASK_NONE;
+  if (isHiddenTop(chunk, terrain, cx, cy, lx - 1, ly)) mask |= AO_X_NEG;
+  if (isHiddenTop(chunk, terrain, cx, cy, lx + 1, ly)) mask |= AO_X_POS;
+  // World +y → scene -z, so the world-+y neighbour is the scene -z side.
+  if (isHiddenTop(chunk, terrain, cx, cy, lx, ly + 1)) mask |= AO_Z_NEG;
+  if (isHiddenTop(chunk, terrain, cx, cy, lx, ly - 1)) mask |= AO_Z_POS;
+  return mask;
+}
+
+/**
+ * Read the top-layer kind at `(cx, cy, lx, ly)` (lx/ly may be off-chunk;
+ * we step into the right chunk) and return whether it is `Hidden`.
+ * Returns `false` when the resolved chunk isn't loaded — mirrors the
+ * server's `is_hidden_top` "unloaded neighbour leaves the cell visible"
+ * rule and the task spec's "unloaded neighbour is not a Hidden neighbour".
+ */
+function isHiddenTop(
+  selfChunk: Chunk,
+  terrain: Terrain | null,
+  cx: number,
+  cy: number,
+  lx: number,
+  ly: number,
+): boolean {
+  let tcx = cx;
+  let tcy = cy;
+  let tlx = lx;
+  let tly = ly;
+  if (tlx < 0) {
+    tcx -= 1;
+    tlx += LAYER_SIZE;
+  } else if (tlx >= LAYER_SIZE) {
+    tcx += 1;
+    tlx -= LAYER_SIZE;
+  }
+  if (tly < 0) {
+    tcy -= 1;
+    tly += LAYER_SIZE;
+  } else if (tly >= LAYER_SIZE) {
+    tcy += 1;
+    tly -= LAYER_SIZE;
+  }
+  const targetChunk =
+    tcx === cx && tcy === cy ? selfChunk : terrain?.get(tcx, tcy) ?? null;
+  if (!targetChunk) return false;
+  return getBlock(targetChunk.top, tlx, tly).kind === BlockType.Hidden;
+}
+
+/**
+ * Clone the standard top BoxGeometry and bake per-vertex colors on the
+ * top face per the AO mask. Each vertex on the top face (positive-Y
+ * normal) starts at white `(1, 1, 1)`; for every adjacent Hidden side
+ * touching that vertex the color is multiplied by `AO_DARKEN`. THREE
+ * interpolates the colors across the face, so the dark edge fades back
+ * to the block's normal albedo across the cell. Side / bottom faces
+ * keep white vertex colors so the texture renders unchanged from those
+ * angles (irrelevant for the top-down camera today, but cheap insurance).
+ */
+function buildAoTopGeometry(mask: number): THREE.BoxGeometry {
+  const geom = new THREE.BoxGeometry(TOP_BOX_WIDTH, TOP_BOX_HEIGHT, TOP_BOX_WIDTH);
+  const positions = geom.getAttribute("position") as THREE.BufferAttribute;
+  // Each BoxGeometry face owns its own vertices, so the corner shared
+  // between e.g. the +y, +x and +z faces appears 3 times in the buffer
+  // — once per face, each with that face's normal. Filter on normal so
+  // only the +y-face copy gets the AO bake; side-face vertices with the
+  // same world y must stay white or the bake leaks onto the sides.
+  const normals = geom.getAttribute("normal") as THREE.BufferAttribute;
+  const count = positions.count;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let c = 1;
+    if (normals.getY(i) > 0.5) {
+      const x = positions.getX(i);
+      const z = positions.getZ(i);
+      if (x < 0 && (mask & AO_X_NEG) !== 0) c *= AO_DARKEN;
+      if (x > 0 && (mask & AO_X_POS) !== 0) c *= AO_DARKEN;
+      if (z < 0 && (mask & AO_Z_NEG) !== 0) c *= AO_DARKEN;
+      if (z > 0 && (mask & AO_Z_POS) !== 0) c *= AO_DARKEN;
+    }
+    colors[i * 3 + 0] = c;
+    colors[i * 3 + 1] = c;
+    colors[i * 3 + 2] = c;
+  }
+  geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return geom;
 }
 
 /**

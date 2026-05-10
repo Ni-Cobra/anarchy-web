@@ -8,7 +8,12 @@ import {
   emptyChunk,
   setBlock,
 } from "../game/index.js";
-import { buildTerrainMesh, disposeTerrainMesh, tileCenterToScene } from "./terrain.js";
+import {
+  buildChunkMesh,
+  buildTerrainMesh,
+  disposeTerrainMesh,
+  tileCenterToScene,
+} from "./terrain.js";
 
 describe("tileCenterToScene", () => {
   it("centers tile (0,0) in chunk (0,0) at world (0.5, 0.5) → scene (0.5, -0.5)", () => {
@@ -198,5 +203,119 @@ describe("disposeTerrainMesh", () => {
     expect(parent.children).toContain(g);
     disposeTerrainMesh(g, parent);
     expect(parent.children).not.toContain(g);
+  });
+});
+
+describe("Hidden-adjacent AO (task 290)", () => {
+  // Helpers for the AO assertions: vertex colors are baked on the +y face
+  // of cloned BoxGeometries, so reading the `color` attribute pins the
+  // shader-side behavior without a real GL context.
+  const topFaceColors = (mesh: THREE.Mesh): number[] => {
+    const color = mesh.geometry.getAttribute("color");
+    expect(color).toBeDefined();
+    // BoxGeometry duplicates each corner per face; pick only the +y-face
+    // copies via the per-vertex normal so we read exactly four samples.
+    const normals = mesh.geometry.getAttribute("normal");
+    const out: number[] = [];
+    for (let i = 0; i < normals.count; i++) {
+      if (normals.getY(i) > 0.5) out.push(color.getX(i));
+    }
+    return out;
+  };
+
+  it("a top block with no Hidden neighbour uses the shared default geometry", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 5, 5, { kind: BlockType.Stone });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0]!.geometry.getAttribute("color")).toBeUndefined();
+    disposeTerrainMesh(g);
+  });
+
+  it("a top block with a Hidden neighbour gets a top-face vertex-color bake", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 5, 5, { kind: BlockType.Stone });
+    setBlock(c.top, 6, 5, { kind: BlockType.Hidden });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    const stone = meshes.find((m) => Math.abs(m.position.x - 5.5) < 1e-3)!;
+    expect(stone).toBeDefined();
+    const top = topFaceColors(stone);
+    // Four corners on the top face; the two on the +x edge (touching the
+    // Hidden cell to the east) darken, the other two stay white.
+    const dark = top.filter((c) => c < 0.5).length;
+    const bright = top.filter((c) => c > 0.99).length;
+    expect(dark).toBe(2);
+    expect(bright).toBe(2);
+    disposeTerrainMesh(g);
+  });
+
+  it("two Hidden neighbours stack on the shared corner", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 5, 5, { kind: BlockType.Stone });
+    setBlock(c.top, 6, 5, { kind: BlockType.Hidden });
+    setBlock(c.top, 5, 6, { kind: BlockType.Hidden });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    const stone = meshes.find((m) => Math.abs(m.position.x - 5.5) < 1e-3)!;
+    const top = topFaceColors(stone);
+    // One corner is in the pinch (+x AND +y world / -z scene Hidden) so it
+    // multiplies twice; two corners darken once; one stays white.
+    const sorted = [...top].sort((a, b) => a - b);
+    expect(sorted[0]!).toBeLessThan(0.1); // double-darkened
+    expect(sorted[1]!).toBeLessThan(0.5); // single-darkened
+    expect(sorted[2]!).toBeLessThan(0.5); // single-darkened
+    expect(sorted[3]!).toBeGreaterThan(0.99); // un-darkened
+    disposeTerrainMesh(g);
+  });
+
+  it("Hidden neighbour in an unloaded chunk leaves the edge unshaded", () => {
+    // Cell (15, 5) sits on the eastern border of chunk (0, 0); its east
+    // neighbour lives in chunk (1, 0) which we never load.
+    const c = emptyChunk();
+    setBlock(c.top, 15, 5, { kind: BlockType.Stone });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    expect(meshes).toHaveLength(1);
+    // No Hidden neighbour visible → falls back to the shared geometry.
+    expect(meshes[0]!.geometry.getAttribute("color")).toBeUndefined();
+    disposeTerrainMesh(g);
+  });
+
+  it("Hidden neighbour across a loaded chunk border darkens the right edge", () => {
+    const here = emptyChunk();
+    setBlock(here.top, 15, 5, { kind: BlockType.Stone });
+    const east = emptyChunk();
+    setBlock(east.top, 0, 5, { kind: BlockType.Hidden });
+    const t = new Terrain();
+    t.insert(0, 0, here);
+    t.insert(1, 0, east);
+    const g = buildTerrainMesh(t);
+    const stone = (g.children.find((c) => c.name === "chunk:0,0")!
+      .children[0]) as THREE.Mesh;
+    const top = topFaceColors(stone);
+    expect(top.filter((c) => c < 0.5).length).toBe(2);
+    expect(top.filter((c) => c > 0.99).length).toBe(2);
+    disposeTerrainMesh(g);
+  });
+
+  it("buildChunkMesh without a terrain treats every off-chunk neighbour as not Hidden", () => {
+    // Border cell, no terrain reference → no AO even though the spec would
+    // care if a neighbour chunk were loaded. Mirrors the test-only path.
+    const c = emptyChunk();
+    setBlock(c.top, 15, 5, { kind: BlockType.Stone });
+    const g = buildChunkMesh(0, 0, c);
+    expect(g.children).toHaveLength(1);
+    expect((g.children[0] as THREE.Mesh).geometry.getAttribute("color")).toBeUndefined();
+    disposeTerrainMesh(g);
   });
 });
