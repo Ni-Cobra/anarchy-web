@@ -29,6 +29,7 @@ export {
   MAIN_SLOTS,
   isAxe,
   isPickaxe,
+  isUtility,
   toolKindOf,
 } from "./inventory.js";
 export type { ItemStack, Slot, ToolKind } from "./inventory.js";

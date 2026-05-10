@@ -38,12 +38,14 @@ export function applyInventoryUpdate(
   // stale or non-tool indices to `null` defensively.
   const equippedPickaxeSlot = equippedSlotFromWire(update.equippedPickaxeSlot);
   const equippedAxeSlot = equippedSlotFromWire(update.equippedAxeSlot);
+  const equippedUtilitySlot = equippedSlotFromWire(update.equippedUtilitySlot);
   const craftableRecipeIds = update.craftableRecipeIds ?? [];
   deps.inventory.replaceFromWire(
     slots,
     equippedPickaxeSlot,
     equippedAxeSlot,
     craftableRecipeIds,
+    equippedUtilitySlot,
   );
 }
 

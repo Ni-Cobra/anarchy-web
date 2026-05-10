@@ -15,8 +15,9 @@ import { textureUrlForItem } from "../../textures.js";
 
 /**
  * Equipment kind currently flagged on a cell, or `null` for cells that
- * are not equipped to either kind. Drives the colored-background paint
- * on the inventory cell — orange for pickaxe, green for axe.
+ * are not equipped to any kind. Drives the colored-background paint on
+ * the inventory cell — orange for pickaxe, green for axe, blue for
+ * utility.
  */
 export type CellEquipmentMark = ToolKind | null;
 
@@ -54,6 +55,7 @@ export function paintSlot(
   cell.classList.toggle("selected", selected);
   cell.classList.toggle("equipped-pickaxe", equipped === "pickaxe");
   cell.classList.toggle("equipped-axe", equipped === "axe");
+  cell.classList.toggle("equipped-utility", equipped === "utility");
   cell.replaceChildren();
   if (slot === null) return;
   const icon = document.createElement("div");
@@ -87,15 +89,30 @@ export function paintEquipmentSlot(
     cell.classList.remove("empty");
   } else {
     // Wood-tier silhouette is the cheapest "this is what goes here"
-    // affordance — same texture pipeline as the rest of the inventory
-    // surface, just at low opacity. The CSS rule `.empty .icon` knocks
-    // it down to ~30% alpha.
-    const placeholder: ItemStack = {
-      item: kind === "pickaxe" ? ItemId.WoodPickaxe : ItemId.WoodAxe,
-      count: 1,
-    };
-    applyItemIconStyle(icon, placeholder);
+    // affordance for pickaxe / axe — same texture pipeline as the rest
+    // of the inventory surface, just at low opacity. The CSS rule
+    // `.empty .icon` knocks it down to ~30% alpha.
+    //
+    // Utility (task 360) has no items yet — the lantern lands in task
+    // 370 — so the empty cell ships icon-less. The blue border on
+    // `.anarchy-equipment-slot.utility` is enough affordance until a
+    // real silhouette exists.
+    const placeholder = utilityPlaceholder(kind);
+    if (placeholder !== null) {
+      applyItemIconStyle(icon, placeholder);
+    }
     cell.classList.add("empty");
   }
   cell.appendChild(icon);
+}
+
+function utilityPlaceholder(kind: ToolKind): ItemStack | null {
+  switch (kind) {
+    case "pickaxe":
+      return { item: ItemId.WoodPickaxe, count: 1 };
+    case "axe":
+      return { item: ItemId.WoodAxe, count: 1 };
+    case "utility":
+      return null;
+  }
 }

@@ -277,6 +277,12 @@ enum ToolKind {
   TOOL_KIND_UNSPECIFIED = 0;
   TOOL_KIND_PICKAXE = 1;
   TOOL_KIND_AXE = 2;
+  // Task 360 third equipment slot, sitting next to pickaxe + axe in the
+  // mini-hotbar. Empty by default — utility items (lantern, …) land in
+  // task 370+. Server validates `EquipTool.tool_kind == UTILITY` against
+  // the source slot's `ItemId::tool_kind` exactly the same way as the
+  // existing kinds.
+  TOOL_KIND_UTILITY = 3;
 }
 
 // Client→server "equip the tool currently at `source_slot` into the
@@ -672,6 +678,12 @@ message InventoryUpdate {
   // Inventory slot index of the equipped axe — see
   // `equipped_pickaxe_slot`.
   int32 equipped_axe_slot = 5;
+  // Inventory slot index of the equipped utility item (task 360) — see
+  // `equipped_pickaxe_slot`. Empty by default; populated when a utility
+  // item is equipped. The selected-cell highlight on the matching cell
+  // paints blue (vs. orange/green for pickaxe/axe) so the three slots
+  // stay visually distinct.
+  int32 equipped_utility_slot = 7;
   // Recipes (task 090) the player can currently craft from their pooled
   // inventory + hotbar contents. Stable string ids — `"sticks"`,
   // `"wood-pickaxe"`, etc. — that the client looks up against its own

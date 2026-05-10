@@ -26,13 +26,14 @@ import { applyItemIconStyle } from "./cells.js";
 
 /**
  * Sentinel slot indices used by the drag-and-drop machinery to identify
- * the two equipment slots. Outside `[0, INVENTORY_SIZE)` so the wire
+ * the equipment slots. Outside `[0, INVENTORY_SIZE)` so the wire
  * `MoveSlot` path can never confuse them with a real slot index — the
  * UI translates the sentinels into `EquipTool` / `UnequipTool` actions
  * before sending.
  */
 export const EQUIP_PICKAXE_SLOT_ID = -1;
 export const EQUIP_AXE_SLOT_ID = -2;
+export const EQUIP_UTILITY_SLOT_ID = -3;
 
 /**
  * Squared cursor-movement threshold (in CSS pixels) that flips a
@@ -45,6 +46,7 @@ const DRAG_THRESHOLD_PX_SQ = 25;
 export function equipKindForSentinel(idx: number): ToolKind | null {
   if (idx === EQUIP_PICKAXE_SLOT_ID) return "pickaxe";
   if (idx === EQUIP_AXE_SLOT_ID) return "axe";
+  if (idx === EQUIP_UTILITY_SLOT_ID) return "utility";
   return null;
 }
 

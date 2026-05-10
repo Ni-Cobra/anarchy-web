@@ -110,10 +110,12 @@ export interface ItemStack {
 export type Slot = ItemStack | null;
 
 /**
- * Identifies one of the two equipment-slot mini-hotbar cells (task 100).
- * Mirrors the proto `ToolKind` enum and the server's `game::ToolKind`.
+ * Identifies one of the equipment-slot mini-hotbar cells. Mirrors the proto
+ * `ToolKind` enum and the server's `game::ToolKind`. Pickaxe and Axe land
+ * with task 100; Utility (task 360) is the third slot, sitting next to
+ * them — empty by default until utility items (lantern …) ship.
  */
-export type ToolKind = "pickaxe" | "axe";
+export type ToolKind = "pickaxe" | "axe" | "utility";
 
 /**
  * `true` iff `item` is one of the five pickaxe tiers. Used by the
@@ -141,10 +143,21 @@ export function isAxe(item: ItemId): boolean {
   );
 }
 
+/**
+ * `true` iff `item` is a utility-slot item (task 360). No utility items
+ * exist in this iteration — the lantern lands in task 370 — so this
+ * always returns `false` today; the slot's wiring still ships so the
+ * server schema, equipment routing, and UI cells are in place.
+ */
+export function isUtility(_item: ItemId): boolean {
+  return false;
+}
+
 /** Tool family the item belongs to, or `null` for non-tool items. */
 export function toolKindOf(item: ItemId): ToolKind | null {
   if (isPickaxe(item)) return "pickaxe";
   if (isAxe(item)) return "axe";
+  if (isUtility(item)) return "utility";
   return null;
 }
 
@@ -162,6 +175,7 @@ export class Inventory {
   private slots: Slot[];
   private equippedPickaxeSlot: number | null = null;
   private equippedAxeSlot: number | null = null;
+  private equippedUtilitySlot: number | null = null;
   private craftable: readonly string[] = [];
   private listeners: Array<() => void> = [];
 
@@ -187,7 +201,14 @@ export class Inventory {
    * [`getEquipped`] for the resolved item.
    */
   getEquippedSlot(kind: ToolKind): number | null {
-    return kind === "pickaxe" ? this.equippedPickaxeSlot : this.equippedAxeSlot;
+    switch (kind) {
+      case "pickaxe":
+        return this.equippedPickaxeSlot;
+      case "axe":
+        return this.equippedAxeSlot;
+      case "utility":
+        return this.equippedUtilitySlot;
+    }
   }
 
   /**
@@ -259,6 +280,7 @@ export class Inventory {
     equippedPickaxeSlot: number | null = null,
     equippedAxeSlot: number | null = null,
     craftableRecipeIds: readonly string[] = [],
+    equippedUtilitySlot: number | null = null,
   ): void {
     if (slots.length !== INVENTORY_SIZE) {
       throw new Error(
@@ -268,6 +290,7 @@ export class Inventory {
     this.slots = slots.slice();
     this.equippedPickaxeSlot = normalizeEquipped(this.slots, equippedPickaxeSlot, "pickaxe");
     this.equippedAxeSlot = normalizeEquipped(this.slots, equippedAxeSlot, "axe");
+    this.equippedUtilitySlot = normalizeEquipped(this.slots, equippedUtilitySlot, "utility");
     this.craftable = [...craftableRecipeIds].sort();
     for (const listener of this.listeners) listener();
   }

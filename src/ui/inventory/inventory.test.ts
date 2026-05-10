@@ -972,7 +972,9 @@ describe("inventory UI", () => {
       ) as HTMLElement[];
     }
 
-    it("renders two empty equipment cells next to the hotbar", () => {
+    it("renders three empty equipment cells next to the hotbar", () => {
+      // Pickaxe + axe (task 100) + utility (task 360). Utility is empty by
+      // default — no utility items exist yet; lantern lands in task 370.
       mountInventoryUi({
         getInventory: () => inventory,
         sendSelect: () => {},
@@ -981,10 +983,11 @@ describe("inventory UI", () => {
         sendUnequip: () => {},
       });
       const cells = equipmentCells();
-      expect(cells).toHaveLength(2);
+      expect(cells).toHaveLength(3);
       // Empty cells get the `.empty` class (drives the silhouette opacity).
       expect(cells[0].classList.contains("empty")).toBe(true);
       expect(cells[1].classList.contains("empty")).toBe(true);
+      expect(cells[2].classList.contains("empty")).toBe(true);
     });
 
     it("paints the equipped tool when populated", () => {

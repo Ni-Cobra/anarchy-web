@@ -101,10 +101,11 @@ const STYLE = `
     box-shadow: 0 0 0 2px #5aa0ff inset;
   }
   /* Equipped-cell highlight (task 010 rework): the cell that holds the
-     currently-equipped pickaxe paints orange; the axe cell paints green.
-     A cell can be both selected and equipped — the selected blue inner
-     shadow still wins for the inner ring while the orange/green
-     background reads the equipment kind. */
+     currently-equipped pickaxe paints orange; the axe cell paints green;
+     the utility cell (task 360) paints blue. A cell can be both selected
+     and equipped — the selected blue inner shadow still wins for the
+     inner ring while the orange/green/blue background reads the
+     equipment kind. */
   .anarchy-inventory-slot.equipped-pickaxe {
     background: rgba(220, 130, 30, 0.45);
     border-color: rgba(255, 165, 60, 0.85);
@@ -113,8 +114,13 @@ const STYLE = `
     background: rgba(50, 160, 70, 0.45);
     border-color: rgba(90, 210, 110, 0.85);
   }
+  .anarchy-inventory-slot.equipped-utility {
+    background: rgba(40, 110, 220, 0.45);
+    border-color: rgba(90, 160, 255, 0.85);
+  }
   .anarchy-inventory-slot.equipped-pickaxe.selected,
-  .anarchy-inventory-slot.equipped-axe.selected {
+  .anarchy-inventory-slot.equipped-axe.selected,
+  .anarchy-inventory-slot.equipped-utility.selected {
     border-color: #ffffff;
   }
   .anarchy-inventory-icon {
