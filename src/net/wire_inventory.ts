@@ -135,6 +135,8 @@ export function itemIdFromWire(
       return ItemId.Torch;
     case anarchy.v1.ItemId.ITEM_ID_LANTERN:
       return ItemId.Lantern;
+    case anarchy.v1.ItemId.ITEM_ID_LOG:
+      return ItemId.Log;
     default:
       return null;
   }

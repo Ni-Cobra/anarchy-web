@@ -48,6 +48,18 @@ export const RECIPES: readonly Recipe[] = [
     ingredients: [{ item: ItemId.Wood, count: 1 }],
     output: { item: ItemId.Stick, count: 4 },
   },
+  // Task 390: trees drop `Log` items now. Logs craft into Wood blocks
+  // (1:1) and into Sticks (1 Log → 4 Sticks).
+  {
+    id: "wood-from-log",
+    ingredients: [{ item: ItemId.Log, count: 1 }],
+    output: { item: ItemId.Wood, count: 1 },
+  },
+  {
+    id: "sticks-from-log",
+    ingredients: [{ item: ItemId.Log, count: 1 }],
+    output: { item: ItemId.Stick, count: 4 },
+  },
   {
     id: "wood-pickaxe",
     ingredients: [

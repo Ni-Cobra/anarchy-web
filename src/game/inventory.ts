@@ -102,6 +102,13 @@ export enum ItemId {
    * when this ItemId is set.
    */
   Lantern = 34,
+  /**
+   * Task 390 felled-tree drop. Trees no longer scatter `Sticks` blocks in
+   * a 3×3 around the broken tile — they drop 1-3 `Log` items (axe-tier
+   * dependent) into the breaker's inventory. Logs are not placeable; they
+   * craft into Wood blocks (1 Log → 1 Wood) or sticks (1 Log → 4 Sticks).
+   */
+  Log = 35,
 }
 
 /** A non-empty pile of one item kind. */

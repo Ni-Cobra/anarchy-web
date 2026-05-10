@@ -242,6 +242,12 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: null,
     textureUrl: `${ITEM_TEXTURES_BASE}/lantern.png`,
   },
+  [ItemId.Log]: {
+    id: ItemId.Log,
+    displayName: "Log",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/log.png`,
+  },
 };
 
 /**

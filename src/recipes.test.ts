@@ -16,6 +16,16 @@ describe("recipes", () => {
         output: { item: ItemId.Stick, count: 4 },
       },
       {
+        id: "wood-from-log",
+        ingredients: [{ item: ItemId.Log, count: 1 }],
+        output: { item: ItemId.Wood, count: 1 },
+      },
+      {
+        id: "sticks-from-log",
+        ingredients: [{ item: ItemId.Log, count: 1 }],
+        output: { item: ItemId.Stick, count: 4 },
+      },
+      {
         id: "wood-pickaxe",
         ingredients: [
           { item: ItemId.Wood, count: 3 },

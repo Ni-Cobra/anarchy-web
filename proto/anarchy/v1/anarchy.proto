@@ -655,6 +655,12 @@ enum ItemId {
   // block. Carried on `PlayerSnapshot.equipped_utility` so every observer
   // (not just the originating client) can render the player-attached light.
   ITEM_ID_LANTERN = 34;
+  // Task 390 felled-tree drop. Trees no longer scatter `BLOCK_TYPE_STICKS`
+  // in a 3×3 around the broken tile — they drop 1-3 `Log` items
+  // (axe-tier dependent) into the breaker's inventory. Logs are not
+  // placeable; they craft into Wood blocks (1 Log → 1 Wood) or sticks
+  // (1 Log → 4 Sticks).
+  ITEM_ID_LOG = 35;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server
