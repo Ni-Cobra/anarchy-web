@@ -13,7 +13,7 @@
 import * as THREE from "three";
 
 import { PLAYER_RADIUS } from "../config.js";
-import { paletteColorHex, type PlayerId } from "../game/index.js";
+import { ItemId, paletteColorHex, type PlayerId } from "../game/index.js";
 import type { PlayerMeshFactory, RenderableEntity } from "./sync.js";
 
 // The player's body sphere mirrors the authoritative collision radius
@@ -67,6 +67,14 @@ const BILLBOARD_OUTLINE_WIDTH = 6;
 // sprite stay parented to the body (so it follows movement automatically)
 // without exposing a parallel sprite map.
 const BILLBOARD_USERDATA_KEY = "usernameBillboard";
+
+// Lantern-glow emissive tint applied to a player's body material whenever
+// the server reports `ItemId.Lantern` in their Utility slot (task 450).
+// Pure white per the task spec — the world-space lantern light is what
+// adds warmth; this is just the player model picking up "I am lit". Off
+// state goes back to a black emissive so the body reverts to pure diffuse.
+const LANTERN_GLOW_COLOR_HEX = 0xffffff;
+const LANTERN_GLOW_INTENSITY = 0.55;
 
 export const defaultPlayerMeshFactory: PlayerMeshFactory = {
   create(entity: RenderableEntity, _isLocal: boolean) {
@@ -219,5 +227,50 @@ export function applyHoverBillboards(
       | undefined;
     if (!billboard) continue;
     billboard.visible = id === hoveredId;
+  }
+}
+
+/** Subset of `RenderableEntity` `applyLanternGlow` consumes — just the id
+ *  and the Utility slot. Looser than the full entity so test callers can
+ *  build a minimal struct without standing up a renderable. */
+export interface LanternGlowEntity {
+  readonly id: PlayerId;
+  readonly equippedUtility: ItemId | null;
+}
+
+/**
+ * Toggle the lantern emissive glow on each player body (task 450).
+ * Walks `entities` to collect the set of players whose Utility slot
+ * reports `ItemId.Lantern`, then sets the body material's `emissive`
+ * + `emissiveIntensity` to the configured tint for those bodies and
+ * clears it for everyone else. Materials whose shader doesn't expose
+ * `emissive` (e.g. the `MeshBasicMaterial` used by test factories) are
+ * silently skipped — the emissive read is in-place, so a missing field
+ * just means the visual effect doesn't apply in that test env.
+ *
+ * Per-frame to handle equip/unequip mid-session and to bring just-spawned
+ * remote players into the right state on their first render.
+ */
+export function applyLanternGlow(
+  meshes: ReadonlyMap<PlayerId, THREE.Mesh>,
+  entities: Iterable<LanternGlowEntity>,
+): void {
+  const wearers = new Set<PlayerId>();
+  for (const e of entities) {
+    if (e.equippedUtility === ItemId.Lantern) wearers.add(e.id);
+  }
+  for (const [id, mesh] of meshes) {
+    const mat = mesh.material as THREE.Material & {
+      emissive?: THREE.Color;
+      emissiveIntensity?: number;
+    };
+    if (!mat || !(mat as { emissive?: unknown }).emissive) continue;
+    if (wearers.has(id)) {
+      mat.emissive!.setHex(LANTERN_GLOW_COLOR_HEX);
+      mat.emissiveIntensity = LANTERN_GLOW_INTENSITY;
+    } else {
+      mat.emissive!.setHex(0x000000);
+      mat.emissiveIntensity = 0;
+    }
   }
 }

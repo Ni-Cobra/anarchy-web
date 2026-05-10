@@ -47,7 +47,11 @@ import {
 } from "./effects/index.js";
 import { computeGhostState, type GhostState } from "./ghost.js";
 import { GhostMesh } from "./ghost_mesh.js";
-import { applyHoverBillboards, defaultPlayerMeshFactory } from "./player_mesh.js";
+import {
+  applyHoverBillboards,
+  applyLanternGlow,
+  defaultPlayerMeshFactory,
+} from "./player_mesh.js";
 import { ZoomController, clampZoomHeight } from "./zoom.js";
 import {
   type BlockTextureSet,
@@ -530,6 +534,7 @@ export class Renderer {
     );
     this.updateCamera(entities);
     this.updateDaylight(entities);
+    applyLanternGlow(this.meshes, entities);
     this.refreshHoverBillboards();
     this.refreshGhostPreview();
     this.effects.update(nowMs);

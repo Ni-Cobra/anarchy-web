@@ -30,20 +30,23 @@ export const MAX_TORCH_LIGHTS = 32;
 /** Warm flame tint shared with the lantern (task 370). */
 const TORCH_LIGHT_COLOR = 0xffaa55;
 
-/** Falloff radius. A torch lights ~3-4 tiles around it at midnight, fading
+/** Falloff radius. A torch lights ~4-5 tiles around it at midnight, fading
  *  past that — far enough to navigate by, close enough that 32 of them in
- *  view don't paint everything orange. */
-const TORCH_LIGHT_DISTANCE = 8.0;
+ *  view don't paint everything orange. Bumped from 8.0 alongside the
+ *  intensity doubling (task 450) so the brighter source spreads to a
+ *  larger pool rather than read as a tiny over-bright dot. */
+const TORCH_LIGHT_DISTANCE = 10.0;
 
 /** Decay exponent. Higher = sharper falloff. `2` is physically correct
  *  inverse-square; `1.4` reads warmer in the test scene without nuking the
  *  near-tile contribution to almost-imperceptible. */
 const TORCH_LIGHT_DECAY = 1.4;
 
-/** Peak intensity (at midnight, where `nightFactor == 1`). Calibrated so
- *  the warm tint reads against the night ambient floor (~0.18) without
- *  blowing out the haft pixels of the painted sprite. */
-const TORCH_LIGHT_PEAK_INTENSITY = 1.5;
+/** Peak intensity (at midnight, where `nightFactor == 1`). Doubled to
+ *  ~3.0 (task 450) so a single torch reads obviously bright against the
+ *  night ambient floor; paired with a slightly larger `TORCH_LIGHT_DISTANCE`
+ *  to spread the extra energy rather than concentrate it at the center. */
+const TORCH_LIGHT_PEAK_INTENSITY = 3.0;
 
 /** Y offset where the per-torch light sits — roughly at the top of the
  *  painted flame so the cone reads as "coming from the flame", not the

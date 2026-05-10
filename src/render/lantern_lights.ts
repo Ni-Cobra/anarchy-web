@@ -28,17 +28,20 @@ import { tileToScene } from "./sync.js";
  *  the ground. */
 const LANTERN_LIGHT_Y = 1.1;
 
-/** Lantern peak intensity at midnight. Same scale as the torch so a
- *  player carrying one feels as bright as standing next to a placed
- *  torch — and so the day-night fade reads identically. */
-const LANTERN_PEAK_INTENSITY = 1.5;
+/** Lantern peak intensity at midnight. Doubled to ~3.0 (task 450) in
+ *  lockstep with the torch so a player carrying one still reads as
+ *  brighter-than-a-torch, and so the day-night fade stays consistent
+ *  across both warm light sources. */
+const LANTERN_PEAK_INTENSITY = 3.0;
 
 /** Distance multiplier on the shared torch falloff. The lantern lights
- *  ~5-6 tiles vs. the torch's ~3-4, matching "slightly larger radius
+ *  ~6-7 tiles vs. the torch's ~4-5, matching "slightly larger radius
  *  than a torch — it's the upgrade" from task 370. The number is the
  *  raw `THREE.PointLight.distance`, not a scaling factor — it replaces
- *  whatever `createTorchLight()` set. */
-const LANTERN_LIGHT_DISTANCE = 11.0;
+ *  whatever `createTorchLight()` set. Bumped from 11.0 alongside the
+ *  intensity doubling (task 450) so the brighter source spreads to a
+ *  proportionally larger pool. */
+const LANTERN_LIGHT_DISTANCE = 13.0;
 
 /** One renderable entity with the fields this layer consumes. Subset of
  *  `RenderableEntity` so unit tests can build a minimal struct without
