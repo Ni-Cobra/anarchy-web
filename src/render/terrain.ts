@@ -151,23 +151,25 @@ const TREE_CANOPY_Y =
 // so the visual is intentionally low-profile so trees + standing geometry
 // remain the dominant verticals in a felled grove. Slightly inset from the
 // full cell so adjacent sticks read as separate piles, and lifted just
-// above the ground slab so they don't z-fight with it.
-const STICKS_WIDTH = 0.7;
+// above the ground slab so they don't z-fight with it. Texture is
+// alpha-transparent (task 400) so only the painted stick pixels render —
+// the rest of the slab disappears into the ground tile below.
+const STICKS_WIDTH = 0.85;
 const STICKS_THICKNESS = 0.06;
 const STICKS_COLOR = 0xa9774a;
 const STICKS_Y = GROUND_Y + GROUND_THICKNESS / 2 + STICKS_THICKNESS / 2;
 
-// Decorative content (task 130). Flowers render as thin upright slabs so the
-// player perceives a stem-with-petals rather than a wall — they're non-solid
-// server-side and the visual carries that affordance. Bushes render as a
-// wider, shorter mound. Both are rendered as plain boxes textured with the
-// per-kind PNG so the painted detail (petals / leaves) does the heavy
-// lifting; the box silhouette just sets the read.
-const FLOWER_WIDTH = 0.5;
-const FLOWER_HEIGHT = 0.7;
+// Decorative content (task 130). Flowers render as Minecraft-style cross-
+// quads — two perpendicular planes textured with the same alpha-transparent
+// flower sprite (stem + bloom on a transparent backdrop, task 400) so the
+// silhouette reads as a stem-with-petals from any viewing angle and the
+// surrounding ground tile shows through. Bushes render as a wider, shorter
+// box with an alpha-cropped foliage texture, so the corners of the cell
+// show through to the ground rather than painting a square cap.
+const FLOWER_WIDTH = 0.85;
+const FLOWER_HEIGHT = 0.8;
 const FLOWER_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
-const FLOWER_Y = FLOWER_BOTTOM + FLOWER_HEIGHT / 2;
-const BUSH_WIDTH = 0.85;
+const BUSH_WIDTH = 0.95;
 const BUSH_HEIGHT = 0.55;
 const BUSH_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
 const BUSH_Y = BUSH_BOTTOM + BUSH_HEIGHT / 2;
@@ -254,11 +256,31 @@ export function buildChunkMesh(
   let sticksGeom: THREE.BoxGeometry | null = null;
   let sticksMat: THREE.Material | null = null;
 
-  // Decorative content (task 130). Flowers and bushes share their geometry
+  // Decorative content (task 130). Flowers + bushes share their geometry
   // across instances of the same kind in a chunk, so the per-build allocation
-  // count stays small even on a flowery hilltop.
-  let flowerGeom: THREE.BoxGeometry | null = null;
+  // count stays small even on a flowery hilltop. Flowers (task 400) use a
+  // cross-quads BufferGeometry so two perpendicular planes display the
+  // alpha-transparent flower sprite from both axis directions; bushes keep
+  // their box.
+  let flowerGeom: THREE.BufferGeometry | null = null;
   let bushGeom: THREE.BoxGeometry | null = null;
+  // Tree canopy texture is alpha-transparent (task 400) so the silhouette
+  // reads as roughly circular over a visible trunk + ground. Material is
+  // built lazily and shared across every tree in the chunk.
+  let canopyDecorMat: THREE.Material | null = null;
+  // Per-decor-kind transparent material cache — flowers and bushes pull
+  // from this rather than the regular `matCache` so they pick up
+  // `transparent: true` + alphaTest. Lazily populated, shared across
+  // instances of the same kind in this chunk.
+  const decorMatCache = new Map<BlockType, THREE.Material>();
+  const decorMaterialFor = (kind: BlockType): THREE.Material => {
+    let m = decorMatCache.get(kind);
+    if (!m) {
+      m = buildDecorMaterial(kind, textures);
+      decorMatCache.set(kind, m);
+    }
+    return m;
+  };
 
   // Torch geometry (task 350). One thin upright box per torch in the chunk;
   // shares a single transparent material instance.
@@ -300,21 +322,33 @@ export function buildChunkMesh(
           trunkMat = buildBlockMaterial(BlockType.Wood, textures, TREE_TRUNK_COLOR);
         if (!canopyMat)
           canopyMat = buildBlockMaterial(BlockType.Tree, textures, TREE_CANOPY_COLOR);
+        if (!canopyDecorMat)
+          canopyDecorMat = buildDecorMaterial(BlockType.Tree, textures, TREE_CANOPY_COLOR);
         const trunk = new THREE.Mesh(trunkGeom, trunkMat);
         trunk.position.set(scene.x, TREE_TRUNK_Y, scene.z);
         trunk.castShadow = true;
         trunk.receiveShadow = true;
         group.add(trunk);
-        const canopy = new THREE.Mesh(canopyGeom, canopyMat);
+        // Canopy uses the alpha-transparent material so the leaf clump reads
+        // as a circular silhouette over the trunk + ground beneath; cast
+        // shadow off so the standard shadow pass doesn't paint a solid
+        // square shadow under each tree (the texture's transparent corners
+        // would otherwise still silhouette the full box).
+        const canopy = new THREE.Mesh(
+          canopyGeom,
+          textures ? canopyDecorMat : canopyMat,
+        );
         canopy.position.set(scene.x, TREE_CANOPY_Y, scene.z);
-        canopy.castShadow = true;
+        canopy.castShadow = false;
         canopy.receiveShadow = true;
         group.add(canopy);
       } else if (topBlock.kind === BlockType.Sticks) {
         if (!sticksGeom)
           sticksGeom = new THREE.BoxGeometry(STICKS_WIDTH, STICKS_THICKNESS, STICKS_WIDTH);
         if (!sticksMat)
-          sticksMat = buildBlockMaterial(BlockType.Sticks, textures, STICKS_COLOR);
+          sticksMat = textures
+            ? buildDecorMaterial(BlockType.Sticks, textures)
+            : buildBlockMaterial(BlockType.Sticks, textures, STICKS_COLOR);
         const decal = new THREE.Mesh(sticksGeom, sticksMat);
         decal.position.set(scene.x, STICKS_Y, scene.z);
         decal.receiveShadow = true;
@@ -326,18 +360,28 @@ export function buildChunkMesh(
         topBlock.kind === BlockType.FlowerWhite
       ) {
         if (!flowerGeom)
-          flowerGeom = new THREE.BoxGeometry(FLOWER_WIDTH, FLOWER_HEIGHT, FLOWER_WIDTH);
-        const mesh = new THREE.Mesh(flowerGeom, materialFor(topBlock.kind));
-        mesh.position.set(scene.x, FLOWER_Y, scene.z);
-        mesh.castShadow = true;
+          flowerGeom = buildCrossQuadsGeometry(FLOWER_WIDTH, FLOWER_HEIGHT);
+        const mat = textures
+          ? decorMaterialFor(topBlock.kind)
+          : materialFor(topBlock.kind);
+        const mesh = new THREE.Mesh(flowerGeom, mat);
+        // Cross-quads are anchored at y=0 with the flower extending up; the
+        // mesh sits on the ground slab.
+        mesh.position.set(scene.x, FLOWER_BOTTOM, scene.z);
+        // Cast shadow off — the cross-quads' transparent texture would
+        // otherwise paint a square-cross shadow on the ground.
+        mesh.castShadow = false;
         mesh.receiveShadow = true;
         group.add(mesh);
       } else if (topBlock.kind === BlockType.Bush) {
         if (!bushGeom)
           bushGeom = new THREE.BoxGeometry(BUSH_WIDTH, BUSH_HEIGHT, BUSH_WIDTH);
-        const mesh = new THREE.Mesh(bushGeom, materialFor(BlockType.Bush));
+        const mat = textures ? decorMaterialFor(BlockType.Bush) : materialFor(BlockType.Bush);
+        const mesh = new THREE.Mesh(bushGeom, mat);
         mesh.position.set(scene.x, BUSH_Y, scene.z);
-        mesh.castShadow = true;
+        // Same reason as the canopy / flowers — alpha-cropped texture, so
+        // the standard shadow pass would silhouette a square.
+        mesh.castShadow = false;
         mesh.receiveShadow = true;
         group.add(mesh);
       } else if (topBlock.kind === BlockType.Torch) {
@@ -407,6 +451,79 @@ function buildTorchMaterial(
   return new THREE.MeshLambertMaterial({
     color: FALLBACK_BLOCK_COLOR[BlockType.Torch] ?? 0xff00ff,
   });
+}
+
+/**
+ * Material for decorative top-layer kinds (sticks, flowers, bushes, tree
+ * canopy — task 400). The texture for each of these is RGBA with an
+ * alpha-zero backdrop so the silhouette can sit against the ground tile
+ * instead of painting a square colored cap. `transparent: true` lets the
+ * alpha take and `alphaTest` discards near-zero pixels at depth-test time
+ * so adjacent decor doesn't z-fight or blend awkwardly. `side: DoubleSide`
+ * is what makes the cross-quads geometry render from any angle without
+ * duplicating triangles. `colorOverride` is consumed only by the
+ * test-only no-texture fallback (matches the pattern in
+ * `buildBlockMaterial`).
+ */
+function buildDecorMaterial(
+  kind: BlockType,
+  textures: BlockTextureSet | null,
+  colorOverride?: number,
+): THREE.MeshLambertMaterial {
+  const tex = textures?.get(kind) ?? null;
+  if (tex) {
+    return new THREE.MeshLambertMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+    });
+  }
+  return new THREE.MeshLambertMaterial({
+    color: colorOverride ?? FALLBACK_BLOCK_COLOR[kind] ?? 0xff00ff,
+    side: THREE.DoubleSide,
+  });
+}
+
+/**
+ * Two perpendicular textured planes meeting along the Y axis — the standard
+ * "cross-quads" trick for billboard decor (Minecraft grass tufts, flowers).
+ * Each quad spans `width` along its in-plane axis and `height` along Y.
+ * The geometry is anchored at y=0, so a mesh placed at scene Y `y0` puts
+ * the quads' bottom edge on `y0`. Material side should be `DoubleSide` so
+ * each quad renders from either face without duplicating triangles.
+ *
+ * Exported only for unit tests; production code goes through the per-chunk
+ * cache in `buildChunkMesh`.
+ */
+export function buildCrossQuadsGeometry(
+  width: number,
+  height: number,
+): THREE.BufferGeometry {
+  const w = width / 2;
+  const h = height;
+  const positions = new Float32Array([
+    -w, 0, 0,    w, 0, 0,    w, h, 0,    -w, h, 0,
+    0, 0, -w,   0, 0, w,    0, h, w,    0, h, -w,
+  ]);
+  const uvs = new Float32Array([
+    0, 0,  1, 0,  1, 1,  0, 1,
+    0, 0,  1, 0,  1, 1,  0, 1,
+  ]);
+  const normals = new Float32Array([
+    0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1,
+    1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0,
+  ]);
+  const indices = new Uint16Array([
+    0, 1, 2,  0, 2, 3,
+    4, 5, 6,  4, 6, 7,
+  ]);
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+  geom.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  geom.setIndex(new THREE.BufferAttribute(indices, 1));
+  return geom;
 }
 
 /**

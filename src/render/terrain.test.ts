@@ -149,6 +149,78 @@ describe("buildTerrainMesh", () => {
   });
 });
 
+describe("Transparent decor rendering (task 400)", () => {
+  it("flowers render as cross-quads (8 verts / 12 indices) so each plane shows the silhouette from its axis", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 4, 4, { kind: BlockType.FlowerRed });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    expect(meshes).toHaveLength(1);
+    const mesh = meshes[0]!;
+    // Cross-quads: 8 vertices (two perpendicular quads, 4 corners each) and
+    // 12 indices (two triangles per quad).
+    const positions = mesh.geometry.getAttribute("position");
+    expect(positions.count).toBe(8);
+    const index = mesh.geometry.getIndex()!;
+    expect(index.count).toBe(12);
+    // No `castShadow` — alpha-cropped texture would otherwise paint a
+    // square cross on the ground.
+    expect(mesh.castShadow).toBe(false);
+    disposeTerrainMesh(g);
+  });
+
+  it("flowers of the same kind in one chunk share the cross-quads geometry", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 1, 1, { kind: BlockType.FlowerYellow });
+    setBlock(c.top, 2, 2, { kind: BlockType.FlowerYellow });
+    setBlock(c.top, 3, 3, { kind: BlockType.FlowerYellow });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    expect(meshes).toHaveLength(3);
+    expect(meshes[0]!.geometry).toBe(meshes[1]!.geometry);
+    expect(meshes[1]!.geometry).toBe(meshes[2]!.geometry);
+    disposeTerrainMesh(g);
+  });
+
+  it("bush, sticks, and tree canopy disable castShadow so the alpha-cropped texture doesn't silhouette a square", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 0, 0, { kind: BlockType.Bush });
+    setBlock(c.top, 2, 0, { kind: BlockType.Sticks });
+    setBlock(c.top, 4, 0, { kind: BlockType.Tree });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    // Tree splits into trunk + canopy; the trunk still casts a shadow.
+    const decorMeshesByX = new Map<number, THREE.Mesh[]>();
+    for (const m of meshes) {
+      const xKey = Math.round(m.position.x);
+      const arr = decorMeshesByX.get(xKey) ?? [];
+      arr.push(m);
+      decorMeshesByX.set(xKey, arr);
+    }
+    const bush = decorMeshesByX.get(1)![0]!;
+    const sticks = decorMeshesByX.get(3)![0]!;
+    expect(bush.castShadow).toBe(false);
+    expect(sticks.castShadow).toBe(false);
+    // Tree at x=5 has two meshes — the higher one is the canopy, the
+    // lower one the trunk. Canopy's `castShadow` is the load-bearing
+    // invariant for task 400; trunk keeps its shadow.
+    const treeMeshes = decorMeshesByX.get(5)!;
+    expect(treeMeshes).toHaveLength(2);
+    treeMeshes.sort((a, b) => a.position.y - b.position.y);
+    const trunk = treeMeshes[0]!;
+    const canopy = treeMeshes[1]!;
+    expect(trunk.castShadow).toBe(true);
+    expect(canopy.castShadow).toBe(false);
+    disposeTerrainMesh(g);
+  });
+});
+
 describe("Torch top-layer rendering (task 350)", () => {
   it("renders a Torch as a thin upright transparent mesh, not a full cell", () => {
     const c = emptyChunk();
