@@ -122,6 +122,8 @@ function itemIdFromWire(
       return ItemId.IronIngot;
     case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_INGOT:
       return ItemId.TungstenIngot;
+    case anarchy.v1.ItemId.ITEM_ID_TORCH:
+      return ItemId.Torch;
     default:
       return null;
   }

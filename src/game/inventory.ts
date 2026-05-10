@@ -89,6 +89,11 @@ export enum ItemId {
   CopperIngot = 30,
   IronIngot = 31,
   TungstenIngot = 32,
+  /**
+   * Task 350 placed-light source. Crafted from 1 Stick + 1 Coal → 4 Torches
+   * and placed via the standard right-click flow.
+   */
+  Torch = 33,
 }
 
 /** A non-empty pile of one item kind. */

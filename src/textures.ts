@@ -193,6 +193,12 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
     displayName: "Diamond Ore",
     minToolTier: ToolTier.Iron,
   },
+  [BlockType.Torch]: {
+    kind: BlockType.Torch,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/torch.png`,
+    displayName: "Torch",
+    minToolTier: null,
+  },
 };
 
 /**

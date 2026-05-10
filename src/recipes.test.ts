@@ -110,6 +110,14 @@ describe("recipes", () => {
         ],
         output: { item: ItemId.TungstenAxe, count: 1 },
       },
+      {
+        id: "torch",
+        ingredients: [
+          { item: ItemId.Stick, count: 1 },
+          { item: ItemId.Coal, count: 1 },
+        ],
+        output: { item: ItemId.Torch, count: 4 },
+      },
     ]);
   });
 

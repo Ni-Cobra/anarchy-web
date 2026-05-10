@@ -31,8 +31,10 @@ import {
   buildTerrainMesh,
   disposeTerrainMesh,
   tileCenterToScene,
+  torchPositionsInChunk,
 } from "./terrain.js";
 import { sampleDaylight } from "./daylight.js";
+import { TorchLights } from "./torch_lights.js";
 import {
   BeamLayer,
   BreakParticles,
@@ -128,6 +130,10 @@ export class Renderer {
   private readonly sun: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
   private readonly ground: THREE.Mesh;
+  // Per-torch point-light pool (task 350). Tracks Torch positions per
+  // loaded chunk and per-frame illuminates the 32 nearest around the
+  // local player at intensity scaled by the day-cycle's `nightFactor`.
+  private readonly torchLights: TorchLights;
   // Latest synced `time_of_day_seconds` from the wire layer. The renderer
   // reads this every frame to compute the current sample. Initialised to
   // `0` (sunrise) so the very first frame, before any TickUpdate has
@@ -232,9 +238,22 @@ export class Renderer {
     this.playerGroup = new THREE.Group();
     this.scene.add(this.playerGroup);
 
+    this.torchLights = new TorchLights();
+    this.scene.add(this.torchLights.scene());
+
     if (terrain !== null) {
       this.terrainGroup = buildTerrainMesh(terrain, this.blockTextures);
       this.scene.add(this.terrainGroup);
+      // Seed the torch-light layer from any chunks that came in with the
+      // initial terrain — `applyChunkLoaded` is the steady-state path, but
+      // construction with a non-null terrain bypasses it.
+      for (const [coord, chunk] of terrain.iter()) {
+        this.torchLights.setChunkTorches(
+          coord[0],
+          coord[1],
+          torchPositionsInChunk(coord[0], coord[1], chunk),
+        );
+      }
     }
 
     this.ghost = new GhostMesh(this.scene, this.blockTextures);
@@ -405,6 +424,11 @@ export class Renderer {
     const root = this.terrainGroupOrCreate();
     this.disposeChunkSubgroup(cx, cy, root);
     root.add(buildChunkMesh(cx, cy, chunk, this.blockTextures, this.terrain));
+    this.torchLights.setChunkTorches(
+      cx,
+      cy,
+      torchPositionsInChunk(cx, cy, chunk),
+    );
   }
 
   /**
@@ -414,6 +438,7 @@ export class Renderer {
   applyChunkUnloaded(cx: number, cy: number): void {
     if (!this.terrainGroup) return;
     this.disposeChunkSubgroup(cx, cy, this.terrainGroup);
+    this.torchLights.removeChunk(cx, cy);
   }
 
   private terrainGroupOrCreate(): THREE.Group {
@@ -456,6 +481,8 @@ export class Renderer {
     this.effects.dispose();
     this.beams.dispose();
     this.breakParticles.dispose();
+    this.torchLights.dispose();
+    this.scene.remove(this.torchLights.scene());
     this.scene.remove(this.chunkBorderGrid);
     this.chunkBorderGrid.geometry.dispose();
     (this.chunkBorderGrid.material as THREE.Material).dispose();
@@ -560,6 +587,11 @@ export class Renderer {
     // refresh the shadow camera matrix every frame is cheap (one matrix
     // multiply) and avoids ghost-shadows from a stale frustum.
     this.sun.shadow.camera.updateProjectionMatrix();
+    // Torches (task 350): light-pool driven by the same daylight sample
+    // and the same focus point as the sun. Pinning the focus to the local
+    // player keeps the "32 nearest torches" pick stable as the world
+    // streams in around them.
+    this.torchLights.update({ x: focus.x, z: focus.z }, sample.nightFactor);
   }
 
   private updateCamera(entities: readonly { id: PlayerId; x: number; y: number }[]) {

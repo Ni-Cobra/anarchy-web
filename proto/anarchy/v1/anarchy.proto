@@ -530,6 +530,10 @@ enum BlockType {
   BLOCK_TYPE_TUNGSTEN_ORE = 20;
   BLOCK_TYPE_COAL_ORE = 21;
   BLOCK_TYPE_DIAMOND_ORE = 22;
+  // Task 350 placed light source. Top-layer-only, non-solid (walk-through),
+  // low durability, axe-broken or hand-broken. Renders as a torch sprite +
+  // a per-block point light whose intensity scales with the night factor.
+  BLOCK_TYPE_TORCH = 23;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper
@@ -630,6 +634,9 @@ enum ItemId {
   ITEM_ID_COPPER_INGOT = 30;
   ITEM_ID_IRON_INGOT = 31;
   ITEM_ID_TUNGSTEN_INGOT = 32;
+  // Task 350 placed-light source. Crafted from 1 Stick + 1 Coal → 4 Torches
+  // and placed via the standard right-click flow.
+  ITEM_ID_TORCH = 33;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server

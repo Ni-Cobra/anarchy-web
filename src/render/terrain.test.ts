@@ -13,6 +13,7 @@ import {
   buildTerrainMesh,
   disposeTerrainMesh,
   tileCenterToScene,
+  torchPositionsInChunk,
 } from "./terrain.js";
 
 describe("tileCenterToScene", () => {
@@ -145,6 +146,54 @@ describe("buildTerrainMesh", () => {
     expect(meshes[0]!.material).toBe(meshes[1]!.material);
     expect(meshes[1]!.material).toBe(meshes[2]!.material);
     disposeTerrainMesh(g);
+  });
+});
+
+describe("Torch top-layer rendering (task 350)", () => {
+  it("renders a Torch as a thin upright transparent mesh, not a full cell", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 7, 8, { kind: BlockType.Torch });
+    const t = new Terrain();
+    t.insert(0, 0, c);
+    const g = buildTerrainMesh(t);
+    const meshes = g.children[0]!.children as THREE.Mesh[];
+    expect(meshes).toHaveLength(1);
+    const torch = meshes[0]!;
+    const params = (torch.geometry as THREE.BoxGeometry).parameters;
+    // A torch is *not* a full unit cell — that's the load-bearing
+    // affordance for "non-solid, walk-through".
+    expect(params.width).toBeLessThan(1);
+    expect(params.depth).toBeLessThan(1);
+    // No-texture test path: material falls back to a plain solid color
+    // (transparent + alphaTest only fire on the textured path), but the
+    // mesh must still be positioned and shaped like a torch.
+    expect(torch.position.x).toBeCloseTo(7.5);
+    expect(torch.position.z).toBeCloseTo(-8.5);
+    expect(torch.position.y).toBeGreaterThan(0);
+    disposeTerrainMesh(g);
+  });
+});
+
+describe("torchPositionsInChunk", () => {
+  it("returns scene-space centers for every Torch top-layer cell", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 0, 0, { kind: BlockType.Torch });
+    setBlock(c.top, 5, 3, { kind: BlockType.Torch });
+    // A non-Torch top block must be ignored.
+    setBlock(c.top, 1, 1, { kind: BlockType.Wood });
+    const positions = torchPositionsInChunk(0, 0, c);
+    expect(positions).toHaveLength(2);
+    const sorted = [...positions].sort((a, b) => a.x - b.x);
+    expect(sorted[0]).toEqual(tileCenterToScene(0, 0, 0, 0));
+    expect(sorted[1]).toEqual(tileCenterToScene(0, 0, 5, 3));
+  });
+
+  it("offsets by chunk coord", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 0, 0, { kind: BlockType.Torch });
+    const positions = torchPositionsInChunk(2, -1, c);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]).toEqual(tileCenterToScene(2, -1, 0, 0));
   });
 });
 

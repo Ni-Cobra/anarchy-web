@@ -115,6 +115,7 @@ const FALLBACK_BLOCK_COLOR: Partial<Record<BlockType, number>> = {
   [BlockType.Gravel]: 0x888276,
   [BlockType.StoneLight]: 0xa8aeb6,
   [BlockType.StoneDark]: 0x525255,
+  [BlockType.Torch]: 0xf6761a,
 };
 
 const GROUND_THICKNESS = 0.02;
@@ -170,6 +171,15 @@ const BUSH_WIDTH = 0.85;
 const BUSH_HEIGHT = 0.55;
 const BUSH_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
 const BUSH_Y = BUSH_BOTTOM + BUSH_HEIGHT / 2;
+
+// Torch (task 350): a small upright billboard so the painted sprite (haft +
+// flame) reads against whatever is behind it. Non-solid server-side, like
+// Sticks; only the texture's opaque pixels render thanks to `transparent:
+// true` + an alpha-test threshold on the material.
+const TORCH_WIDTH = 0.4;
+const TORCH_HEIGHT = 0.85;
+const TORCH_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
+const TORCH_Y = TORCH_BOTTOM + TORCH_HEIGHT / 2;
 
 /**
  * Build a per-chunk sub-group named `chunk:cx,cy`. Exported so the renderer
@@ -250,6 +260,11 @@ export function buildChunkMesh(
   let flowerGeom: THREE.BoxGeometry | null = null;
   let bushGeom: THREE.BoxGeometry | null = null;
 
+  // Torch geometry (task 350). One thin upright box per torch in the chunk;
+  // shares a single transparent material instance.
+  let torchGeom: THREE.BoxGeometry | null = null;
+  let torchMat: THREE.Material | null = null;
+
   const group = new THREE.Group();
   group.name = `chunk:${cx},${cy}`;
 
@@ -325,6 +340,18 @@ export function buildChunkMesh(
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         group.add(mesh);
+      } else if (topBlock.kind === BlockType.Torch) {
+        if (!torchGeom)
+          torchGeom = new THREE.BoxGeometry(TORCH_WIDTH, TORCH_HEIGHT, TORCH_WIDTH);
+        if (!torchMat) torchMat = buildTorchMaterial(textures);
+        const mesh = new THREE.Mesh(torchGeom, torchMat);
+        mesh.position.set(scene.x, TORCH_Y, scene.z);
+        // Don't cast shadow — the torch is a thin box with a transparent
+        // texture and the standard shadow pass would silhouette the full
+        // box, painting an opaque rectangle on the ground that doesn't
+        // match the painted flame.
+        mesh.receiveShadow = true;
+        group.add(mesh);
       } else {
         // Standard full-cell top block. Tree/Sticks/flowers/bushes branch
         // away above; we don't AO those because they aren't `is_full` on
@@ -354,6 +381,54 @@ export function buildChunkMesh(
     topGeom.dispose();
   }
   return group;
+}
+
+/**
+ * Build a transparent `MeshLambertMaterial` for the torch sprite. The torch
+ * texture is RGBA — opaque flame + haft pixels surrounded by fully
+ * transparent backdrop — so the renderer needs `transparent: true` for the
+ * alpha to take. `alphaTest` cuts the near-zero pixels at depth-test time so
+ * the box doesn't paint a translucent rectangle when viewed against another
+ * transparent surface. When no texture set is supplied (unit-test path) the
+ * material falls back to the warm flame color from `FALLBACK_BLOCK_COLOR`
+ * so the test renderer still produces a visible mesh.
+ */
+function buildTorchMaterial(
+  textures: BlockTextureSet | null,
+): THREE.MeshLambertMaterial {
+  const tex = textures?.get(BlockType.Torch) ?? null;
+  if (tex) {
+    return new THREE.MeshLambertMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.5,
+    });
+  }
+  return new THREE.MeshLambertMaterial({
+    color: FALLBACK_BLOCK_COLOR[BlockType.Torch] ?? 0xff00ff,
+  });
+}
+
+/**
+ * Scene-space positions of every Torch top-layer cell in `chunk` at
+ * `(cx, cy)`. The torch-light subsystem (`torch_lights.ts`) consumes this on
+ * `applyChunkLoaded` so each chunk's torches contribute to the per-frame
+ * "32 nearest" pick around the local player.
+ */
+export function torchPositionsInChunk(
+  cx: number,
+  cy: number,
+  chunk: Chunk,
+): Array<{ x: number; z: number }> {
+  const out: Array<{ x: number; z: number }> = [];
+  for (let y = 0; y < LAYER_SIZE; y++) {
+    for (let x = 0; x < LAYER_SIZE; x++) {
+      if (getBlock(chunk.top, x, y).kind !== BlockType.Torch) continue;
+      const scene = tileCenterToScene(cx, cy, x, y);
+      out.push({ x: scene.x, z: scene.z });
+    }
+  }
+  return out;
 }
 
 /**

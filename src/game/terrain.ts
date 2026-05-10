@@ -75,6 +75,13 @@ export enum BlockType {
   TungstenOre = 20,
   CoalOre = 21,
   DiamondOre = 22,
+  /**
+   * Task 350 placed-light source. Top-layer-only, non-solid (walk-through),
+   * low durability. Crafted from `Stick + Coal` → 4 Torches and placed via
+   * the standard right-click flow. The renderer wraps each torch in a
+   * `THREE.PointLight` whose intensity scales with the night factor.
+   */
+  Torch = 23,
 }
 
 /**

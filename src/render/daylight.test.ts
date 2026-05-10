@@ -65,6 +65,19 @@ describe("sampleDaylight angle / intensity", () => {
     expect(s.ambientIntensity).toBeCloseTo(NIGHT_AMBIENT);
   });
 
+  it("nightFactor is 0 from sunrise through sunset and 1 at midnight (task 350)", () => {
+    expect(sampleDaylight(0).nightFactor).toBeCloseTo(0);
+    expect(sampleDaylight(DAY_LENGTH_SECONDS * PHASE_NOON).nightFactor).toBeCloseTo(0);
+    expect(sampleDaylight(DAY_LENGTH_SECONDS * PHASE_SUNSET).nightFactor).toBeCloseTo(0);
+    expect(sampleDaylight(DAY_LENGTH_SECONDS * PHASE_MIDNIGHT).nightFactor).toBeCloseTo(1);
+    // Halfway from sunset to midnight, sun has dipped below horizon by sin(π/4).
+    const between = sampleDaylight(
+      DAY_LENGTH_SECONDS * (PHASE_SUNSET + (PHASE_MIDNIGHT - PHASE_SUNSET) / 2),
+    );
+    expect(between.nightFactor).toBeGreaterThan(0);
+    expect(between.nightFactor).toBeLessThan(1);
+  });
+
   it("intensity is monotonic from sunrise up to noon", () => {
     const a = sampleDaylight(DAY_LENGTH_SECONDS * 0.0);
     const b = sampleDaylight(DAY_LENGTH_SECONDS * 0.1);

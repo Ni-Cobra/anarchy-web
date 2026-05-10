@@ -35,6 +35,14 @@ export interface DaylightSample {
   readonly ambientColor: number;
   /** Hex colour for the scene background (sky). */
   readonly skyColor: number;
+  /**
+   * Night factor in `[0, 1]`. `0` whenever the sun is on or above the
+   * horizon (sunrise / day / sunset); ramps to `1` at midnight. Consumers
+   * like the torch / lantern light pool (task 350 / 370) scale their
+   * intensity by this so artificial light only meaningfully contributes
+   * once natural light has fallen.
+   */
+  readonly nightFactor: number;
 }
 
 // Intensity envelope. The sun never goes fully dark (otherwise night is a
@@ -120,6 +128,7 @@ export function sampleDaylight(seconds: number): DaylightSample {
     sunColor,
     ambientColor,
     skyColor,
+    nightFactor: nightWeight,
   };
 }
 

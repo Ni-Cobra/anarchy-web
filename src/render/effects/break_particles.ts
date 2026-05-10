@@ -193,6 +193,8 @@ export const DEFAULT_BREAK_PARTICLE_COLORS: Readonly<Record<BlockType, number>> 
   [BlockType.TungstenOre]: 0x4d5560,
   [BlockType.CoalOre]: 0x18181a,
   [BlockType.DiamondOre]: 0x4ac2e5,
+  // Task 350: a broken torch puffs warm flame-coloured shards.
+  [BlockType.Torch]: 0xf6761a,
 };
 
 export function defaultBreakParticleColor(kind: BlockType): number {
