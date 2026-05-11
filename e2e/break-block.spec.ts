@@ -256,6 +256,139 @@ test("ground-replace held break drops the broken kind into the breaker's invento
   }
 });
 
+test("held break: top-layer break does NOT fall through to ground without a release", async ({
+  page,
+}) => {
+  // Task 500: holding LMB through a top-layer break must STOP there. A
+  // common accident before this fix was holding to clear a torch and
+  // accidentally digging up the grass underneath the same hold. The
+  // server now arms a "needs release" latch on a top-break completion;
+  // the resolver refuses the follow-on `GroundReplace` until the client
+  // sends `BreakIntent { target: null }` (mouseup / cursor-off).
+  //
+  // Setup: torch top + grass ground at (3, 0). Default loadout has 10
+  // Gold in slot 0 (`places_block = Gold`, `is_full`), so a ground-replace
+  // resolution is normally available — making the "ground stays Grass"
+  // assertion meaningful (otherwise the resolver would drop the intent
+  // for lack of replacement, regardless of the latch).
+  const cx = 0,
+    cy = 0,
+    lx = 3,
+    ly = 0;
+  await adminSetBlock(cx, cy, "ground", lx, ly, "grass");
+  await adminSetBlock(cx, cy, "top", lx, ly, "torch");
+
+  try {
+    await page.goto(`/?username=torch-latch&color=0`);
+    await page.waitForFunction(() => window.__anarchy !== undefined);
+    await page.waitForFunction(() => {
+      const a = window.__anarchy;
+      if (!a) return false;
+      return a.getLocalPlayerId() !== null && a.inventory.countOf(4) === 10;
+    });
+    // Both the seeded torch (client kind 23) and the grass ground (client
+    // kind 1) must have round-tripped through the wire before we start
+    // the hold. (Client BlockType numbers diverge from the server by +1
+    // past Sticks because of the `Hidden` occlusion sentinel — see
+    // `client/src/game/terrain.ts`.)
+    await page.waitForFunction(
+      ({ cx, cy, lx, ly }) => {
+        const a = window.__anarchy;
+        if (!a) return false;
+        const chunk = a.terrain.get(cx, cy);
+        if (!chunk) return false;
+        const idx = ly * 16 + lx;
+        const top = chunk.top.blocks[idx];
+        const ground = chunk.ground.blocks[idx];
+        return !!top && top.kind === 23 && !!ground && ground.kind === 1;
+      },
+      { cx, cy, lx, ly },
+    );
+
+    // Hold the break — kicks the heartbeat in for repeated wire-side
+    // resends. Torch max_durability = 2 → ~100 ms at 20 Hz.
+    await page.evaluate((coords) => {
+      const [cx, cy, lx, ly] = coords;
+      window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
+    }, [cx, cy, lx, ly] as const);
+    await page.waitForFunction(
+      ({ cx, cy, lx, ly }) => {
+        const a = window.__anarchy;
+        if (!a) return false;
+        const chunk = a.terrain.get(cx, cy);
+        if (!chunk) return false;
+        const idx = ly * 16 + lx;
+        const top = chunk.top.blocks[idx];
+        return !!top && top.kind === 0;
+      },
+      { cx, cy, lx, ly },
+      { timeout: 5000 },
+    );
+
+    // The client is still "holding LMB" — keep heartbeating the same
+    // target for ~1.5 s (>> grass max_durability = 5 ticks = 250 ms).
+    // Without the latch the ground would have been swapped to Gold and a
+    // Gold consumed; with the latch the cell must remain Grass and Gold
+    // count must stay at 10. The heartbeat lives on a setInterval at
+    // BREAK_HEARTBEAT_TICKS * INPUT_TICK_INTERVAL_MS in
+    // bootstrap/break_place.ts, so just re-shipping the same intent
+    // here gives the server multiple chances to roll into the ground.
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate((coords) => {
+        const [cx, cy, lx, ly] = coords;
+        window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
+      }, [cx, cy, lx, ly] as const);
+      await page.waitForTimeout(200);
+    }
+    expect(
+      await page.evaluate(
+        ({ cx, cy, lx, ly }) => {
+          const a = window.__anarchy!;
+          const chunk = a.terrain.get(cx, cy)!;
+          return chunk.ground.blocks[ly * 16 + lx]!.kind;
+        },
+        { cx, cy, lx, ly },
+      ),
+    ).toBe(1);
+    expect(
+      await page.evaluate(() => window.__anarchy!.inventory.countOf(4)),
+    ).toBe(10);
+
+    // Release + re-hold. The latch is cleared by the wire-side `null` and
+    // the next Some(target) starts a fresh session that resolves as a
+    // ground-replace — grass breaks in ~5 ticks (250 ms), the cell swaps
+    // to Gold, and the breaker's Gold count drops by 1.
+    await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
+    await page.evaluate((coords) => {
+      const [cx, cy, lx, ly] = coords;
+      window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
+    }, [cx, cy, lx, ly] as const);
+    await page.waitForFunction(
+      ({ cx, cy, lx, ly }) => {
+        const a = window.__anarchy;
+        if (!a) return false;
+        const chunk = a.terrain.get(cx, cy);
+        if (!chunk) return false;
+        const idx = ly * 16 + lx;
+        const ground = chunk.ground.blocks[idx];
+        return !!ground && ground.kind === 4;
+      },
+      { cx, cy, lx, ly },
+      { timeout: 5000 },
+    );
+    await page.waitForFunction(
+      () => window.__anarchy!.inventory.countOf(4) === 9,
+      undefined,
+      { timeout: 5000 },
+    );
+    await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
+  } finally {
+    // Restore the natural worldgen at the test cell for downstream specs.
+    await adminSetBlock(cx, cy, "top", lx, ly, "air").catch(() => {});
+    await adminSetBlock(cx, cy, "ground", lx, ly, "grass").catch(() => {});
+  }
+});
+
 test("held break: release mid-break recovers the partial damage", async ({
   browser,
 }) => {

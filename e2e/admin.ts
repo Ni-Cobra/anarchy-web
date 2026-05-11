@@ -21,7 +21,8 @@ export type AdminBlockKind =
   | "stone"
   | "gold"
   | "tree"
-  | "sticks";
+  | "sticks"
+  | "torch";
 
 export type AdminBlockLayer = "top" | "ground";
 
