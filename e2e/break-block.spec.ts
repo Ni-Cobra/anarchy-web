@@ -389,6 +389,117 @@ test("held break: top-layer break does NOT fall through to ground without a rele
   }
 });
 
+test("held break: ground-replace completion does NOT chew through the new ground without a release", async ({
+  page,
+}) => {
+  // Task 560: the per-cell latch generalizes task 500 — any break
+  // completion (top OR ground) at (x, y) must block follow-on ground
+  // breaks at the same cell until the client sends `BreakIntent { target:
+  // null }`. Before the fix, holding through a Wood ground break would
+  // immediately resolve as a fresh `GroundReplace` against the newly-
+  // placed Gold and keep consuming hotbar Gold every cycle.
+  //
+  // Setup: Wood ground at (3, 0). Default loadout has 10 Gold in slot 0
+  // (`places_block = Gold`, `is_full`). The held break swaps the ground
+  // to Gold (slot 0: 10 → 9, +1 Wood drop). The follow-on hold must
+  // leave the cell Gold and Gold count at 9.
+  const cx = 0,
+    cy = 0,
+    lx = 3,
+    ly = 0;
+  await adminSetBlock(cx, cy, "ground", lx, ly, "wood");
+
+  try {
+    await page.goto(`/?username=ground-latch&color=0`);
+    await page.waitForFunction(() => window.__anarchy !== undefined);
+    await page.waitForFunction(() => {
+      const a = window.__anarchy;
+      if (!a) return false;
+      return a.getLocalPlayerId() !== null && a.inventory.countOf(4) === 10;
+    });
+    await page.waitForFunction(
+      ({ cx, cy, lx, ly }) => {
+        const a = window.__anarchy;
+        if (!a) return false;
+        const chunk = a.terrain.get(cx, cy);
+        if (!chunk) return false;
+        const idx = ly * 16 + lx;
+        const ground = chunk.ground.blocks[idx];
+        return !!ground && ground.kind === 2;
+      },
+      { cx, cy, lx, ly },
+    );
+
+    // Hold the break. Wood ground max_durability = 10 → ~500 ms at 20 Hz.
+    await page.evaluate((coords) => {
+      const [cx, cy, lx, ly] = coords;
+      window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
+    }, [cx, cy, lx, ly] as const);
+
+    // Ground swaps to Gold (kind 4 on the client), Wood (item id 2) lands
+    // in the inventory, and the Gold count drops by one.
+    await page.waitForFunction(
+      ({ cx, cy, lx, ly }) => {
+        const a = window.__anarchy;
+        if (!a) return false;
+        const chunk = a.terrain.get(cx, cy);
+        if (!chunk) return false;
+        const idx = ly * 16 + lx;
+        const ground = chunk.ground.blocks[idx];
+        return !!ground && ground.kind === 4;
+      },
+      { cx, cy, lx, ly },
+      { timeout: 5000 },
+    );
+    await page.waitForFunction(
+      () =>
+        window.__anarchy!.inventory.countOf(2) === 1 &&
+        window.__anarchy!.inventory.countOf(4) === 9,
+      undefined,
+      { timeout: 5000 },
+    );
+
+    // Client is still "holding LMB" — keep heartbeating the same target
+    // for ~1.5 s. Without the per-cell latch the resolver would
+    // immediately re-resolve as a GroundReplace (Gold → Gold replace,
+    // visually a no-op) every ~50 ticks and silently drain Gold over
+    // time. With the latch the cell stays Gold and inventory is
+    // unchanged.
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate((coords) => {
+        const [cx, cy, lx, ly] = coords;
+        window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
+      }, [cx, cy, lx, ly] as const);
+      await page.waitForTimeout(200);
+    }
+    expect(
+      await page.evaluate(
+        ({ cx, cy, lx, ly }) => {
+          const a = window.__anarchy!;
+          const chunk = a.terrain.get(cx, cy)!;
+          return chunk.ground.blocks[ly * 16 + lx]!.kind;
+        },
+        { cx, cy, lx, ly },
+      ),
+    ).toBe(4);
+    expect(
+      await page.evaluate(() => window.__anarchy!.inventory.countOf(4)),
+    ).toBe(9);
+    expect(
+      await page.evaluate(() => window.__anarchy!.inventory.countOf(2)),
+    ).toBe(1);
+
+    // Release. The latch clears server-side; a subsequent fresh hold
+    // would land another break — that branch is covered by the unit
+    // tests in `world_break_replace.rs`.
+    await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
+  } finally {
+    // Restore the natural Grass ground so later specs see the seeded
+    // worldgen at (3, 0).
+    await adminSetBlock(cx, cy, "ground", lx, ly, "grass").catch(() => {});
+  }
+});
+
 test("held break: release mid-break recovers the partial damage", async ({
   browser,
 }) => {
