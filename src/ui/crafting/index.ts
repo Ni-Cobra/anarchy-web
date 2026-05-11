@@ -28,8 +28,10 @@
 
 import type { Inventory } from "../../game/index.js";
 import { recipeById } from "../../recipes.js";
+import { attachTooltip, type TooltipHandle } from "../tooltip.js";
 import { makeRecipeRow } from "./row.js";
 import { injectStyle } from "./style.js";
+import { makeRecipeTooltip } from "./tooltip.js";
 
 export interface CraftingUiOptions {
   /** Reads the current inventory mirror. Called on every render. */
@@ -74,6 +76,13 @@ export function mountCraftingUi(
   // Accumulated translateY (in CSS pixels) on `list` that keeps the hovered
   // row visually pinned across re-renders. Reset to 0 when no row is hovered.
   let anchorOffset = 0;
+  // Per-row tooltip handles; replaced wholesale on every render so each row
+  // gets a fresh `attachTooltip` against its live recipe + inventory thunk.
+  const tooltipHandles: TooltipHandle[] = [];
+  const detachAllTooltips = (): void => {
+    for (const h of tooltipHandles) h.detach();
+    tooltipHandles.length = 0;
+  };
 
   const applyAnchor = (): void => {
     list.style.transform = anchorOffset === 0 ? "" : `translateY(${anchorOffset}px)`;
@@ -105,6 +114,7 @@ export function mountCraftingUi(
       applyAnchor();
     }
 
+    detachAllTooltips();
     list.replaceChildren();
     if (displayIds.length === 0) {
       const empty = document.createElement("div");
@@ -125,6 +135,9 @@ export function mountCraftingUi(
         if (id === orphanId) return;
         options.sendCraft(recipe.id);
       });
+      tooltipHandles.push(
+        attachTooltip(row, () => makeRecipeTooltip(recipe, options.getInventory())),
+      );
       list.appendChild(row);
     }
 
@@ -193,6 +206,7 @@ export function mountCraftingUi(
     render,
     unmount: () => {
       unsubscribe();
+      detachAllTooltips();
       document.removeEventListener("mousemove", onDocMouseMove);
       root.remove();
     },

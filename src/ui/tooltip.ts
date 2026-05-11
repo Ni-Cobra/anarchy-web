@@ -89,6 +89,24 @@ export interface TooltipHandle {
 }
 
 /**
+ * Content surfaced by a `getContent` thunk: a single line of plain text,
+ * or a caller-built HTMLElement for richer bodies (icons, multi-line
+ * layouts — used by the crafting recipe tooltip). `null` keeps the
+ * tooltip hidden. Plain-text consumers stay on the string branch so
+ * `node.textContent === content` still holds — the existing inventory
+ * cell tooltips depend on it.
+ */
+export type TooltipContent = string | HTMLElement | null;
+
+function applyContent(node: HTMLElement, value: string | HTMLElement): void {
+  if (typeof value === "string") {
+    node.textContent = value;
+  } else {
+    node.replaceChildren(value);
+  }
+}
+
+/**
  * Wire hover handlers on `target` so the shared tooltip node surfaces
  * `getContent()` after `SHOW_DELAY_MS` and tracks the cursor. Returning
  * `null` from `getContent` keeps (or makes) the tooltip hidden — useful
@@ -96,7 +114,7 @@ export interface TooltipHandle {
  */
 export function attachTooltip(
   target: HTMLElement,
-  getContent: () => string | null,
+  getContent: () => TooltipContent,
 ): TooltipHandle {
   let showTimer: ReturnType<typeof setTimeout> | null = null;
   let lastX = 0;
@@ -111,7 +129,7 @@ export function attachTooltip(
       return;
     }
     const node = ensureSharedNode();
-    node.textContent = content;
+    applyContent(node, content);
     node.style.display = "block";
     visible = true;
     position(node, lastX, lastY);
@@ -144,7 +162,7 @@ export function attachTooltip(
       hideNow();
       return;
     }
-    sharedNode.textContent = content;
+    applyContent(sharedNode, content);
     position(sharedNode, lastX, lastY);
   };
 

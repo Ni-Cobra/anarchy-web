@@ -156,6 +156,58 @@ const STYLE = `
     padding: 0 2px;
     user-select: none;
   }
+  /*
+   * Recipe hover tooltip (task 470). Rendered inside the shared
+   * anarchy-tooltip node — the tooltip primitive owns the background,
+   * border, and padding, so this only styles the layout of the recipe
+   * body (title row above an ingredient list).
+   */
+  .anarchy-crafting-tooltip {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .anarchy-crafting-tooltip-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .anarchy-crafting-tooltip-ingredients {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .anarchy-crafting-tooltip-ingredient {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .anarchy-crafting-tooltip-need {
+    min-width: 22px;
+    text-align: right;
+    color: rgba(240, 240, 240, 0.75);
+  }
+  .anarchy-crafting-tooltip-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  }
+  .anarchy-crafting-tooltip-name {
+    flex: 1 1 auto;
+    white-space: nowrap;
+  }
+  .anarchy-crafting-tooltip-have {
+    color: rgba(240, 240, 240, 0.55);
+    font-variant-numeric: tabular-nums;
+  }
+  .anarchy-crafting-tooltip-have.short {
+    color: #e07c7c;
+  }
 `;
 
 export function injectStyle(): void {

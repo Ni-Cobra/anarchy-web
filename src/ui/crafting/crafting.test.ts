@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   HOTBAR_SLOTS,
@@ -8,7 +8,15 @@ import {
   ItemId,
   type Slot,
 } from "../../game/index.js";
+import { _resetTooltipForTests } from "../tooltip.js";
 import { mountCraftingUi } from "./index.js";
+
+const TOOLTIP_ID = "anarchy-tooltip";
+const SHOW_DELAY_MS = 300;
+
+function pointer(type: string): PointerEvent {
+  return new PointerEvent(type, { clientX: 10, clientY: 10, bubbles: true });
+}
 
 function emptySlots(updates: Record<number, Slot> = {}): Slot[] {
   const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
@@ -24,12 +32,14 @@ describe("crafting UI", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     document.head.innerHTML = "";
+    _resetTooltipForTests();
     inventory = new Inventory();
   });
 
   afterEach(() => {
     document.body.innerHTML = "";
     document.head.innerHTML = "";
+    _resetTooltipForTests();
   });
 
   it("mounts a closed panel with the empty-state message when no recipes are craftable", () => {
@@ -432,5 +442,205 @@ describe("crafting UI", () => {
 
     window.removeEventListener("mousedown", onWindow);
     window.removeEventListener("contextmenu", onWindow);
+  });
+
+  describe("recipe tooltip on hover", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function hover(row: HTMLElement): void {
+      row.dispatchEvent(pointer("pointerenter"));
+      vi.advanceTimersByTime(SHOW_DELAY_MS);
+    }
+
+    it("surfaces the output name and each ingredient with required counts after the hover delay", () => {
+      // wood-pickaxe = 3 Wood + 2 Stick → 1 WoodPickaxe.
+      inventory.replaceFromWire(
+        emptySlots({
+          0: { item: ItemId.Wood, count: 3 },
+          [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
+        }),
+        null,
+        null,
+        ["wood-pickaxe"],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const row = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="wood-pickaxe"]',
+      )!;
+
+      // Pre-delay: tooltip is not yet visible.
+      row.dispatchEvent(pointer("pointerenter"));
+      vi.advanceTimersByTime(SHOW_DELAY_MS - 1);
+      let node = document.getElementById(TOOLTIP_ID);
+      expect(node === null || node.style.display === "none").toBe(true);
+
+      vi.advanceTimersByTime(1);
+      node = document.getElementById(TOOLTIP_ID)!;
+      expect(node.style.display).toBe("block");
+      const body = node.querySelector(".anarchy-crafting-tooltip");
+      expect(body).not.toBeNull();
+
+      const title = body!.querySelector(".anarchy-crafting-tooltip-title")!;
+      expect(title.textContent).toContain("Wood Pickaxe");
+
+      const ingredients = Array.from(
+        body!.querySelectorAll<HTMLElement>(".anarchy-crafting-tooltip-ingredient"),
+      );
+      expect(ingredients).toHaveLength(2);
+      expect(ingredients[0].textContent).toContain("3 ×");
+      expect(ingredients[0].textContent).toContain("Wood");
+      expect(ingredients[1].textContent).toContain("2 ×");
+      expect(ingredients[1].textContent).toContain("Stick");
+    });
+
+    it("annotates each ingredient row with the player's current have-count", () => {
+      inventory.replaceFromWire(
+        emptySlots({
+          0: { item: ItemId.Wood, count: 5 },
+          [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
+        }),
+        null,
+        null,
+        ["wood-pickaxe"],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const row = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="wood-pickaxe"]',
+      )!;
+      hover(row);
+
+      const haves = Array.from(
+        document.querySelectorAll<HTMLElement>(".anarchy-crafting-tooltip-have"),
+      );
+      expect(haves.map((el) => el.textContent)).toEqual([
+        "(have 5)",
+        "(have 2)",
+      ]);
+      // Both ingredients are satisfied (5 ≥ 3, 2 ≥ 2) → no `short` class.
+      for (const el of haves) {
+        expect(el.classList.contains("short")).toBe(false);
+      }
+    });
+
+    it("flags ingredients with insufficient have-count via the `short` class (orphan recipe)", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+        null,
+        null,
+        ["sticks", "wood-pickaxe"],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const sticks = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="sticks"]',
+      )!;
+      // Track hover via the document mousemove that the panel listens to,
+      // then re-fetch the (re-rendered) orphan row before opening the tooltip.
+      sticks.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      inventory.replaceFromWire(emptySlots(), null, null, ["wood-pickaxe"]);
+      const orphan = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="sticks"]',
+      )!;
+      hover(orphan);
+
+      const have = document.querySelector<HTMLElement>(
+        ".anarchy-crafting-tooltip-have",
+      )!;
+      expect(have.textContent).toBe("(have 0)");
+      expect(have.classList.contains("short")).toBe(true);
+    });
+
+    it("hides the tooltip when the cursor leaves the row", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+        null,
+        null,
+        ["sticks"],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const row = document.querySelector<HTMLElement>(
+        ".anarchy-crafting-row",
+      )!;
+      hover(row);
+      const node = document.getElementById(TOOLTIP_ID)!;
+      expect(node.style.display).toBe("block");
+
+      row.dispatchEvent(pointer("pointerleave"));
+      expect(node.style.display).toBe("none");
+    });
+
+    it("re-renders the tooltip body fresh when the cursor moves to a different recipe row", () => {
+      inventory.replaceFromWire(
+        emptySlots({
+          0: { item: ItemId.Wood, count: 3 },
+          [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
+        }),
+        null,
+        null,
+        ["sticks", "wood-pickaxe"],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const sticksRow = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="sticks"]',
+      )!;
+      hover(sticksRow);
+      expect(
+        document
+          .querySelector(".anarchy-crafting-tooltip-title")!
+          .textContent,
+      ).toContain("Stick");
+
+      sticksRow.dispatchEvent(pointer("pointerleave"));
+      const pickaxeRow = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="wood-pickaxe"]',
+      )!;
+      hover(pickaxeRow);
+      expect(
+        document
+          .querySelector(".anarchy-crafting-tooltip-title")!
+          .textContent,
+      ).toContain("Wood Pickaxe");
+    });
+
+    it("unmount detaches every row tooltip so a fresh mount starts clean", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+        null,
+        null,
+        ["sticks"],
+      );
+      const ui = mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const row = document.querySelector<HTMLElement>(
+        ".anarchy-crafting-row",
+      )!;
+      hover(row);
+      ui.unmount();
+      const node = document.getElementById(TOOLTIP_ID);
+      // Tooltip is hidden after unmount, even though the shared DOM node
+      // may still exist (the primitive keeps it cached on document.body).
+      expect(node === null || node.style.display === "none").toBe(true);
+    });
   });
 });
