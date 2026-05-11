@@ -118,9 +118,16 @@ const STYLE = `
     background: rgba(40, 110, 220, 0.45);
     border-color: rgba(90, 160, 255, 0.85);
   }
+  /* Task 530 fourth equipment kind. Yellow reads "earth-tool" / shovel
+     against the orange/green/blue siblings without colliding. */
+  .anarchy-inventory-slot.equipped-shovel {
+    background: rgba(210, 180, 30, 0.45);
+    border-color: rgba(245, 215, 80, 0.85);
+  }
   .anarchy-inventory-slot.equipped-pickaxe.selected,
   .anarchy-inventory-slot.equipped-axe.selected,
-  .anarchy-inventory-slot.equipped-utility.selected {
+  .anarchy-inventory-slot.equipped-utility.selected,
+  .anarchy-inventory-slot.equipped-shovel.selected {
     border-color: #ffffff;
   }
   .anarchy-inventory-icon {

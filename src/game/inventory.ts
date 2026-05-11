@@ -114,6 +114,16 @@ export enum ItemId {
    * via the standard right-click flow.
    */
   Chest = 36,
+  /**
+   * Task 530 third tool family — shovels in five material tiers. Mining
+   * `Sand`, `Dirt`, `Gravel`, `Grass` with the matching tier is fast and
+   * drops normally; wrong tool falls back to the soft tool gate (task 520).
+   */
+  WoodShovel = 37,
+  StoneShovel = 38,
+  CopperShovel = 39,
+  IronShovel = 40,
+  TungstenShovel = 41,
 }
 
 /** A non-empty pile of one item kind. */
@@ -133,9 +143,9 @@ export type Slot = ItemStack | null;
  * Identifies one of the equipment-slot mini-hotbar cells. Mirrors the proto
  * `ToolKind` enum and the server's `game::ToolKind`. Pickaxe and Axe land
  * with task 100; Utility (task 360) is the third slot, sitting next to
- * them — empty by default until utility items (lantern …) ship.
+ * them; Shovel (task 530) is the fourth.
  */
-export type ToolKind = "pickaxe" | "axe" | "utility";
+export type ToolKind = "pickaxe" | "axe" | "utility" | "shovel";
 
 /**
  * `true` iff `item` is one of the five pickaxe tiers. Used by the
@@ -171,10 +181,22 @@ export function isUtility(item: ItemId): boolean {
   return item === ItemId.Lantern;
 }
 
+/** True iff `item` is one of the five shovel tiers (task 530). */
+export function isShovel(item: ItemId): boolean {
+  return (
+    item === ItemId.WoodShovel ||
+    item === ItemId.StoneShovel ||
+    item === ItemId.CopperShovel ||
+    item === ItemId.IronShovel ||
+    item === ItemId.TungstenShovel
+  );
+}
+
 /** Tool family the item belongs to, or `null` for non-tool items. */
 export function toolKindOf(item: ItemId): ToolKind | null {
   if (isPickaxe(item)) return "pickaxe";
   if (isAxe(item)) return "axe";
+  if (isShovel(item)) return "shovel";
   if (isUtility(item)) return "utility";
   return null;
 }
@@ -194,6 +216,7 @@ export class Inventory {
   private equippedPickaxeSlot: number | null = null;
   private equippedAxeSlot: number | null = null;
   private equippedUtilitySlot: number | null = null;
+  private equippedShovelSlot: number | null = null;
   private craftable: readonly string[] = [];
   private listeners: Array<() => void> = [];
 
@@ -226,6 +249,8 @@ export class Inventory {
         return this.equippedAxeSlot;
       case "utility":
         return this.equippedUtilitySlot;
+      case "shovel":
+        return this.equippedShovelSlot;
     }
   }
 
@@ -299,6 +324,7 @@ export class Inventory {
     equippedAxeSlot: number | null = null,
     craftableRecipeIds: readonly string[] = [],
     equippedUtilitySlot: number | null = null,
+    equippedShovelSlot: number | null = null,
   ): void {
     if (slots.length !== INVENTORY_SIZE) {
       throw new Error(
@@ -309,6 +335,7 @@ export class Inventory {
     this.equippedPickaxeSlot = normalizeEquipped(this.slots, equippedPickaxeSlot, "pickaxe");
     this.equippedAxeSlot = normalizeEquipped(this.slots, equippedAxeSlot, "axe");
     this.equippedUtilitySlot = normalizeEquipped(this.slots, equippedUtilitySlot, "utility");
+    this.equippedShovelSlot = normalizeEquipped(this.slots, equippedShovelSlot, "shovel");
     this.craftable = [...craftableRecipeIds].sort();
     for (const listener of this.listeners) listener();
   }

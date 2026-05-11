@@ -56,6 +56,7 @@ export function paintSlot(
   cell.classList.toggle("equipped-pickaxe", equipped === "pickaxe");
   cell.classList.toggle("equipped-axe", equipped === "axe");
   cell.classList.toggle("equipped-utility", equipped === "utility");
+  cell.classList.toggle("equipped-shovel", equipped === "shovel");
   cell.replaceChildren();
   if (slot === null) return;
   const icon = document.createElement("div");
@@ -112,6 +113,8 @@ function utilityPlaceholder(kind: ToolKind): ItemStack | null {
       return { item: ItemId.WoodPickaxe, count: 1 };
     case "axe":
       return { item: ItemId.WoodAxe, count: 1 };
+    case "shovel":
+      return { item: ItemId.WoodShovel, count: 1 };
     case "utility":
       return null;
   }

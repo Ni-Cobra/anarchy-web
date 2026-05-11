@@ -48,6 +48,7 @@ import { applyItemIconStyle } from "./cells.js";
 export const EQUIP_PICKAXE_SLOT_ID = -1;
 export const EQUIP_AXE_SLOT_ID = -2;
 export const EQUIP_UTILITY_SLOT_ID = -3;
+export const EQUIP_SHOVEL_SLOT_ID = -4;
 
 /**
  * Squared cursor-movement threshold (in CSS pixels) that flips a
@@ -80,6 +81,7 @@ export function equipKindForSentinel(idx: number): ToolKind | null {
   if (idx === EQUIP_PICKAXE_SLOT_ID) return "pickaxe";
   if (idx === EQUIP_AXE_SLOT_ID) return "axe";
   if (idx === EQUIP_UTILITY_SLOT_ID) return "utility";
+  if (idx === EQUIP_SHOVEL_SLOT_ID) return "shovel";
   return null;
 }
 

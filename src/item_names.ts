@@ -254,6 +254,36 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: BlockType.Chest,
     textureUrl: `${BLOCK_TEXTURES_BASE}/chest.png`,
   },
+  [ItemId.WoodShovel]: {
+    id: ItemId.WoodShovel,
+    displayName: "Wood Shovel",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/wood-shovel.png`,
+  },
+  [ItemId.StoneShovel]: {
+    id: ItemId.StoneShovel,
+    displayName: "Stone Shovel",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/stone-shovel.png`,
+  },
+  [ItemId.CopperShovel]: {
+    id: ItemId.CopperShovel,
+    displayName: "Copper Shovel",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/copper-shovel.png`,
+  },
+  [ItemId.IronShovel]: {
+    id: ItemId.IronShovel,
+    displayName: "Iron Shovel",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/iron-shovel.png`,
+  },
+  [ItemId.TungstenShovel]: {
+    id: ItemId.TungstenShovel,
+    displayName: "Tungsten Shovel",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/tungsten-shovel.png`,
+  },
 };
 
 /**

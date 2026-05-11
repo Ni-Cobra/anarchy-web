@@ -294,6 +294,11 @@ enum ToolKind {
   // the source slot's `ItemId::tool_kind` exactly the same way as the
   // existing kinds.
   TOOL_KIND_UTILITY = 3;
+  // Task 530 fourth equipment slot, sitting next to pickaxe / axe /
+  // utility in the mini-hotbar. Shovels fast-mine `Sand`, `Dirt`,
+  // `Gravel`, `Grass` with the matching tier; wrong tool falls back to
+  // the soft tool gate (task 520) — slow and dropless.
+  TOOL_KIND_SHOVEL = 4;
 }
 
 // Client→server "equip the tool currently at `source_slot` into the
@@ -748,6 +753,16 @@ enum ItemId {
   // Task 420 placeable storage. Crafted from 8 Wood; places `BLOCK_TYPE_CHEST`
   // via the standard right-click flow. Stacks like a normal block item.
   ITEM_ID_CHEST = 36;
+  // Task 530 third tool family — shovels in five material tiers. Mining
+  // `Sand`, `Dirt`, `Gravel`, `Grass` with the matching shovel is fast and
+  // drops normally; mining them with the wrong tool falls back to the
+  // soft tool gate (task 520) — slow and dropless. Recipes mirror the
+  // axe ladder exactly.
+  ITEM_ID_WOOD_SHOVEL = 37;
+  ITEM_ID_STONE_SHOVEL = 38;
+  ITEM_ID_COPPER_SHOVEL = 39;
+  ITEM_ID_IRON_SHOVEL = 40;
+  ITEM_ID_TUNGSTEN_SHOVEL = 41;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server
@@ -789,6 +804,10 @@ message InventoryUpdate {
   // paints blue (vs. orange/green for pickaxe/axe) so the three slots
   // stay visually distinct.
   int32 equipped_utility_slot = 7;
+  // Inventory slot index of the equipped shovel (task 530) — see
+  // `equipped_pickaxe_slot`. Empty by default; populated when a shovel
+  // tier is equipped. The matching cell paints yellow.
+  int32 equipped_shovel_slot = 8;
   // Recipes (task 090) the player can currently craft from their pooled
   // inventory + hotbar contents. Stable string ids — `"sticks"`,
   // `"wood-pickaxe"`, etc. — that the client looks up against its own

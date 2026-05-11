@@ -65,6 +65,7 @@ import {
   attachDragDrop,
   EQUIP_AXE_SLOT_ID,
   EQUIP_PICKAXE_SLOT_ID,
+  EQUIP_SHOVEL_SLOT_ID,
   EQUIP_UTILITY_SLOT_ID,
   equipKindForSentinel,
 } from "./dragdrop.js";
@@ -162,6 +163,7 @@ export function mountInventoryUi(
   const equipmentCells: { kind: ToolKind; cell: HTMLDivElement }[] = [
     { kind: "pickaxe", cell: makeSlotCell() },
     { kind: "axe", cell: makeSlotCell() },
+    { kind: "shovel", cell: makeSlotCell() },
     { kind: "utility", cell: makeSlotCell() },
   ];
   for (const { kind, cell } of equipmentCells) {
@@ -206,6 +208,8 @@ export function mountInventoryUi(
             return "Pickaxe slot (empty)";
           case "axe":
             return "Axe slot (empty)";
+          case "shovel":
+            return "Shovel slot (empty)";
           case "utility":
             return "Utility slot (empty)";
         }
@@ -219,7 +223,8 @@ export function mountInventoryUi(
   const cellByIndex = (idx: number): HTMLDivElement | null => {
     if (idx === EQUIP_PICKAXE_SLOT_ID) return equipmentCells[0].cell;
     if (idx === EQUIP_AXE_SLOT_ID) return equipmentCells[1].cell;
-    if (idx === EQUIP_UTILITY_SLOT_ID) return equipmentCells[2].cell;
+    if (idx === EQUIP_SHOVEL_SLOT_ID) return equipmentCells[2].cell;
+    if (idx === EQUIP_UTILITY_SLOT_ID) return equipmentCells[3].cell;
     if (idx < 0 || idx >= INVENTORY_SIZE) return null;
     if (idx < HOTBAR_SLOTS) return hotbarCells[idx];
     return panelCells[idx - HOTBAR_SLOTS];
@@ -232,7 +237,8 @@ export function mountInventoryUi(
     if (panelIdx >= 0) return HOTBAR_SLOTS + panelIdx;
     if (cell === equipmentCells[0].cell) return EQUIP_PICKAXE_SLOT_ID;
     if (cell === equipmentCells[1].cell) return EQUIP_AXE_SLOT_ID;
-    if (cell === equipmentCells[2].cell) return EQUIP_UTILITY_SLOT_ID;
+    if (cell === equipmentCells[2].cell) return EQUIP_SHOVEL_SLOT_ID;
+    if (cell === equipmentCells[3].cell) return EQUIP_UTILITY_SLOT_ID;
     return null;
   };
 
@@ -247,12 +253,14 @@ export function mountInventoryUi(
     const inv = options.getInventory();
     const pickaxeSlot = inv.getEquippedSlot("pickaxe");
     const axeSlot = inv.getEquippedSlot("axe");
+    const shovelSlot = inv.getEquippedSlot("shovel");
     const utilitySlot = inv.getEquippedSlot("utility");
     const equipMarkAt = (
       idx: number,
     ): ToolKind | null => {
       if (idx === pickaxeSlot) return "pickaxe";
       if (idx === axeSlot) return "axe";
+      if (idx === shovelSlot) return "shovel";
       if (idx === utilitySlot) return "utility";
       return null;
     };
@@ -294,7 +302,8 @@ export function mountInventoryUi(
   }
   dragdrop.wireSlotPointerDown(EQUIP_PICKAXE_SLOT_ID, equipmentCells[0].cell);
   dragdrop.wireSlotPointerDown(EQUIP_AXE_SLOT_ID, equipmentCells[1].cell);
-  dragdrop.wireSlotPointerDown(EQUIP_UTILITY_SLOT_ID, equipmentCells[2].cell);
+  dragdrop.wireSlotPointerDown(EQUIP_SHOVEL_SLOT_ID, equipmentCells[2].cell);
+  dragdrop.wireSlotPointerDown(EQUIP_UTILITY_SLOT_ID, equipmentCells[3].cell);
 
   // Hotbar click → select. Bound on `click` (vs. pointerdown) so a drag
   // gesture starting on a hotbar cell doesn't also flip selection on the

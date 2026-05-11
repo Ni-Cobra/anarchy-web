@@ -39,6 +39,7 @@ export function applyInventoryUpdate(
   const equippedPickaxeSlot = equippedSlotFromWire(update.equippedPickaxeSlot);
   const equippedAxeSlot = equippedSlotFromWire(update.equippedAxeSlot);
   const equippedUtilitySlot = equippedSlotFromWire(update.equippedUtilitySlot);
+  const equippedShovelSlot = equippedSlotFromWire(update.equippedShovelSlot);
   const craftableRecipeIds = update.craftableRecipeIds ?? [];
   deps.inventory.replaceFromWire(
     slots,
@@ -46,6 +47,7 @@ export function applyInventoryUpdate(
     equippedAxeSlot,
     craftableRecipeIds,
     equippedUtilitySlot,
+    equippedShovelSlot,
   );
 }
 
@@ -139,6 +141,16 @@ export function itemIdFromWire(
       return ItemId.Log;
     case anarchy.v1.ItemId.ITEM_ID_CHEST:
       return ItemId.Chest;
+    case anarchy.v1.ItemId.ITEM_ID_WOOD_SHOVEL:
+      return ItemId.WoodShovel;
+    case anarchy.v1.ItemId.ITEM_ID_STONE_SHOVEL:
+      return ItemId.StoneShovel;
+    case anarchy.v1.ItemId.ITEM_ID_COPPER_SHOVEL:
+      return ItemId.CopperShovel;
+    case anarchy.v1.ItemId.ITEM_ID_IRON_SHOVEL:
+      return ItemId.IronShovel;
+    case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_SHOVEL:
+      return ItemId.TungstenShovel;
     default:
       return null;
   }
