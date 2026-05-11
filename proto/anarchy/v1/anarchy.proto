@@ -309,11 +309,10 @@ message EquipTool {
 }
 
 // Client→server "unequip the tool currently in the equipment slot named by
-// `tool_kind`". The server places the unequipped tool into the first empty
-// inventory slot. If the slot is already empty, or the inventory is full
-// (no empty slot to receive the tool), the action is silently dropped —
-// the client surfaces a small toast in that case (UX-side affordance only,
-// not a wire signal).
+// `tool_kind`". Equipment is a flag pointing at an inventory cell (task 010
+// rework) — the tool itself already lives in its inventory slot, so the
+// server just clears the flag. If the slot is already empty, the action is
+// silently dropped. The next `InventoryUpdate` ships the cleared flag.
 message UnequipTool {
   ToolKind tool_kind = 1;
   uint64 client_seq = 2;

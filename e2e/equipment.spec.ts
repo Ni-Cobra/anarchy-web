@@ -136,6 +136,19 @@ async function sendEquipTool(
   ws.send(bytes);
 }
 
+async function sendUnequipTool(
+  ws: WebSocket,
+  toolKind: number,
+): Promise<void> {
+  const bytes = ClientMessage.encode(
+    ClientMessage.create({
+      seq: helloSeq++,
+      unequipTool: { toolKind, clientSeq: 1 },
+    }),
+  ).finish();
+  ws.send(bytes);
+}
+
 interface InventoryFrame {
   slots: { item: number; count: number }[];
   equippedPickaxeSlot: number;
@@ -256,6 +269,35 @@ test("equip wire round-trip: EquipTool flips the equipped-slot pointer in Invent
   // flag, not a swap.
   const after = await waitForInventory(sock);
   expect(after.equippedPickaxeSlot).toBe(WOOD_PICKAXE_SLOT);
+  expect(after.slots[WOOD_PICKAXE_SLOT].item).toBe(ITEM_ID_WOOD_PICKAXE);
+  expect(after.slots[WOOD_PICKAXE_SLOT].count).toBe(1);
+
+  sock.ws.close();
+});
+
+test("unequip wire round-trip: UnequipTool clears the equipped-slot pointer back to -1, tool stays in its cell", async () => {
+  // Task 480: the symmetric un-equip gesture (left-click on a filled
+  // equipment cell on the client) ships an `UnequipTool` frame; the next
+  // `InventoryUpdate` carries the equipped pointer back to `-1`. The tool
+  // itself stays put — equipment is a flag, not a swap (task 010 rework).
+  const username = uniq("unequip-rt");
+  const sock = await openSocket();
+  await sendHello(sock.ws, username);
+  // Initial admit: nothing equipped.
+  const initial = await waitForInventory(sock);
+  expect(initial.equippedPickaxeSlot).toBe(-1);
+
+  // Equip first so there's something to unequip.
+  await sendEquipTool(sock.ws, WOOD_PICKAXE_SLOT, TOOL_KIND_PICKAXE);
+  const equipped = await waitForInventory(sock);
+  expect(equipped.equippedPickaxeSlot).toBe(WOOD_PICKAXE_SLOT);
+  expect(equipped.slots[WOOD_PICKAXE_SLOT].item).toBe(ITEM_ID_WOOD_PICKAXE);
+
+  // Unequip. Next InventoryUpdate carries the cleared flag; the tool
+  // stayed in its inventory cell.
+  await sendUnequipTool(sock.ws, TOOL_KIND_PICKAXE);
+  const after = await waitForInventory(sock);
+  expect(after.equippedPickaxeSlot).toBe(-1);
   expect(after.slots[WOOD_PICKAXE_SLOT].item).toBe(ITEM_ID_WOOD_PICKAXE);
   expect(after.slots[WOOD_PICKAXE_SLOT].count).toBe(1);
 
