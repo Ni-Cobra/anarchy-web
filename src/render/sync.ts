@@ -1,6 +1,10 @@
 import * as THREE from "three";
 
 import { Direction8, type ItemId, type PlayerId } from "../game/index.js";
+import {
+  BODY_LIT_MAT_USERDATA_KEY,
+  BODY_UNLIT_MAT_USERDATA_KEY,
+} from "./player_mesh.js";
 
 /**
  * Builds a fresh `THREE.Mesh` for a player. `isLocal` lets the factory pick a
@@ -182,6 +186,16 @@ export function disposePlayerMesh(mesh: THREE.Mesh, parent: THREE.Object3D): voi
   const seenGeoms = new Set<THREE.BufferGeometry>();
   const seenMats = new Set<THREE.Material>();
   const seenTextures = new Set<THREE.Texture>();
+  const disposeMaterial = (m: THREE.Material) => {
+    if (seenMats.has(m)) return;
+    seenMats.add(m);
+    const map = (m as THREE.MeshLambertMaterial).map;
+    if (map && !seenTextures.has(map)) {
+      seenTextures.add(map);
+      map.dispose();
+    }
+    m.dispose();
+  };
   mesh.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     if (!seenGeoms.has(obj.geometry)) {
@@ -189,15 +203,14 @@ export function disposePlayerMesh(mesh: THREE.Mesh, parent: THREE.Object3D): voi
       obj.geometry.dispose();
     }
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-    for (const m of mats) {
-      if (seenMats.has(m)) continue;
-      seenMats.add(m);
-      const map = (m as THREE.MeshLambertMaterial).map;
-      if (map && !seenTextures.has(map)) {
-        seenTextures.add(map);
-        map.dispose();
-      }
-      m.dispose();
+    for (const m of mats) disposeMaterial(m);
+    // The player body keeps both its lit (Lambert) and unlit (Basic)
+    // material on userData so `applyLanternBodyUnlit` can swap them as a
+    // reference assign instead of allocating per frame. Whichever isn't
+    // currently `obj.material` would leak without this pass.
+    for (const key of [BODY_LIT_MAT_USERDATA_KEY, BODY_UNLIT_MAT_USERDATA_KEY]) {
+      const cached = obj.userData[key] as THREE.Material | undefined;
+      if (cached) disposeMaterial(cached);
     }
   });
 }

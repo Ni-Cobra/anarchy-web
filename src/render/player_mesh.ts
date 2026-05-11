@@ -68,13 +68,15 @@ const BILLBOARD_OUTLINE_WIDTH = 6;
 // without exposing a parallel sprite map.
 const BILLBOARD_USERDATA_KEY = "usernameBillboard";
 
-// Lantern-glow emissive tint applied to a player's body material whenever
-// the server reports `ItemId.Lantern` in their Utility slot (task 450).
-// Pure white per the task spec — the world-space lantern light is what
-// adds warmth; this is just the player model picking up "I am lit". Off
-// state goes back to a black emissive so the body reverts to pure diffuse.
-const LANTERN_GLOW_COLOR_HEX = 0xffffff;
-const LANTERN_GLOW_INTENSITY = 0.55;
+// userData keys for the per-player lit / unlit body materials. Both are
+// built at mesh-create time and swapped under `mesh.material` by
+// `applyLanternBodyUnlit` to express the "lantern keeps my color readable
+// in the dark" effect (task 450 revised): wearers render with their
+// palette color at full intensity regardless of scene lighting; everyone
+// else stays on the standard lit Lambert path and dims with ambient.
+// Materials share the body texture so disposal walks one texture, not two.
+export const BODY_LIT_MAT_USERDATA_KEY = "playerBodyLitMaterial";
+export const BODY_UNLIT_MAT_USERDATA_KEY = "playerBodyUnlitMaterial";
 
 export const defaultPlayerMeshFactory: PlayerMeshFactory = {
   create(entity: RenderableEntity, _isLocal: boolean) {
@@ -86,8 +88,16 @@ export const defaultPlayerMeshFactory: PlayerMeshFactory = {
     // The body color is the player's lobby palette pick; both local and
     // remote players are tinted the same way (the local player is
     // distinguishable by camera follow + their own billboard).
-    const bodyMat = buildBodyMaterial(paletteColorHex(entity.colorIndex));
+    const bodyColorHex = paletteColorHex(entity.colorIndex);
+    const bodyMat = buildBodyMaterial(bodyColorHex);
+    // Pre-build the unlit variant alongside the lit one so the per-frame
+    // lantern toggle in `applyLanternBodyUnlit` is a reference swap rather
+    // than an allocation. They share the painted-face texture so the body
+    // color + eyes match exactly across states.
+    const bodyUnlitMat = buildUnlitBodyMaterial(bodyMat, bodyColorHex);
     const body = new THREE.Mesh(bodyGeom, bodyMat);
+    body.userData[BODY_LIT_MAT_USERDATA_KEY] = bodyMat;
+    body.userData[BODY_UNLIT_MAT_USERDATA_KEY] = bodyUnlitMat;
     // Day-cycle shadows (task 310). Players cast onto terrain and receive
     // from neighbouring blocks, so a player walking into a tree's shade
     // visually darkens.
@@ -143,6 +153,22 @@ function buildBodyMaterial(bodyColorHex: number): THREE.MeshLambertMaterial {
   texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return new THREE.MeshLambertMaterial({ map: texture });
+}
+
+/**
+ * Build the unlit counterpart of a lit body material. Shares the lit
+ * material's texture so the painted body color + eyes are byte-identical
+ * across states; falls back to the raw `bodyColorHex` when the lit
+ * material has no map (headless / no-2d-canvas path). `MeshBasicMaterial`
+ * is the unlit cousin of `MeshLambertMaterial` — it ignores scene lights
+ * and just shows the texture/color at full intensity.
+ */
+function buildUnlitBodyMaterial(
+  lit: THREE.MeshLambertMaterial,
+  bodyColorHex: number,
+): THREE.MeshBasicMaterial {
+  if (lit.map) return new THREE.MeshBasicMaterial({ map: lit.map });
+  return new THREE.MeshBasicMaterial({ color: bodyColorHex });
 }
 
 /**
@@ -230,8 +256,8 @@ export function applyHoverBillboards(
   }
 }
 
-/** Subset of `RenderableEntity` `applyLanternGlow` consumes — just the id
- *  and the Utility slot. Looser than the full entity so test callers can
+/** Subset of `RenderableEntity` `applyLanternBodyUnlit` consumes — just the
+ *  id and the Utility slot. Looser than the full entity so test callers can
  *  build a minimal struct without standing up a renderable. */
 export interface LanternGlowEntity {
   readonly id: PlayerId;
@@ -239,19 +265,23 @@ export interface LanternGlowEntity {
 }
 
 /**
- * Toggle the lantern emissive glow on each player body (task 450).
- * Walks `entities` to collect the set of players whose Utility slot
- * reports `ItemId.Lantern`, then sets the body material's `emissive`
- * + `emissiveIntensity` to the configured tint for those bodies and
- * clears it for everyone else. Materials whose shader doesn't expose
- * `emissive` (e.g. the `MeshBasicMaterial` used by test factories) are
- * silently skipped — the emissive read is in-place, so a missing field
- * just means the visual effect doesn't apply in that test env.
+ * Swap each player body between its lit and unlit material based on whether
+ * the server reports `ItemId.Lantern` in their Utility slot (task 450,
+ * re-spec). The intent is "the lantern keeps the wearer's body color
+ * readable in the dark" — not a glowing aura. Wearers get the stashed
+ * `MeshBasicMaterial` (texture/color at full intensity, ignores lights);
+ * everyone else stays on the stashed `MeshLambertMaterial` and dims with
+ * ambient like normal. The world-space cone in `lantern_lights.ts` is
+ * unaffected — that's the actual light the lantern casts on terrain.
+ *
+ * Meshes whose factory didn't stash both materials (test factories that
+ * build bare meshes) are silently skipped, matching the prior fault-
+ * tolerant style.
  *
  * Per-frame to handle equip/unequip mid-session and to bring just-spawned
  * remote players into the right state on their first render.
  */
-export function applyLanternGlow(
+export function applyLanternBodyUnlit(
   meshes: ReadonlyMap<PlayerId, THREE.Mesh>,
   entities: Iterable<LanternGlowEntity>,
 ): void {
@@ -260,17 +290,13 @@ export function applyLanternGlow(
     if (e.equippedUtility === ItemId.Lantern) wearers.add(e.id);
   }
   for (const [id, mesh] of meshes) {
-    const mat = mesh.material as THREE.Material & {
-      emissive?: THREE.Color;
-      emissiveIntensity?: number;
-    };
-    if (!mat || !(mat as { emissive?: unknown }).emissive) continue;
-    if (wearers.has(id)) {
-      mat.emissive!.setHex(LANTERN_GLOW_COLOR_HEX);
-      mat.emissiveIntensity = LANTERN_GLOW_INTENSITY;
-    } else {
-      mat.emissive!.setHex(0x000000);
-      mat.emissiveIntensity = 0;
-    }
+    const lit = mesh.userData[BODY_LIT_MAT_USERDATA_KEY] as
+      | THREE.Material
+      | undefined;
+    const unlit = mesh.userData[BODY_UNLIT_MAT_USERDATA_KEY] as
+      | THREE.Material
+      | undefined;
+    if (!lit || !unlit) continue;
+    mesh.material = wearers.has(id) ? unlit : lit;
   }
 }
