@@ -151,6 +151,8 @@ export function itemIdFromWire(
       return ItemId.IronShovel;
     case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_SHOVEL:
       return ItemId.TungstenShovel;
+    case anarchy.v1.ItemId.ITEM_ID_GRASS:
+      return ItemId.Grass;
     default:
       return null;
   }

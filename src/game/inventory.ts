@@ -124,6 +124,12 @@ export enum ItemId {
   CopperShovel = 39,
   IronShovel = 40,
   TungstenShovel = 41,
+  /**
+   * Task 580 — Grass blocks are collectible. Breaking a Grass cell drops one
+   * `Grass` (stackable like other ground-block items); placing puts the
+   * matching `BlockType.Grass` back down via the standard right-click flow.
+   */
+  Grass = 42,
 }
 
 /** A non-empty pile of one item kind. */

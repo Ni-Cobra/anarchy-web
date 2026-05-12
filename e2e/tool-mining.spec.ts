@@ -5,11 +5,12 @@ import { test, expect, type Page } from "@playwright/test";
 // matrix lives in the server-side integration tests; here we just confirm
 // the wire end-to-end (equip → break) actually shortens the break.
 //
-// Stone has max durability 30. Bare base rate (1 dur/tick) is 30 ticks ≈
-// 1500 ms. Tungsten Pickaxe applies 10 dur/tick → 3 ticks ≈ 150 ms. We
-// assert the break completes inside an 800 ms window — comfortably above
-// the ideal 150 ms (margin for tick alignment + RTT) but far enough below
-// 1500 ms that a regression dropping the multiplier would surface here.
+// Stone has max durability 90 (post-task 580 ×3). Bare base rate (1
+// dur/tick) is 90 ticks ≈ 4500 ms. Tungsten Pickaxe applies 10 dur/tick
+// → 9 ticks ≈ 450 ms. We assert the break completes inside a 1500 ms
+// window — comfortably above the ideal 450 ms (margin for tick alignment
+// + RTT) but far enough below 4500 ms that a regression dropping the
+// multiplier would surface here.
 
 const SERVER_URL = "http://localhost:8080";
 const HOTBAR_SLOTS = 9;
@@ -95,8 +96,8 @@ test("equipped Tungsten Pickaxe breaks a Stone block well under the no-tool base
     );
 
     // Send the break intent and time how long it takes for the cell to
-    // flip to Air. Tungsten ≈ 150 ms ideal, no-tool ≈ 1500 ms. 800 ms is
-    // generous over the ideal but well under the no-tool baseline.
+    // flip to Air. Tungsten ≈ 450 ms ideal, no-tool ≈ 4500 ms. 1500 ms
+    // is generous over the ideal but well under the no-tool baseline.
     const start = Date.now();
     await page.evaluate(
       ({ cx, cy, lx, ly }) =>
@@ -113,15 +114,15 @@ test("equipped Tungsten Pickaxe breaks a Stone block well under the no-tool base
         return chunk.top.blocks[idx]?.kind === 0; // Air
       },
       { cx, cy, lx, ly },
-      { timeout: 800 },
+      { timeout: 1500 },
     );
     const elapsed = Date.now() - start;
     await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
 
     // Sanity bound: the break really did finish inside the window the
     // wait clocked against. (waitForFunction would have rejected past
-    // 800 ms; a passing wait + this assertion documents the margin.)
-    expect(elapsed).toBeLessThan(800);
+    // 1500 ms; a passing wait + this assertion documents the margin.)
+    expect(elapsed).toBeLessThan(1500);
 
     // The Stone item drops into inventory on the breaker side. Wait for
     // the InventoryUpdate to land. (count of ItemId.Stone === 3.)

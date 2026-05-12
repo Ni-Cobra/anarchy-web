@@ -217,9 +217,9 @@ test("breaking a hidden cell via the wire does nothing", async ({ browser }) => 
     await a.evaluate(() =>
       window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 2, ly: 2 }),
     );
-    // Wait > 50 ticks (Gold max durability = 50, would break in 2.5 s
-    // if damage applied). Cell must remain HIDDEN.
-    await a.waitForTimeout(3500);
+    // Wait > 150 ticks (Gold max durability = 150 post-task 580 ×3,
+    // would break in ~7.5 s if damage applied). Cell must remain HIDDEN.
+    await a.waitForTimeout(8500);
     const kind = await a.evaluate(() => {
       const a = window.__anarchy!;
       const chunk = a.terrain.get(0, 0)!;

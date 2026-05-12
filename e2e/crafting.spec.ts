@@ -20,6 +20,9 @@ const SERVER_URL = "http://localhost:8080";
 // inlined or threaded through the closure arg).
 const ITEM_ID_STICK = 1;
 const ITEM_ID_WOOD = 2;
+// Task 580: wood-pickaxe and wood-shovel now consume `Log` (ItemId = 35
+// — the felled-tree drop from task 390) rather than `Wood` planks.
+const ITEM_ID_LOG = 35;
 
 async function openClient(page: Page, username: string): Promise<void> {
   await page.goto(`/?username=${username}&color=0`);
@@ -95,10 +98,11 @@ test("clicking a row ships CraftRequest; server consumes ingredients and inserts
 }) => {
   await openClient(page, "craft-pickaxe");
 
-  // Stage enough wood + sticks that wood-pickaxe is craftable. The
-  // available_recipes list pools across the inventory + hotbar so a
+  // Stage enough logs + sticks that wood-pickaxe is craftable (task 580:
+  // wood-pickaxe now consumes 3 Log + 2 Stick instead of Wood planks).
+  // The available_recipes list pools across the inventory + hotbar so a
   // single InventoryUpdate after both seeds will carry the recipe id.
-  await seedInventory(page, ITEM_ID_WOOD, 3);
+  await seedInventory(page, ITEM_ID_LOG, 3);
   await seedInventory(page, ITEM_ID_STICK, 2);
 
   await page.keyboard.press("KeyE");
@@ -112,12 +116,12 @@ test("clicking a row ships CraftRequest; server consumes ingredients and inserts
   const before = await page.evaluate(() => {
     const inv = window.__anarchy!.inventory;
     return {
-      wood: inv.countOf(2),
+      log: inv.countOf(35),
       stick: inv.countOf(1),
       pickaxe: inv.countOf(5),
     };
   });
-  expect(before.wood).toBe(3);
+  expect(before.log).toBe(3);
   expect(before.stick).toBe(2);
   const startingPickaxe = before.pickaxe;
 
@@ -125,14 +129,14 @@ test("clicking a row ships CraftRequest; server consumes ingredients and inserts
     .locator(".anarchy-crafting-row[data-recipe-id='wood-pickaxe']")
     .click();
 
-  // Server applies the recipe: 3 wood + 2 sticks consumed, 1 wood
+  // Server applies the recipe: 3 logs + 2 sticks consumed, 1 wood
   // pickaxe inserted. The next InventoryUpdate makes it visible to the
   // client mirror.
   await page.waitForFunction(
     (start: number) => {
       const inv = window.__anarchy!.inventory;
       return (
-        inv.countOf(2) === 0 &&
+        inv.countOf(35) === 0 &&
         inv.countOf(1) === 0 &&
         inv.countOf(5) === start + 1
       );

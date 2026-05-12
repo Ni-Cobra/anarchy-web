@@ -58,7 +58,8 @@ test("breaking a Tree drops a Log into the breaker's inventory", async ({
   page,
 }) => {
   // Tile (3, 0) is in reach from origin (distance 3.0); Tree max
-  // durability is 16 → ~0.8s of held-break with no equipped axe.
+  // durability is 48 post-task 580 ×3 → ~2.4s of held-break with no
+  // equipped axe.
   const cx = 0,
     cy = 0,
     lx = 3,
@@ -88,7 +89,7 @@ test("breaking a Tree drops a Log into the breaker's inventory", async ({
       { cx, cy, lx, ly },
     );
 
-    // Held-break the tree — 16 ticks of bare damage. Send the intent and
+    // Held-break the tree — 48 ticks of bare damage. Send the intent and
     // wait for the Log to land in inventory; release after.
     await page.evaluate((coords) => {
       const [cx, cy, lx, ly] = coords;
@@ -98,7 +99,7 @@ test("breaking a Tree drops a Log into the breaker's inventory", async ({
     await page.waitForFunction(
       (id) => window.__anarchy!.inventory.countOf(id) >= 1,
       ITEM_ID_LOG,
-      { timeout: 5000 },
+      { timeout: 8000 },
     );
     await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
   } finally {

@@ -763,6 +763,10 @@ enum ItemId {
   ITEM_ID_COPPER_SHOVEL = 39;
   ITEM_ID_IRON_SHOVEL = 40;
   ITEM_ID_TUNGSTEN_SHOVEL = 41;
+  // Task 580 — Grass blocks are now collectible. Breaking a Grass cell
+  // drops an `ITEM_ID_GRASS` (stackable like other block items); the item
+  // places `BLOCK_TYPE_GRASS` via the standard right-click flow.
+  ITEM_ID_GRASS = 42;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server

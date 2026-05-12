@@ -513,12 +513,12 @@ describe("crafting UI", () => {
 
   describe("max-craft-count badge (task 490)", () => {
     it("renders the badge under the arrow with floor(have/need) min across ingredients", () => {
-      // wood-pickaxe = 3 Wood + 2 Stick → 1 WoodPickaxe.
-      // 9 Wood ⇒ 3 crafts on the Wood side; 7 Stick ⇒ 3 crafts on the
+      // Task 580: wood-pickaxe = 3 Log + 2 Stick → 1 WoodPickaxe.
+      // 9 Log ⇒ 3 crafts on the Log side; 7 Stick ⇒ 3 crafts on the
       // Stick side. min = 3.
       inventory.replaceFromWire(
         emptySlots({
-          0: { item: ItemId.Wood, count: 9 },
+          0: { item: ItemId.Log, count: 9 },
           [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 7 },
         }),
         null,
@@ -539,10 +539,10 @@ describe("crafting UI", () => {
     });
 
     it("picks the smaller side when ingredients are unbalanced", () => {
-      // 6 Wood ⇒ 2 crafts; 3 Stick ⇒ 1 craft. min = 1.
+      // 6 Log ⇒ 2 crafts; 3 Stick ⇒ 1 craft. min = 1.
       inventory.replaceFromWire(
         emptySlots({
-          0: { item: ItemId.Wood, count: 6 },
+          0: { item: ItemId.Log, count: 6 },
           [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 3 },
         }),
         null,
@@ -632,10 +632,10 @@ describe("crafting UI", () => {
     }
 
     it("surfaces the output name and each ingredient with required counts after the hover delay", () => {
-      // wood-pickaxe = 3 Wood + 2 Stick → 1 WoodPickaxe.
+      // Task 580: wood-pickaxe = 3 Log + 2 Stick → 1 WoodPickaxe.
       inventory.replaceFromWire(
         emptySlots({
-          0: { item: ItemId.Wood, count: 3 },
+          0: { item: ItemId.Log, count: 3 },
           [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
         }),
         null,
@@ -670,7 +670,7 @@ describe("crafting UI", () => {
       );
       expect(ingredients).toHaveLength(2);
       expect(ingredients[0].textContent).toContain("3 ×");
-      expect(ingredients[0].textContent).toContain("Wood");
+      expect(ingredients[0].textContent).toContain("Log");
       expect(ingredients[1].textContent).toContain("2 ×");
       expect(ingredients[1].textContent).toContain("Stick");
     });
@@ -678,7 +678,7 @@ describe("crafting UI", () => {
     it("annotates each ingredient row with the player's current have-count", () => {
       inventory.replaceFromWire(
         emptySlots({
-          0: { item: ItemId.Wood, count: 5 },
+          0: { item: ItemId.Log, count: 5 },
           [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
         }),
         null,

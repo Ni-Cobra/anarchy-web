@@ -28,7 +28,7 @@ describe("recipes", () => {
       {
         id: "wood-pickaxe",
         ingredients: [
-          { item: ItemId.Wood, count: 3 },
+          { item: ItemId.Log, count: 3 },
           { item: ItemId.Stick, count: 2 },
         ],
         output: { item: ItemId.WoodPickaxe, count: 1 },
@@ -144,7 +144,7 @@ describe("recipes", () => {
       {
         id: "wood-shovel",
         ingredients: [
-          { item: ItemId.Wood, count: 3 },
+          { item: ItemId.Log, count: 3 },
           { item: ItemId.Stick, count: 2 },
         ],
         output: { item: ItemId.WoodShovel, count: 1 },

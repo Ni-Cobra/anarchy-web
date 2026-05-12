@@ -5,11 +5,11 @@ import { adminSetBlock } from "./admin";
 // progresses the held break, but at one durability point per
 // `UNDER_TOOLED_BREAK_MULTIPLIER` ticks — dramatically slower than a
 // matched-tool break. The pre-task behavior would have applied the bare
-// 1 dur/tick (≈ 3 s for the 60-durability ore at 20 Hz); the
-// post-task behavior is ≈ 30 s, so an `OBSERVE_WINDOW_MS` of 4 s comfortably
-// distinguishes the two — under the old rate the cell would have broken
-// and `RawIron` would have landed in the inventory; under the new rate
-// it must still be IronOre with no drop.
+// 1 dur/tick (≈ 9 s for the 180-durability ore at 20 Hz, post-task
+// 580 ×3); the post-task behavior is ≈ 45 s, so an `OBSERVE_WINDOW_MS`
+// of 4 s comfortably distinguishes the two — under the old rate the
+// cell would have broken and `RawIron` would have landed in the
+// inventory; under the new rate it must still be IronOre with no drop.
 //
 // Task 555 tightening: the "still IronOre, no drop" assertions in
 // isolation would pass even if the server hard-refused the break (no
@@ -78,8 +78,9 @@ test("under-tooled held break: no pickaxe equipped vs IronOre tanks the break", 
 
     // Start the held break and let it run for an observe window long
     // enough that the pre-task behavior (1 dur/tick) would have cleared
-    // the 60-durability cell, but the post-task throttled rate (1 dur per
-    // `UNDER_TOOLED_BREAK_MULTIPLIER = 10` ticks) cannot.
+    // the 180-durability cell (post-task 580 ×3), but the post-task
+    // throttled rate (1 dur per `UNDER_TOOLED_BREAK_MULTIPLIER = 5`
+    // ticks) cannot.
     await page.evaluate(
       ({ cx, cy, lx, ly }) =>
         window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly }),
@@ -88,8 +89,8 @@ test("under-tooled held break: no pickaxe equipped vs IronOre tanks the break", 
     // Task 555: poll the `TargetingState` overlay for the held break to
     // observe `durabilityPct < 100` — proves the slow path is actually
     // making progress, not that the server hard-refused the intent.
-    // 4000 ms ≈ 80 ticks → 8 multiplier cycles → 8 durability points
-    // deducted off a 60-point block ≈ 86%, well below the strict 100%
+    // 4000 ms ≈ 80 ticks → 16 multiplier cycles → 16 durability points
+    // deducted off a 180-point block ≈ 91%, well below the strict 100%
     // ceiling.
     const observedProgress = await page.waitForFunction(
       () => {

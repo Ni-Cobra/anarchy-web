@@ -40,12 +40,13 @@ describe("maxCraftCount", () => {
   });
 
   it("takes the min across multi-ingredient recipes", () => {
-    // 3 Wood + 2 Stick per craft. 6 Wood ⇒ 2; 3 Stick ⇒ 1. min = 1.
+    // Task 580: wood-pickaxe consumes 3 Log + 2 Stick per craft. 6 Log ⇒ 2;
+    // 3 Stick ⇒ 1. min = 1.
     expect(
       maxCraftCount(
         woodPickaxe,
         inv({
-          0: { item: ItemId.Wood, count: 6 },
+          0: { item: ItemId.Log, count: 6 },
           [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 3 },
         }),
       ),
@@ -53,18 +54,18 @@ describe("maxCraftCount", () => {
   });
 
   it("pools counts across multiple Inventory arguments", () => {
-    // Player has all the Wood, chest has all the Sticks — together they
-    // can craft 2 wood-pickaxes (6 Wood ⇒ 2; 5 Stick ⇒ 2).
-    const player = inv({ 0: { item: ItemId.Wood, count: 6 } });
+    // Player has all the Logs, chest has all the Sticks — together they
+    // can craft 2 wood-pickaxes (6 Log ⇒ 2; 5 Stick ⇒ 2).
+    const player = inv({ 0: { item: ItemId.Log, count: 6 } });
     const chest = inv({ 0: { item: ItemId.Stick, count: 5 } });
     expect(maxCraftCount(woodPickaxe, player, chest)).toBe(2);
   });
 
   it("sums same-item counts across pools (chest tops up the player)", () => {
-    // Player has 1 Stick, chest has 4 Sticks; with 9 Wood the bottleneck
+    // Player has 1 Stick, chest has 4 Sticks; with 9 Log the bottleneck
     // is Stick: (1 + 4) / 2 = 2 crafts.
     const player = inv({
-      0: { item: ItemId.Wood, count: 9 },
+      0: { item: ItemId.Log, count: 9 },
       [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 1 },
     });
     const chest = inv({ 0: { item: ItemId.Stick, count: 4 } });

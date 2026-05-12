@@ -60,10 +60,13 @@ export const RECIPES: readonly Recipe[] = [
     ingredients: [{ item: ItemId.Log, count: 1 }],
     output: { item: ItemId.Stick, count: 4 },
   },
+  // Task 580: wood-tier pickaxe + shovel now take raw `Log`s rather than
+  // refined `Wood` planks (the wood-axe recipe still uses planks so the
+  // shape stays asymmetric).
   {
     id: "wood-pickaxe",
     ingredients: [
-      { item: ItemId.Wood, count: 3 },
+      { item: ItemId.Log, count: 3 },
       { item: ItemId.Stick, count: 2 },
     ],
     output: { item: ItemId.WoodPickaxe, count: 1 },
@@ -182,10 +185,11 @@ export const RECIPES: readonly Recipe[] = [
     output: { item: ItemId.Chest, count: 1 },
   },
   // Task 530 shovel ladder — mirrors the axe ladder exactly.
+  // Task 580: wood-tier shovel takes raw `Log`s — see the wood-pickaxe note.
   {
     id: "wood-shovel",
     ingredients: [
-      { item: ItemId.Wood, count: 3 },
+      { item: ItemId.Log, count: 3 },
       { item: ItemId.Stick, count: 2 },
     ],
     output: { item: ItemId.WoodShovel, count: 1 },

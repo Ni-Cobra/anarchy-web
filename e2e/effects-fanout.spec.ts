@@ -55,7 +55,8 @@ async function seedTopBlock(
 test("targeting overlay and break edit fan out to a non-acting peer", async ({
   browser,
 }) => {
-  // Wood (max durability 10) so the held break completes in ~10 ticks.
+  // Wood (max durability 30 post-task 580 ×3) so the held break
+  // completes in ~30 ticks ≈ 1.5 s.
   await seedTopBlock(0, 0, 1, 0, "wood");
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
@@ -101,7 +102,7 @@ test("targeting overlay and break edit fan out to a non-acting peer", async ({
     expect(initialPct).toBeGreaterThan(0);
     expect(initialPct).toBeLessThanOrEqual(100);
 
-    // After ~10 ticks the block breaks — both clients see a BlockEdit
+    // After ~30 ticks the block breaks — both clients see a BlockEdit
     // event delivered (count strictly increases on B).
     const beforeCount = await b.evaluate(
       () => window.__anarchy!.getObservedBlockEditCount(),

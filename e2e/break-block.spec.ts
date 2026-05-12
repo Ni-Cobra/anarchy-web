@@ -83,13 +83,13 @@ async function waitForTopBlockKind(
   );
 }
 
-test("held break: A holds → Wood breaks after ~10 ticks for both A and B", async ({
+test("held break: A holds → Wood breaks after ~30 ticks for both A and B", async ({
   browser,
 }) => {
-  // Held-break flow (ADR 0006). Seed a Wood block (max durability = 10);
-  // Player A sends a `BreakIntent` and the server damages the block one
-  // dur/tick until it breaks. At 20 Hz this is ~500 ms wall-clock; we
-  // wait up to 5 s to absorb scheduler jitter.
+  // Held-break flow (ADR 0006). Seed a Wood block (max durability = 30
+  // post-task 580 ×3 bump); Player A sends a `BreakIntent` and the server
+  // damages the block one dur/tick until it breaks. At 20 Hz this is
+  // ~1.5 s wall-clock; we wait up to 8 s to absorb scheduler jitter.
   //
   // Block at world tile (1, 0) — chunk (0, 0) local (1, 0). With two
   // clients spawning at origin the circle-circle push shoves the
@@ -122,7 +122,8 @@ test("held break: A holds → Wood breaks after ~10 ticks for both A and B", asy
       window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 1, ly: 0 }),
     );
 
-    // After ~10 ticks (~500 ms) the cell is cleared; both clients see it.
+    // After ~30 ticks (~1.5 s) the cell is cleared; both clients see it.
+    // playwright's default waitForFunction timeout (30 s) is plenty.
     await waitForTopBlockKind(a, 0, 0, 1, 0, "Air");
     await waitForTopBlockKind(b, 0, 0, 1, 0, "Air");
 
@@ -167,8 +168,9 @@ test("held break: out-of-reach intent never breaks the target", async ({
     );
 
     // Wait long enough that an in-reach Wood would have broken many times
-    // over (Wood = 10 ticks, so 1.5 s ≈ 30 ticks). Cell must still be Wood.
-    await a.waitForTimeout(1500);
+    // over (Wood = 30 ticks post-task 580, so 3 s ≈ 60 ticks). Cell must
+    // still be Wood.
+    await a.waitForTimeout(3000);
     await waitForTopBlockKind(a, 0, 0, 10, 0, "Wood");
     await waitForTopBlockKind(b, 0, 0, 10, 0, "Wood");
     await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
@@ -221,7 +223,8 @@ test("ground-replace held break drops the broken kind into the breaker's invento
       await page.evaluate(() => window.__anarchy!.inventory.countOf(2)),
     ).toBe(0);
 
-    // Wood max_durability = 10 → ~10 ticks at 20 Hz ≈ 500 ms with no tool.
+    // Wood max_durability = 30 (post-task 580) → ~30 ticks at 20 Hz ≈
+    // 1.5 s with no tool.
     await page.evaluate((coords) => {
       const [cx, cy, lx, ly] = coords;
       window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
@@ -238,14 +241,14 @@ test("ground-replace held break drops the broken kind into the breaker's invento
         return !!ground && ground.kind === 4;
       },
       { cx, cy, lx, ly },
-      { timeout: 5000 },
+      { timeout: 8000 },
     );
     await page.waitForFunction(
       () =>
         window.__anarchy!.inventory.countOf(2) === 1 &&
         window.__anarchy!.inventory.countOf(4) === 9,
       undefined,
-      { timeout: 5000 },
+      { timeout: 8000 },
     );
 
     await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
@@ -306,7 +309,8 @@ test("held break: top-layer break does NOT fall through to ground without a rele
     );
 
     // Hold the break — kicks the heartbeat in for repeated wire-side
-    // resends. Torch max_durability = 2 → ~100 ms at 20 Hz.
+    // resends. Torch max_durability = 6 (post-task 580 ×3) → ~300 ms at
+    // 20 Hz.
     await page.evaluate((coords) => {
       const [cx, cy, lx, ly] = coords;
       window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
@@ -326,14 +330,14 @@ test("held break: top-layer break does NOT fall through to ground without a rele
     );
 
     // The client is still "holding LMB" — keep heartbeating the same
-    // target for ~1.5 s (>> grass max_durability = 5 ticks = 250 ms).
-    // Without the latch the ground would have been swapped to Gold and a
-    // Gold consumed; with the latch the cell must remain Grass and Gold
-    // count must stay at 10. The heartbeat lives on a setInterval at
-    // BREAK_HEARTBEAT_TICKS * INPUT_TICK_INTERVAL_MS in
+    // target for ~3 s (>> grass max_durability = 15 ticks = 750 ms post-
+    // task 580). Without the latch the ground would have been swapped to
+    // Gold and a Gold consumed; with the latch the cell must remain
+    // Grass and Gold count must stay at 10. The heartbeat lives on a
+    // setInterval at BREAK_HEARTBEAT_TICKS * INPUT_TICK_INTERVAL_MS in
     // bootstrap/break_place.ts, so just re-shipping the same intent
     // here gives the server multiple chances to roll into the ground.
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 15; i++) {
       await page.evaluate((coords) => {
         const [cx, cy, lx, ly] = coords;
         window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
@@ -356,8 +360,8 @@ test("held break: top-layer break does NOT fall through to ground without a rele
 
     // Release + re-hold. The latch is cleared by the wire-side `null` and
     // the next Some(target) starts a fresh session that resolves as a
-    // ground-replace — grass breaks in ~5 ticks (250 ms), the cell swaps
-    // to Gold, and the breaker's Gold count drops by 1.
+    // ground-replace — grass breaks in ~15 ticks (750 ms post-task 580),
+    // the cell swaps to Gold, and the breaker's Gold count drops by 1.
     await page.evaluate(() => window.__anarchy!.sendBreakIntent(null));
     await page.evaluate((coords) => {
       const [cx, cy, lx, ly] = coords;
@@ -430,7 +434,8 @@ test("held break: ground-replace completion does NOT chew through the new ground
       { cx, cy, lx, ly },
     );
 
-    // Hold the break. Wood ground max_durability = 10 → ~500 ms at 20 Hz.
+    // Hold the break. Wood ground max_durability = 30 (post-task 580 ×3)
+    // → ~1.5 s at 20 Hz.
     await page.evaluate((coords) => {
       const [cx, cy, lx, ly] = coords;
       window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
@@ -449,23 +454,23 @@ test("held break: ground-replace completion does NOT chew through the new ground
         return !!ground && ground.kind === 4;
       },
       { cx, cy, lx, ly },
-      { timeout: 5000 },
+      { timeout: 8000 },
     );
     await page.waitForFunction(
       () =>
         window.__anarchy!.inventory.countOf(2) === 1 &&
         window.__anarchy!.inventory.countOf(4) === 9,
       undefined,
-      { timeout: 5000 },
+      { timeout: 8000 },
     );
 
     // Client is still "holding LMB" — keep heartbeating the same target
-    // for ~1.5 s. Without the per-cell latch the resolver would
-    // immediately re-resolve as a GroundReplace (Gold → Gold replace,
-    // visually a no-op) every ~50 ticks and silently drain Gold over
-    // time. With the latch the cell stays Gold and inventory is
-    // unchanged.
-    for (let i = 0; i < 8; i++) {
+    // for ~3 s (>> Wood max_durability = 30 ticks = 1.5 s post-task 580).
+    // Without the per-cell latch the resolver would immediately re-resolve
+    // as a GroundReplace (Gold → Gold replace, visually a no-op) every
+    // ~50 ticks and silently drain Gold over time. With the latch the
+    // cell stays Gold and inventory is unchanged.
+    for (let i = 0; i < 15; i++) {
       await page.evaluate((coords) => {
         const [cx, cy, lx, ly] = coords;
         window.__anarchy!.sendBreakIntent({ cx, cy, lx, ly });
@@ -503,10 +508,10 @@ test("held break: ground-replace completion does NOT chew through the new ground
 test("held break: release mid-break recovers the partial damage", async ({
   browser,
 }) => {
-  // Pin the recovery semantics from ADR 0006: damage Stone (max = 30) for
-  // ~5 ticks, release, wait for the untouched-delay window + ramp, then
-  // hold again — the block must take a fresh ~30 ticks to break, proving
-  // the prior damage was healed.
+  // Pin the recovery semantics from ADR 0006: damage Stone (max = 90
+  // post-task 580 ×3) for ~5 ticks, release, wait for the untouched-delay
+  // window + ramp, then hold again — the block must take a fresh ~90
+  // ticks to break, proving the prior damage was healed.
   await seedTopBlock(0, 0, 1, 0, "stone");
 
   const ctxA = await browser.newContext();
@@ -526,14 +531,15 @@ test("held break: release mid-break recovers the partial damage", async ({
     await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
     await a.waitForTimeout(1500);
 
-    // Restart the hold: full Stone (30 ticks) takes ~1.5 s. Cell must
-    // still be Stone after 1.0 s of fresh hold (only ~20 ticks elapsed).
+    // Restart the hold: full Stone (90 ticks) takes ~4.5 s. Cell must
+    // still be Stone after 3.0 s of fresh hold (only ~60 ticks elapsed —
+    // well short of max).
     await a.evaluate(() =>
       window.__anarchy!.sendBreakIntent({ cx: 0, cy: 0, lx: 1, ly: 0 }),
     );
-    await a.waitForTimeout(1000);
+    await a.waitForTimeout(3000);
     await waitForTopBlockKind(a, 0, 0, 1, 0, "Stone");
-    // Extra ~1 s should finish the break.
+    // Wait up to a few seconds for the rest of the break to land.
     await waitForTopBlockKind(a, 0, 0, 1, 0, "Air");
     await a.evaluate(() => window.__anarchy!.sendBreakIntent(null));
   } finally {

@@ -284,6 +284,12 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: null,
     textureUrl: `${ITEM_TEXTURES_BASE}/tungsten-shovel.png`,
   },
+  [ItemId.Grass]: {
+    id: ItemId.Grass,
+    displayName: "Grass",
+    placesBlock: BlockType.Grass,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/grass.png`,
+  },
 };
 
 /**
