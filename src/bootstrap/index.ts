@@ -49,6 +49,7 @@ import {
   type WireTargetingStateEvent,
 } from "../net/index.js";
 import { Renderer, type GhostState } from "../render/index.js";
+import { chestKeyOf, chestLocationFromKey } from "../ui/chest/chest_key.js";
 import {
   mountChestUi,
   mountCoordsHud,
@@ -395,40 +396,47 @@ export function runMain(
   // MoveSlot) up via `sendSelectSlot` / `sendMoveSlot`; the server's
   // next `InventoryUpdate` is the canonical state.
   //
-  // Task 590: the inventory UI still passes a boolean `srcChest` /
-  // `dstChest` per slot since the singleton manager only knows about one
-  // chest at a time; we translate the booleans into the wire
-  // `ChestLocation` here by reading the singleton's current location.
-  // Task 591/592 will replace this with a per-cell location.
+  // Task 591: the inventory UI now ships the chest source / destination
+  // as a `chestKey` per cell. Bootstrap turns it back into the wire
+  // `ChestLocation` via `chestLocationFromKey`. The client-side mirror is
+  // still singleton today, so the matching `getChestInventory(key)`
+  // returns the mirror only when the key resolves to the open chest;
+  // task 592 promotes the mirror to N panels.
   const sendMoveSlotUi = (
     src: number,
     dst: number,
-    srcChest = false,
-    dstChest = false,
+    srcChestKey: string | null = null,
+    dstChestKey: string | null = null,
   ): void => {
-    const loc = chestState.location();
-    sendMoveSlot(src, dst, srcChest ? loc : null, dstChest ? loc : null);
+    sendMoveSlot(
+      src,
+      dst,
+      srcChestKey ? chestLocationFromKey(srcChestKey) : null,
+      dstChestKey ? chestLocationFromKey(dstChestKey) : null,
+    );
   };
   const sendTransferItemsUi = (
     src: number,
     dst: number,
     count: number,
-    srcChest = false,
-    dstChest = false,
+    srcChestKey: string | null = null,
+    dstChestKey: string | null = null,
   ): void => {
-    const loc = chestState.location();
     sendTransferItems(
       src,
       dst,
       count,
-      srcChest ? loc : null,
-      dstChest ? loc : null,
+      srcChestKey ? chestLocationFromKey(srcChestKey) : null,
+      dstChestKey ? chestLocationFromKey(dstChestKey) : null,
     );
   };
   const inventoryUiInner = mountInventoryUi({
     getInventory: () => inventory,
-    getChestInventory: () =>
-      chestState.location() !== null ? chestState.inventory() : null,
+    getChestInventory: (chestKey) => {
+      const loc = chestState.location();
+      if (loc === null) return null;
+      return chestKeyOf(loc) === chestKey ? chestState.inventory() : null;
+    },
     sendSelect: sendSelectSlot,
     sendMove: sendMoveSlotUi,
     sendTransfer: sendTransferItemsUi,
@@ -452,10 +460,13 @@ export function runMain(
   // sentinel (range loss / explicit close / chest broken). Task 535
   // unified drag/drop + right-click split + click-to-withdraw through
   // the inventory UI's shared dragdrop state machine — the chest UI
-  // registers its cells through `inventoryUiInner.wireChestSlot`.
+  // registers its cells through `inventoryUiInner.wireChestSlot`. Task
+  // 591 added header chrome (title + X button + drag-to-move); the X
+  // button ships a `CloseChest` via `sendCloseChest`.
   const chestUi = mountChestUi({
     chestState,
     inventoryUi: inventoryUiInner,
+    sendCloseChest,
   });
   teardowns.push(() => chestUi.unmount());
 
@@ -487,7 +498,9 @@ export function runMain(
     },
     selectedHotbarSlot: () => inventoryUiInner.selectedHotbarSlot(),
     selectHotbarSlot: (slot) => inventoryUiInner.selectHotbarSlot(slot),
-    wireChestSlot: (idx, cell) => inventoryUiInner.wireChestSlot(idx, cell),
+    wireChestSlot: (chestKey, idx, cell) =>
+      inventoryUiInner.wireChestSlot(chestKey, idx, cell),
+    unwireChestKey: (chestKey) => inventoryUiInner.unwireChestKey(chestKey),
     render: () => inventoryUiInner.render(),
     unmount: () => inventoryUiInner.unmount(),
   };

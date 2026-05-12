@@ -1,207 +1,69 @@
 /**
- * Chest panel UI (task 420 + 535).
+ * Chest UI orchestrator. Subscribes to the client-side `ChestState`
+ * mirror and drives the [`panel_manager`] in response: mount the panel
+ * when the local player opens a chest, unmount it when the server
+ * confirms the close. Today (task 591) the client mirror is still a
+ * singleton — at most one panel is mounted at a time — but the panel
+ * manager is shaped to handle N (task 592 promotes the mirror).
  *
- * Renders the open chest's 45-slot inventory in a side-panel sibling to
- * the player's main inventory grid. Mounts only when `chestState.location()`
- * is non-null (the server tracks the open chest and ships
- * `ChestUpdate` per tick the contents mutate).
- *
- * Interaction model (task 535): the chest cells share the same drag-and-
- * drop machinery as the player grid. Each cell is registered with the
- * inventory UI's `wireChestSlot` at mount time so pointerdown / drag /
- * right-click split / click-to-withdraw all flow through the same state
- * machine and ship `MoveSlot` / `TransferItems` with the right cross-grid
- * `srcChest` / `dstChest` flags filled in.
+ * Per-panel chrome (header bar + X button + drag-to-move) lives in
+ * [`panel_manager`]. Per-cell drag/drop wiring is delegated to the
+ * shared inventory dragdrop state machine via `wireChestSlot`.
  */
-import {
-  type ChestState,
-  INVENTORY_SIZE,
-} from "../../game/index.js";
-import { itemDisplayName } from "../../item_names.js";
-import { textureUrlForItem } from "../../textures.js";
+import { type ChestLocation, type ChestState } from "../../game/index.js";
 import type { InventoryUiHandle } from "../inventory/index.js";
-
-const STYLE_ID = "anarchy-chest-style";
-
-const STYLE = `
-  #anarchy-chest-root {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 8400;
-    font-family: system-ui, -apple-system, sans-serif;
-    color: #f0f0f0;
-  }
-  #anarchy-chest-root > * { pointer-events: auto; }
-  .anarchy-chest-panel {
-    position: absolute;
-    left: 280px;
-    top: 90px;
-    display: none;
-    grid-template-columns: repeat(9, 48px);
-    gap: 4px;
-    padding: 16px;
-    background: rgba(20, 24, 30, 0.92);
-    border: 1px solid rgba(180, 140, 80, 0.4);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  }
-  .anarchy-chest-panel.open { display: grid; }
-  .anarchy-chest-title {
-    position: absolute;
-    top: -22px;
-    left: 12px;
-    font-size: 12px;
-    color: #d8c195;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  .anarchy-chest-slot {
-    width: 48px;
-    height: 48px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    cursor: pointer;
-    user-select: none;
-    box-sizing: border-box;
-  }
-  .anarchy-chest-slot:hover { background: rgba(255, 255, 255, 0.10); }
-  .anarchy-chest-slot img {
-    width: 36px; height: 36px;
-    image-rendering: pixelated;
-    pointer-events: none;
-  }
-  .anarchy-chest-slot .count {
-    position: absolute;
-    bottom: 2px; right: 4px;
-    font-size: 11px;
-    color: #ffffff;
-    text-shadow: 1px 1px 0 #000;
-  }
-  /* Mirror the player-grid affordances so the cross-grid drag/split
-     state reads identically. */
-  .anarchy-chest-slot.drag-source { opacity: 0.4; }
-  .anarchy-chest-slot.split-source {
-    border-color: #ffd34a;
-    box-shadow: 0 0 0 2px rgba(255, 211, 74, 0.5) inset;
-  }
-`;
+import { chestKeyOf } from "./chest_key.js";
+import { createPanelManager, type PanelManagerHandle } from "./panel_manager.js";
 
 export interface ChestUiOptions {
   readonly chestState: ChestState;
-  /**
-   * Inventory UI handle (task 535). The chest UI registers each of its
-   * cells with this handle's `wireChestSlot` so the cross-grid drag /
-   * right-click split / click-to-withdraw flows route through the
-   * shared dragdrop state machine.
-   */
   readonly inventoryUi: InventoryUiHandle;
+  /**
+   * Wire surface for the header X button. The orchestrator hands the
+   * panel manager a thin wrapper that includes this; the manager calls
+   * it on X-click with the panel's own `ChestLocation`.
+   */
+  readonly sendCloseChest: (loc: ChestLocation) => void;
 }
 
 export interface ChestUiHandle {
   unmount(): void;
 }
 
-/**
- * Mount the chest grid panel. The panel toggles visible automatically as
- * `chestState.location()` changes — there's no separate `setOpen`.
- */
 export function mountChestUi(options: ChestUiOptions): ChestUiHandle {
-  if (!document.getElementById(STYLE_ID)) {
-    const tag = document.createElement("style");
-    tag.id = STYLE_ID;
-    tag.textContent = STYLE;
-    document.head.appendChild(tag);
-  }
-
-  const root = document.createElement("div");
-  root.id = "anarchy-chest-root";
-
-  const panel = document.createElement("div");
-  panel.className = "anarchy-chest-panel";
-
-  const title = document.createElement("div");
-  title.className = "anarchy-chest-title";
-  title.textContent = "Chest";
-  panel.appendChild(title);
-
-  const cells: HTMLDivElement[] = [];
-  for (let i = 0; i < INVENTORY_SIZE; i++) {
-    const cell = document.createElement("div");
-    cell.className = "anarchy-chest-slot";
-    // Suppress the browser context menu so right-click can drive the
-    // split flow without the OS overlay stealing focus. Pointerdown is
-    // owned by the dragdrop state machine via `wireChestSlot`.
-    cell.addEventListener("contextmenu", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-    });
-    options.inventoryUi.wireChestSlot(i, cell);
-    panel.appendChild(cell);
-    cells.push(cell);
-  }
-
-  // Stop pointer events from reaching `window` so the bootstrap-level
-  // mousedown / contextmenu handlers don't fire destroy / place when a
-  // click lands on the chest panel. The dragdrop machinery still sees
-  // them — it attaches at the cell level + at the document level.
-  // `contextmenu` at the panel root also gets `preventDefault` so the
-  // browser's native menu doesn't pop up over panel padding/gaps (cells
-  // already prevent it themselves above).
-  for (const ev of ["mousedown", "mouseup", "click"] as const) {
-    panel.addEventListener(ev, (e) => e.stopPropagation());
-  }
-  panel.addEventListener("contextmenu", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const manager: PanelManagerHandle = createPanelManager({
+    inventoryUi: options.inventoryUi,
+    sendCloseChest: options.sendCloseChest,
   });
 
-  root.appendChild(panel);
-  document.body.appendChild(root);
-
-  const render = (): void => {
-    const open = options.chestState.location() !== null;
-    panel.classList.toggle("open", open);
-    if (!open) {
-      for (const cell of cells) cell.replaceChildren();
+  const reconcile = (): void => {
+    const loc = options.chestState.location();
+    if (loc === null) {
+      if (manager.mountedKeys().length > 0) manager.unmountAll();
       return;
     }
-    const inv = options.chestState.inventory();
-    for (let i = 0; i < INVENTORY_SIZE; i++) {
-      const slot = inv.slot(i);
-      const cell = cells[i];
-      cell.replaceChildren();
-      cell.title = "";
-      if (slot === null) continue;
-      const url = textureUrlForItem(slot.item);
-      if (url !== null) {
-        const img = document.createElement("img");
-        img.src = url;
-        cell.appendChild(img);
+    const key = chestKeyOf(loc);
+    // Single-panel today: drop any panel that doesn't match the open
+    // chest's key. Task 592 widens this.
+    for (const mountedKey of manager.mountedKeys()) {
+      if (mountedKey !== key) {
+        // Reconstruct the location to call unmount; cheap since the key
+        // is the location string-encoded.
+        const [cx, cy, lx, ly] = mountedKey.split(",").map(Number);
+        manager.unmount({ cx, cy, lx, ly });
       }
-      if (slot.count > 1) {
-        const count = document.createElement("span");
-        count.className = "count";
-        count.textContent = String(slot.count);
-        cell.appendChild(count);
-      }
-      const name = itemDisplayName(slot.item);
-      cell.title = slot.count > 1 ? `${name} (${slot.count})` : name;
     }
+    if (!manager.has(loc)) manager.mount(loc);
+    manager.render(loc, options.chestState.inventory());
   };
 
-  const unsubscribe = options.chestState.subscribe(render);
-  render();
+  const unsubscribe = options.chestState.subscribe(reconcile);
+  reconcile();
 
   return {
     unmount: () => {
       unsubscribe();
-      root.remove();
+      manager.dispose();
     },
   };
 }
