@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ChestState,
   type ChestLocation,
+  chestKeyOf,
   HOTBAR_SLOTS,
   INVENTORY_SIZE,
   Inventory,
@@ -12,7 +13,6 @@ import {
 } from "../../game/index.js";
 import { mountInventoryUi, type InventoryUiHandle } from "../inventory/index.js";
 import { _resetTooltipForTests } from "../tooltip.js";
-import { chestKeyOf } from "./chest_key.js";
 import { mountChestUi } from "./index.js";
 
 interface MoveRecord {
@@ -62,11 +62,7 @@ function mountUis(
   const closes: CloseRecord[] = [];
   const inventoryUi = mountInventoryUi({
     getInventory: () => playerInv,
-    getChestInventory: (key) => {
-      const cur = chestState.location();
-      if (cur === null) return null;
-      return chestKeyOf(cur) === key ? chestState.inventory() : null;
-    },
+    getChestInventory: (key) => chestState.inventoryForKey(key),
     sendSelect: () => {},
     sendMove: (src, dst, srcChestKey = null, dstChestKey = null) =>
       moves.push({
@@ -409,11 +405,7 @@ describe("chest cross-grid drag/drop + split (task 535/591)", () => {
     let unequipCount = 0;
     const inventoryUi = mountInventoryUi({
       getInventory: () => playerInv,
-      getChestInventory: (key) => {
-        const cur = chestState.location();
-        if (cur === null) return null;
-        return chestKeyOf(cur) === key ? chestState.inventory() : null;
-      },
+      getChestInventory: (key) => chestState.inventoryForKey(key),
       sendSelect: () => {},
       sendMove: (src, dst, srcChestKey = null, dstChestKey = null) =>
         moves.push({
@@ -695,21 +687,11 @@ describe("chest panel manager (task 591)", () => {
   it("unmounts the panel when chestState closes", () => {
     const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
     expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(1);
-    chestState.replaceFromWire(null, []);
+    chestState.closeFromWire(DEFAULT_LOC);
     expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(0);
   });
 
-  it("opening a different chest replaces the prior panel (single-chest 591)", () => {
-    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
-    expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(1);
-
-    const other: ChestLocation = { cx: 9, cy: 9, lx: 5, ly: 5 };
-    chestState.replaceFromWire(other, emptySlots());
-    // Still exactly one panel mounted — the manager closes A on open of B.
-    expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(1);
-  });
-
-  it("cross-grid drag still routes the new chest's chestKey after a re-mount", () => {
+  it("cross-grid drag still routes a freshly-opened chest's chestKey", () => {
     const { moves, chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
     const other: ChestLocation = { cx: 7, cy: 7, lx: 2, ly: 3 };
     const otherKey = chestKeyOf(other);
@@ -717,7 +699,11 @@ describe("chest panel manager (task 591)", () => {
     fill[0] = { item: ItemId.Gold, count: 5 };
     chestState.replaceFromWire(other, fill);
 
-    const src = chestCells()[0];
+    // Two panels are mounted now (DEFAULT + other). Find the second
+    // panel's slot 0 and drag it onto the player panel.
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    expect(panels).toHaveLength(2);
+    const src = panels[1].querySelectorAll(".anarchy-chest-slot")[0] as HTMLDivElement;
     const dst = panelCells()[0];
     dragGesture(src, dst);
     expect(moves).toEqual([
@@ -725,6 +711,209 @@ describe("chest panel manager (task 591)", () => {
         src: 0,
         dst: HOTBAR_SLOTS,
         srcChestKey: otherKey,
+        dstChestKey: null,
+      },
+    ]);
+  });
+});
+
+describe("chest multi-panel manager (task 592)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    document.head.innerHTML = "";
+    _resetTooltipForTests();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.innerHTML = "";
+    _resetTooltipForTests();
+  });
+
+  const SECOND_LOC: ChestLocation = { cx: 5, cy: 6, lx: 7, ly: 8 };
+  const SECOND_KEY = chestKeyOf(SECOND_LOC);
+
+  function transformXY(panel: HTMLElement): { x: number; y: number } {
+    const match = panel.style.transform.match(
+      /translate\((-?\d+(?:\.\d+)?)px, (-?\d+(?:\.\d+)?)px\)/,
+    );
+    if (match === null) return { x: NaN, y: NaN };
+    return { x: Number(match[1]), y: Number(match[2]) };
+  }
+
+  it("opening chest B while A is open mounts B alongside A (both stay)", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(1);
+
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+    expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(2);
+  });
+
+  it("staggers the second panel from the first along both axes", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    const a = transformXY(panels[0] as HTMLElement);
+    const b = transformXY(panels[1] as HTMLElement);
+    expect(b.x).toBeGreaterThan(a.x);
+    expect(b.y).toBeGreaterThan(a.y);
+  });
+
+  it("newly-opened panel mounts on top (highest z-index, focused class)", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    const aZ = Number((panels[0] as HTMLElement).style.zIndex);
+    const bZ = Number((panels[1] as HTMLElement).style.zIndex);
+    expect(bZ).toBeGreaterThan(aZ);
+    expect((panels[1] as HTMLElement).classList.contains("focused")).toBe(true);
+    expect((panels[0] as HTMLElement).classList.contains("focused")).toBe(false);
+  });
+
+  it("clicking the bottom panel raises it above the top (z-index + focused swap)", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    const a = panels[0] as HTMLElement;
+    const b = panels[1] as HTMLElement;
+    expect(Number(b.style.zIndex)).toBeGreaterThan(Number(a.style.zIndex));
+
+    // Click on A's header — drag-arming pointerdown raises focus on
+    // mousedown per the panel manager contract.
+    const aHeader = a.querySelector(".anarchy-chest-header") as HTMLElement;
+    aHeader.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+      }),
+    );
+
+    expect(Number(a.style.zIndex)).toBeGreaterThan(Number(b.style.zIndex));
+    expect(a.classList.contains("focused")).toBe(true);
+    expect(b.classList.contains("focused")).toBe(false);
+  });
+
+  it("clicking inside a panel body (a cell) also raises it", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    const a = panels[0] as HTMLElement;
+    const b = panels[1] as HTMLElement;
+    expect(Number(b.style.zIndex)).toBeGreaterThan(Number(a.style.zIndex));
+
+    const aFirstCell = a.querySelector(".anarchy-chest-slot") as HTMLElement;
+    aFirstCell.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    );
+
+    expect(Number(a.style.zIndex)).toBeGreaterThan(Number(b.style.zIndex));
+    expect(a.classList.contains("focused")).toBe(true);
+    expect(b.classList.contains("focused")).toBe(false);
+  });
+
+  it("closing one panel leaves the other mounted and focused", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+    expect(document.querySelectorAll(".anarchy-chest-panel")).toHaveLength(2);
+
+    chestState.closeFromWire(DEFAULT_LOC);
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    expect(panels).toHaveLength(1);
+    expect((panels[0] as HTMLElement).classList.contains("focused")).toBe(true);
+  });
+
+  it("drop from chest A's slot onto chest B's slot ships MoveSlot with both keys", () => {
+    const aFill = emptySlots();
+    aFill[2] = { item: ItemId.Gold, count: 10 };
+    const { moves, chestState } = mountUis(emptySlots(), aFill, DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    const src = panels[0].querySelectorAll(".anarchy-chest-slot")[2] as HTMLDivElement;
+    const dst = panels[1].querySelectorAll(".anarchy-chest-slot")[7] as HTMLDivElement;
+    dragGesture(src, dst);
+
+    expect(moves).toEqual([
+      {
+        src: 2,
+        dst: 7,
+        srcChestKey: DEFAULT_KEY,
+        dstChestKey: SECOND_KEY,
+      },
+    ]);
+  });
+
+  it("right-click split across two chest panels ships TransferItems with both keys", () => {
+    const aFill = emptySlots();
+    aFill[0] = { item: ItemId.Gold, count: 10 };
+    const { transfers, chestState } = mountUis(emptySlots(), aFill, DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+
+    const panels = document.querySelectorAll(".anarchy-chest-panel");
+    const src = panels[0].querySelectorAll(".anarchy-chest-slot")[0] as HTMLDivElement;
+    const dst = panels[1].querySelectorAll(".anarchy-chest-slot")[5] as HTMLDivElement;
+    src.dispatchEvent(new PointerEvent("pointerdown", { button: 2, bubbles: true }));
+    dst.dispatchEvent(new PointerEvent("pointerdown", { button: 2, bubbles: true }));
+
+    expect(transfers).toEqual([
+      {
+        src: 0,
+        dst: 5,
+        count: 1,
+        srcChestKey: DEFAULT_KEY,
+        dstChestKey: SECOND_KEY,
+      },
+    ]);
+  });
+
+  it("updating chest A's contents does not fire chest B's per-key listener", () => {
+    const { chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, emptySlots());
+
+    let aFires = 0;
+    let bFires = 0;
+    chestState.subscribeKey(DEFAULT_KEY, () => {
+      aFires += 1;
+    });
+    chestState.subscribeKey(SECOND_KEY, () => {
+      bFires += 1;
+    });
+
+    const aFill = emptySlots();
+    aFill[1] = { item: ItemId.Stone, count: 3 };
+    chestState.replaceFromWire(DEFAULT_LOC, aFill);
+
+    expect(aFires).toBe(1);
+    expect(bFires).toBe(0);
+  });
+
+  it("closing one chest leaves the other's drag/drop wiring intact", () => {
+    const bFill = emptySlots();
+    bFill[3] = { item: ItemId.Gold, count: 5 };
+    const { moves, chestState } = mountUis(emptySlots(), emptySlots(), DEFAULT_LOC);
+    chestState.replaceFromWire(SECOND_LOC, bFill);
+    chestState.closeFromWire(DEFAULT_LOC);
+
+    // Only B's panel remains; its slot 3 holds 5 Gold. Drag it onto
+    // the player panel and verify the wire surface still works.
+    const survivor = document.querySelector(
+      ".anarchy-chest-panel",
+    ) as HTMLElement;
+    const src = survivor.querySelectorAll(".anarchy-chest-slot")[3] as HTMLDivElement;
+    const dst = panelCells()[0];
+    dragGesture(src, dst);
+    expect(moves).toEqual([
+      {
+        src: 3,
+        dst: HOTBAR_SLOTS,
+        srcChestKey: SECOND_KEY,
         dstChestKey: null,
       },
     ]);

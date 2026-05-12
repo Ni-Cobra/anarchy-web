@@ -52,6 +52,9 @@ export const AdminItemId = {
   IronIngot: 31,
   Torch: 33,
   Lantern: 34,
+  // Task 592 e2e: chest item, used by the multi-chest spec to seed two
+  // placeable chests into the player's inventory.
+  Chest: 36,
 } as const;
 
 export type AdminItemId = (typeof AdminItemId)[keyof typeof AdminItemId];

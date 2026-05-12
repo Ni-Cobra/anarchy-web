@@ -54,13 +54,13 @@
  */
 
 import {
+  type ChestKey,
   HOTBAR_SLOTS,
   type Inventory,
   MAIN_SLOTS,
   type ToolKind,
 } from "../../game/index.js";
 import { itemDisplayName } from "../../item_names.js";
-import type { ChestKey } from "../chest/chest_key.js";
 import { attachTooltip, type TooltipHandle } from "../tooltip.js";
 import { makeSlotCell, paintEquipmentSlot, paintSlot } from "./cells.js";
 import {

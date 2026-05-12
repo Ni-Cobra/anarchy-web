@@ -31,7 +31,9 @@
  */
 
 import {
+  type ChestLocation,
   ChestState,
+  chestLocationFromKey,
   Inventory,
   SnapshotBuffer,
   Terrain,
@@ -49,7 +51,6 @@ import {
   type WireTargetingStateEvent,
 } from "../net/index.js";
 import { Renderer, type GhostState } from "../render/index.js";
-import { chestKeyOf, chestLocationFromKey } from "../ui/chest/chest_key.js";
 import {
   mountChestUi,
   mountCoordsHud,
@@ -113,14 +114,30 @@ export interface AnarchyHandle {
   sendPlaceBlock: (cx: number, cy: number, lx: number, ly: number) => void;
   /** Send a hotbar-selection action; bumps the local action seq. */
   sendSelectSlot: (slot: number) => void;
-  /** Send an inventory drag-drop action; bumps the local action seq. */
-  sendMoveSlot: (src: number, dst: number) => void;
+  /**
+   * Send an inventory drag-drop action; bumps the local action seq. The
+   * optional `srcChest` / `dstChest` arguments name which chest a slot
+   * index lives in (task 590 multi-open); pass `null` (or omit) when the
+   * slot lives in the player's own grid.
+   */
+  sendMoveSlot: (
+    src: number,
+    dst: number,
+    srcChest?: ChestLocation | null,
+    dstChest?: ChestLocation | null,
+  ) => void;
   /**
    * Send a `TransferItems(src, dst, count)` action — the BACKLOG 410
    * right-click split flow. Strict partial transfer (no swap fallback for
    * mismatched-kind destinations). Bumps the local action seq.
    */
-  sendTransferItems: (src: number, dst: number, count: number) => void;
+  sendTransferItems: (
+    src: number,
+    dst: number,
+    count: number,
+    srcChest?: ChestLocation | null,
+    dstChest?: ChestLocation | null,
+  ) => void;
   /**
    * Ship a `CraftRequest(recipe_id)` action up to the server (task 090
    * client wiring). The server re-validates ingredient availability and
@@ -432,11 +449,7 @@ export function runMain(
   };
   const inventoryUiInner = mountInventoryUi({
     getInventory: () => inventory,
-    getChestInventory: (chestKey) => {
-      const loc = chestState.location();
-      if (loc === null) return null;
-      return chestKeyOf(loc) === chestKey ? chestState.inventory() : null;
-    },
+    getChestInventory: (chestKey) => chestState.inventoryForKey(chestKey),
     sendSelect: sendSelectSlot,
     sendMove: sendMoveSlotUi,
     sendTransfer: sendTransferItemsUi,
@@ -470,14 +483,16 @@ export function runMain(
   });
   teardowns.push(() => chestUi.unmount());
 
-  // ESC closes whichever chest the singleton UI is currently showing.
-  // Bound at window-level so it works whether the inventory panel is
-  // open or not; falls through to other handlers if no chest is open.
+  // ESC closes every open chest. Bound at window-level so it works
+  // whether the inventory panel is open or not; falls through to other
+  // handlers if no chest is open. With multi-open (task 592) ESC fans
+  // out a `CloseChest` per panel — the server retires each chest and
+  // ships a closed `ChestUpdate` per chest.
   const onEscape = (ev: KeyboardEvent): void => {
     if (ev.key !== "Escape") return;
-    const loc = chestState.location();
-    if (loc === null) return;
-    sendCloseChest(loc);
+    const locs = chestState.locations();
+    if (locs.length === 0) return;
+    for (const loc of locs) sendCloseChest(loc);
   };
   window.addEventListener("keydown", onEscape);
   teardowns.push(() => window.removeEventListener("keydown", onEscape));

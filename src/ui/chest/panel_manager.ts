@@ -1,26 +1,37 @@
 /**
- * Chest-panel manager (task 591). Owns per-chest panel DOM nodes keyed
- * by `ChestKey`, mount/unmount lifecycle, header chrome (title + X
- * button), and the drag-to-move position state for each panel.
+ * Chest-panel manager (tasks 591, 592). Owns per-chest panel DOM nodes
+ * keyed by `ChestKey`, mount/unmount lifecycle, header chrome (title +
+ * X button), the drag-to-move position state for each panel, plus the
+ * focus stack that drives z-order and the "active panel" emphasis.
  *
- * Today the chest mirror is still a singleton (ADR 0008 / task 590
- * server-side multi-open, client-side singleton until task 592), so the
- * orchestrator above this module mounts at most one panel at a time.
- * The shape, however, is N-ready: opening / closing additional panels
- * is a matter of calling `mount` / `unmount` once per chest. Task 592
- * promotes the client-side state mirror and the cross-panel drag/drop
- * routing.
+ * Task 592 lifted the "one panel mounted at a time" cap: opening chest
+ * B while A is open mounts B alongside A. Closing A leaves B
+ * undisturbed.
+ *
+ * Layout:
+ * - Newly-mounted panels stagger by `STAGGER_PX` in both axes from the
+ *   last-mounted panel so a second open doesn't perfectly cover the
+ *   first. The stagger wraps inside a coarse viewport window so a long
+ *   chain of opens doesn't walk off the screen.
+ *
+ * Focus / z-order:
+ * - A small in-order stack (`focusStack`) tracks recency. The panel at
+ *   the top of the stack gets the highest z-index and the `focused`
+ *   class for the visual emphasis. Newly-mounted panels open at the
+ *   top of the stack; clicking anywhere inside a panel (including the
+ *   header on drag-start) raises it.
  */
 
 import {
+  type ChestKey,
   type ChestLocation,
+  chestKeyOf,
   type Inventory,
   INVENTORY_SIZE,
 } from "../../game/index.js";
 import { itemDisplayName } from "../../item_names.js";
 import { textureUrlForItem } from "../../textures.js";
 import type { InventoryUiHandle } from "../inventory/index.js";
-import { type ChestKey, chestKeyOf } from "./chest_key.js";
 
 const STYLE_ID = "anarchy-chest-style";
 
@@ -35,18 +46,34 @@ const HEADER_MIN_VISIBLE_PX = 30;
 const INITIAL_X = 280;
 const INITIAL_Y = 90;
 
+/**
+ * Distance the second-and-subsequent panels are offset from the previous
+ * mount. The task spec calls for ~30 px stagger; we wrap the stagger
+ * inside a coarse window so a long chain of opens doesn't walk
+ * indefinitely off the bottom-right.
+ */
+const STAGGER_PX = 30;
+const STAGGER_WRAP_PX = 8 * STAGGER_PX;
+
 /** Estimated panel footprint. Used by the drag clamp before the panel
  * has laid out (e.g. in unit tests with happy-dom where
  * `getBoundingClientRect` returns zeros). The clamp prefers the live
  * rect when available. */
 const ESTIMATED_PANEL_WIDTH = 9 * 48 + 8 * 4 + 16 * 2;
 
+/**
+ * z-index baseline applied to chest panels. The focus stack adds the
+ * per-panel rank on top so the most-recently-focused panel paints over
+ * the others. Stays below the inventory overlay's 8500-band so the
+ * hotbar / panel still wins.
+ */
+const Z_INDEX_BASE = 8400;
+
 const STYLE = `
   #anarchy-chest-root {
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 8400;
     font-family: system-ui, -apple-system, sans-serif;
     color: #f0f0f0;
   }
@@ -65,6 +92,10 @@ const STYLE = `
     user-select: none;
   }
   .anarchy-chest-panel.open { display: flex; }
+  .anarchy-chest-panel.focused {
+    border-color: rgba(220, 180, 110, 0.85);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  }
   .anarchy-chest-header {
     display: flex;
     align-items: center;
@@ -180,6 +211,8 @@ export interface PanelManagerHandle {
   render(loc: ChestLocation, inventory: Inventory): void;
   /** Mounted chestKeys in insertion order. */
   mountedKeys(): readonly ChestKey[];
+  /** Mounted chestKeys ordered bottom → top by current z-order. */
+  focusOrder(): readonly ChestKey[];
   /** Tear down every panel; keep the manager attached to the DOM. */
   unmountAll(): void;
   /** Tear down every panel and detach the manager root from the DOM. */
@@ -196,9 +229,45 @@ export function createPanelManager(
   document.body.appendChild(root);
 
   const entries = new Map<ChestKey, PanelEntry>();
+  /**
+   * Focus stack ordered bottom → top. The last element wins the highest
+   * z-index and the `focused` class. Mutations always go through
+   * `raiseToFront` so the rendered z-indices and class stay in sync.
+   */
+  const focusStack: ChestKey[] = [];
+  /**
+   * Offset for the next mount, in CSS px. Each new mount writes (and
+   * then advances) this counter so successive opens stagger by
+   * `STAGGER_PX` without perfectly covering the previous panel.
+   */
+  let nextStaggerOffset = 0;
 
   const applyTransform = (entry: PanelEntry): void => {
     entry.panel.style.transform = `translate(${entry.position.x}px, ${entry.position.y}px)`;
+  };
+
+  const applyFocusOrder = (): void => {
+    for (let i = 0; i < focusStack.length; i++) {
+      const entry = entries.get(focusStack[i]);
+      if (entry === undefined) continue;
+      entry.panel.style.zIndex = String(Z_INDEX_BASE + i);
+      entry.panel.classList.toggle("focused", i === focusStack.length - 1);
+    }
+  };
+
+  const raiseToFront = (key: ChestKey): void => {
+    const idx = focusStack.indexOf(key);
+    if (idx === focusStack.length - 1) return;
+    if (idx >= 0) focusStack.splice(idx, 1);
+    focusStack.push(key);
+    applyFocusOrder();
+  };
+
+  const dropFromStack = (key: ChestKey): void => {
+    const idx = focusStack.indexOf(key);
+    if (idx < 0) return;
+    focusStack.splice(idx, 1);
+    applyFocusOrder();
   };
 
   const clampPosition = (entry: PanelEntry, x: number, y: number): { x: number; y: number } => {
@@ -260,6 +329,7 @@ export function createPanelManager(
         return;
       }
       ev.preventDefault();
+      raiseToFront(entry.key);
       dragOffsetX = ev.clientX - entry.position.x;
       dragOffsetY = ev.clientY - entry.position.y;
       dragging = true;
@@ -276,6 +346,12 @@ export function createPanelManager(
         window.removeEventListener("pointerup", onPointerUp);
       }
     };
+  };
+
+  const initialPosition = (): { x: number; y: number } => {
+    const offset = nextStaggerOffset;
+    nextStaggerOffset = (nextStaggerOffset + STAGGER_PX) % STAGGER_WRAP_PX;
+    return { x: INITIAL_X + offset, y: INITIAL_Y + offset };
   };
 
   const buildPanel = (loc: ChestLocation): PanelEntry => {
@@ -329,6 +405,17 @@ export function createPanelManager(
     }
     panel.appendChild(grid);
 
+    // Any pointer landing in the panel (cell or chrome) raises focus.
+    // Bound on capture so the cells' own pointerdown listeners still
+    // run normally — this handler only mutates focus state.
+    panel.addEventListener(
+      "pointerdown",
+      () => {
+        raiseToFront(key);
+      },
+      true,
+    );
+
     // Stop pointer events from reaching `window` so the bootstrap-level
     // mousedown / contextmenu handlers don't fire destroy / place when
     // a click lands on the chest panel.
@@ -346,7 +433,7 @@ export function createPanelManager(
       panel,
       header,
       cells,
-      position: { x: INITIAL_X, y: INITIAL_Y },
+      position: initialPosition(),
       detachDrag: () => {},
     };
     applyTransform(entry);
@@ -384,6 +471,8 @@ export function createPanelManager(
     const entry = buildPanel(loc);
     entries.set(key, entry);
     root.appendChild(entry.panel);
+    focusStack.push(key);
+    applyFocusOrder();
   };
 
   const unmount = (loc: ChestLocation): void => {
@@ -394,6 +483,7 @@ export function createPanelManager(
     options.inventoryUi.unwireChestKey(key);
     entry.panel.remove();
     entries.delete(key);
+    dropFromStack(key);
   };
 
   return {
@@ -406,6 +496,7 @@ export function createPanelManager(
       renderEntry(entry, inv);
     },
     mountedKeys: () => Array.from(entries.keys()),
+    focusOrder: () => focusStack.slice(),
     unmountAll: () => {
       for (const entry of entries.values()) {
         entry.detachDrag();
@@ -413,6 +504,7 @@ export function createPanelManager(
         entry.panel.remove();
       }
       entries.clear();
+      focusStack.length = 0;
     },
     dispose: () => {
       for (const entry of entries.values()) {
@@ -421,6 +513,7 @@ export function createPanelManager(
         entry.panel.remove();
       }
       entries.clear();
+      focusStack.length = 0;
       root.remove();
     },
   };

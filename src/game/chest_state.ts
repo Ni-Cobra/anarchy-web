@@ -1,22 +1,32 @@
 /**
- * Open-chest mirror (task 420). Tracks (a) the world location of the chest
- * the local player currently has open and (b) its 45-slot inventory.
- * Network-free: the wire bridge in `../net/wire.ts` decodes `ChestUpdate`
- * frames and writes the resulting state here.
+ * Open-chest mirror (task 420 / 590 / 592). Tracks every chest the local
+ * player currently has open — one `ChestPanelMirror` per chest, keyed by
+ * `ChestKey`. Network-free: the wire bridge in `../net/wire_chest.ts`
+ * decodes `ChestUpdate` frames and writes the resulting state here.
  *
- * The shape mirrors the server's per-player open-chest tracking:
- * - `location === null` means no chest is open. The chest UI is hidden.
- * - `location !== null` means the chest at that cell is open and its
- *   contents (in `inventory`) should be rendered alongside the player's
- *   grid.
+ * Task 592 promoted this from a singleton to N mirrors. The shape mirrors
+ * the server's per-player open-chests set (task 590):
+ * - Each mirror carries the `ChestLocation` of the chest and its 45-slot
+ *   `Inventory`.
+ * - `replaceFromWire(location, slots)` either adds a new mirror (firing
+ *   set listeners) or updates an existing one's contents (firing per-key
+ *   listeners only).
+ * - `closeFromWire(location)` retires that mirror; other mirrors are
+ *   untouched.
  *
- * Subscribers are notified on every state change (open / close / contents
- * update). UI mirrors register a single listener and re-render reactively.
+ * Two listener tiers so the chest UI orchestrator and the per-panel
+ * renderers can subscribe at the right granularity:
+ * - `subscribeSet` fires when chests open or close — used by the
+ *   orchestrator to mount / unmount panels.
+ * - `subscribeKey(key, listener)` fires when the contents of that
+ *   specific chest change — used by each mounted panel so an update to
+ *   chest A doesn't re-render chest B.
  */
 
-import { Inventory, INVENTORY_SIZE, type Slot } from "./inventory.js";
+import { type ChestKey, chestKeyOf } from "./chest_key.js";
+import { Inventory, type Slot } from "./inventory.js";
 
-/** Location of the currently-open chest. */
+/** Location of an open chest. */
 export interface ChestLocation {
   readonly cx: number;
   readonly cy: number;
@@ -24,62 +34,109 @@ export interface ChestLocation {
   readonly ly: number;
 }
 
+interface ChestPanelMirror {
+  readonly location: ChestLocation;
+  readonly inventory: Inventory;
+}
+
 export class ChestState {
-  private _location: ChestLocation | null = null;
-  private _inventory: Inventory = new Inventory();
-  private listeners: Array<() => void> = [];
+  private mirrors = new Map<ChestKey, ChestPanelMirror>();
+  private setListeners: Array<() => void> = [];
+  private keyListeners = new Map<ChestKey, Array<() => void>>();
 
-  /** Currently-open chest location or `null` if no chest is open. */
-  location(): ChestLocation | null {
-    return this._location;
+  /** Locations of currently-open chests, in insertion order. */
+  locations(): readonly ChestLocation[] {
+    const out: ChestLocation[] = [];
+    for (const m of this.mirrors.values()) out.push(m.location);
+    return out;
+  }
+
+  /** True iff at least one chest is open. */
+  isAnyOpen(): boolean {
+    return this.mirrors.size > 0;
+  }
+
+  /** True iff the chest at `loc` is open. */
+  has(loc: ChestLocation): boolean {
+    return this.mirrors.has(chestKeyOf(loc));
+  }
+
+  /** Inventory mirror for the chest at `loc`, or `null` if not open. */
+  inventoryFor(loc: ChestLocation): Inventory | null {
+    return this.mirrors.get(chestKeyOf(loc))?.inventory ?? null;
+  }
+
+  /** Inventory mirror for the chest with `key`, or `null` if not open. */
+  inventoryForKey(key: ChestKey): Inventory | null {
+    return this.mirrors.get(key)?.inventory ?? null;
   }
 
   /**
-   * Chest's inventory mirror. Only meaningful when `location() !== null`;
-   * returns the underlying `Inventory` always so callers can subscribe to
-   * its own change feed if desired (though `subscribe()` here covers both
-   * the location and contents changes uniformly).
+   * Open or update the chest at `location` with the given full slot
+   * snapshot. A new chest fires set listeners (the orchestrator mounts a
+   * panel). An existing chest fires per-key listeners only (only the
+   * affected panel re-renders).
    */
-  inventory(): Inventory {
-    return this._inventory;
-  }
-
-  /** True iff a chest is currently open. */
-  isOpen(): boolean {
-    return this._location !== null;
-  }
-
-  /**
-   * Update the open-chest state from a decoded `ChestUpdate` frame. Pass
-   * `location = null` and `slots = []` for a "chest closed" sentinel; pass
-   * `location` + full slot array (length `INVENTORY_SIZE`) otherwise. The
-   * wire bridge validates lengths.
-   */
-  replaceFromWire(location: ChestLocation | null, slots: readonly Slot[]): void {
-    if (location === null) {
-      this._location = null;
-      // Clear the inventory mirror so a stale chest's contents don't leak
-      // into the UI on the next open. The `Inventory.replaceFromWire` API
-      // requires exactly INVENTORY_SIZE slots, so we hand it a fresh empty
-      // array.
-      const empty: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
-      this._inventory.replaceFromWire(empty);
-    } else {
-      this._location = location;
-      this._inventory.replaceFromWire(slots);
+  replaceFromWire(location: ChestLocation, slots: readonly Slot[]): void {
+    const key = chestKeyOf(location);
+    const existing = this.mirrors.get(key);
+    if (existing === undefined) {
+      const inv = new Inventory();
+      inv.replaceFromWire(slots);
+      this.mirrors.set(key, { location, inventory: inv });
+      for (const l of this.setListeners.slice()) l();
+      return;
     }
-    for (const listener of this.listeners) listener();
+    existing.inventory.replaceFromWire(slots);
+    const ls = this.keyListeners.get(key);
+    if (ls !== undefined) {
+      for (const l of ls.slice()) l();
+    }
   }
 
   /**
-   * Register a change listener. Returns an unsubscribe function. The
-   * chest UI uses this to re-render when a `ChestUpdate` arrives.
+   * Retire the chest at `location`. Drops its mirror and fires set
+   * listeners. Per-key listeners for that chest are also cleared — any
+   * panel still holding one is being torn down on the same beat.
    */
-  subscribe(listener: () => void): () => void {
-    this.listeners.push(listener);
+  closeFromWire(location: ChestLocation): void {
+    const key = chestKeyOf(location);
+    if (!this.mirrors.has(key)) return;
+    this.mirrors.delete(key);
+    this.keyListeners.delete(key);
+    for (const l of this.setListeners.slice()) l();
+  }
+
+  /**
+   * Notified when chests open or close (the set of keys changed). The
+   * orchestrator subscribes here to drive panel mount / unmount.
+   */
+  subscribeSet(listener: () => void): () => void {
+    this.setListeners.push(listener);
     return () => {
-      const i = this.listeners.indexOf(listener);
-      if (i >= 0) this.listeners.splice(i, 1);
+      const i = this.setListeners.indexOf(listener);
+      if (i >= 0) this.setListeners.splice(i, 1);
+    };
+  }
+
+  /**
+   * Notified when the contents of the chest at `key` change. Fires only
+   * for that specific chest — an update to A doesn't re-render B. The
+   * subscription is dropped automatically on close (the listener array
+   * for that key is cleared).
+   */
+  subscribeKey(key: ChestKey, listener: () => void): () => void {
+    let ls = this.keyListeners.get(key);
+    if (ls === undefined) {
+      ls = [];
+      this.keyListeners.set(key, ls);
+    }
+    ls.push(listener);
+    return () => {
+      const cur = this.keyListeners.get(key);
+      if (cur === undefined) return;
+      const i = cur.indexOf(listener);
+      if (i >= 0) cur.splice(i, 1);
     };
   }
 }

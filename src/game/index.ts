@@ -35,6 +35,8 @@ export {
 export type { ItemStack, Slot, ToolKind } from "./inventory.js";
 export { ChestState } from "./chest_state.js";
 export type { ChestLocation } from "./chest_state.js";
+export { chestKeyOf, chestLocationFromKey } from "./chest_key.js";
+export type { ChestKey } from "./chest_key.js";
 export {
   MAX_USERNAME_LEN,
   MIN_USERNAME_LEN,

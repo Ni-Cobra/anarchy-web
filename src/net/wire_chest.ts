@@ -1,14 +1,12 @@
 /**
- * `ChestUpdate` message handler (task 420 / 590).
+ * `ChestUpdate` message handler (task 420 / 590 / 592).
  *
  * Each `ChestUpdate` covers exactly one chest (server may emit several
  * per tick for a multi-chest open). The frame either opens / refreshes
  * a chest (`closed = false`, `slots` carries the full inventory) or
- * retires it (`closed = true`, `slots` empty). The wire bridge routes
- * the frame into the client's `ChestState` mirror — today a singleton
- * that displays at most one chest, which swaps over when the wire
- * delivers an update for a different chest. Task 591/592 will replace
- * the singleton with a multi-panel manager.
+ * retires it (`closed = true`, `slots` empty). Task 592 promoted the
+ * client mirror to a multi-chest map keyed by `ChestKey`; opens and
+ * updates land in the map without touching any other chest's mirror.
  */
 import { anarchy } from "../gen/anarchy.js";
 import {
@@ -41,20 +39,7 @@ export function applyChestUpdate(
   const closed = update.closed === true;
 
   if (closed) {
-    // Retire this chest's mirror. The singleton only tracks one chest,
-    // so we clear it iff the retired chest matches the currently-shown
-    // one (a closed update for a different chest leaves the singleton
-    // pointing at the live one).
-    const current = sink.chestState.location();
-    if (
-      current !== null &&
-      current.cx === cx &&
-      current.cy === cy &&
-      current.lx === lx &&
-      current.ly === ly
-    ) {
-      sink.chestState.replaceFromWire(null, []);
-    }
+    sink.chestState.closeFromWire({ cx, cy, lx, ly });
     return;
   }
 
@@ -71,8 +56,5 @@ export function applyChestUpdate(
     if (item === null) return null;
     return { item, count };
   });
-  // Singleton swap: any open / contents update routes to the single
-  // mirror, which now points at this chest. (591 replaces this with a
-  // per-chest dict.)
   sink.chestState.replaceFromWire({ cx, cy, lx, ly }, slots);
 }

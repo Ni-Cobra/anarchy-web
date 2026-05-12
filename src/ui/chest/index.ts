@@ -1,18 +1,23 @@
 /**
  * Chest UI orchestrator. Subscribes to the client-side `ChestState`
- * mirror and drives the [`panel_manager`] in response: mount the panel
- * when the local player opens a chest, unmount it when the server
- * confirms the close. Today (task 591) the client mirror is still a
- * singleton — at most one panel is mounted at a time — but the panel
- * manager is shaped to handle N (task 592 promotes the mirror).
+ * multi-chest mirror and drives the [`panel_manager`] in response: mount
+ * a panel when a new chest opens, unmount it when the server retires
+ * the chest, and re-render the matching panel when the chest's contents
+ * change.
  *
  * Per-panel chrome (header bar + X button + drag-to-move) lives in
  * [`panel_manager`]. Per-cell drag/drop wiring is delegated to the
- * shared inventory dragdrop state machine via `wireChestSlot`.
+ * shared inventory dragdrop state machine via `wireChestSlot`. The
+ * orchestrator subscribes to `chestState.subscribeKey(key)` for each
+ * panel it mounts so an update to chest A doesn't re-render chest B.
  */
-import { type ChestLocation, type ChestState } from "../../game/index.js";
+import {
+  type ChestKey,
+  type ChestLocation,
+  type ChestState,
+  chestKeyOf,
+} from "../../game/index.js";
 import type { InventoryUiHandle } from "../inventory/index.js";
-import { chestKeyOf } from "./chest_key.js";
 import { createPanelManager, type PanelManagerHandle } from "./panel_manager.js";
 
 export interface ChestUiOptions {
@@ -36,33 +41,64 @@ export function mountChestUi(options: ChestUiOptions): ChestUiHandle {
     sendCloseChest: options.sendCloseChest,
   });
 
-  const reconcile = (): void => {
-    const loc = options.chestState.location();
-    if (loc === null) {
-      if (manager.mountedKeys().length > 0) manager.unmountAll();
-      return;
-    }
-    const key = chestKeyOf(loc);
-    // Single-panel today: drop any panel that doesn't match the open
-    // chest's key. Task 592 widens this.
-    for (const mountedKey of manager.mountedKeys()) {
-      if (mountedKey !== key) {
-        // Reconstruct the location to call unmount; cheap since the key
-        // is the location string-encoded.
-        const [cx, cy, lx, ly] = mountedKey.split(",").map(Number);
-        manager.unmount({ cx, cy, lx, ly });
-      }
-    }
-    if (!manager.has(loc)) manager.mount(loc);
-    manager.render(loc, options.chestState.inventory());
+  // Per-key contents-listener unsubscribes, indexed by chestKey. Set up
+  // on mount, torn down on unmount so the ChestState's `keyListeners`
+  // map doesn't accumulate references to dead panels.
+  const contentUnsubs = new Map<ChestKey, () => void>();
+
+  const renderPanel = (key: ChestKey, loc: ChestLocation): void => {
+    const inv = options.chestState.inventoryForKey(key);
+    if (inv === null) return;
+    manager.render(loc, inv);
   };
 
-  const unsubscribe = options.chestState.subscribe(reconcile);
+  const mountPanel = (loc: ChestLocation): void => {
+    const key = chestKeyOf(loc);
+    if (manager.has(loc)) return;
+    manager.mount(loc);
+    renderPanel(key, loc);
+    const unsub = options.chestState.subscribeKey(key, () => {
+      renderPanel(key, loc);
+    });
+    contentUnsubs.set(key, unsub);
+  };
+
+  const unmountPanel = (key: ChestKey, loc: ChestLocation): void => {
+    const unsub = contentUnsubs.get(key);
+    if (unsub !== undefined) {
+      unsub();
+      contentUnsubs.delete(key);
+    }
+    manager.unmount(loc);
+  };
+
+  const reconcile = (): void => {
+    const liveLocs = options.chestState.locations();
+    const liveKeys = new Set<ChestKey>();
+    for (const loc of liveLocs) liveKeys.add(chestKeyOf(loc));
+
+    // Drop panels whose chest is no longer open. Reconstruct the
+    // location from the mounted key so `manager.unmount` finds the
+    // entry — chestKeys are round-trippable.
+    for (const mountedKey of manager.mountedKeys()) {
+      if (!liveKeys.has(mountedKey)) {
+        const [cx, cy, lx, ly] = mountedKey.split(",").map(Number);
+        unmountPanel(mountedKey, { cx, cy, lx, ly });
+      }
+    }
+    // Mount any newly-open chest. `mountPanel` is idempotent so we can
+    // just iterate every live location each beat.
+    for (const loc of liveLocs) mountPanel(loc);
+  };
+
+  const unsubscribeSet = options.chestState.subscribeSet(reconcile);
   reconcile();
 
   return {
     unmount: () => {
-      unsubscribe();
+      unsubscribeSet();
+      for (const unsub of contentUnsubs.values()) unsub();
+      contentUnsubs.clear();
       manager.dispose();
     },
   };

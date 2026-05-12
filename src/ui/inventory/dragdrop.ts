@@ -47,6 +47,7 @@
  */
 
 import {
+  type ChestKey,
   HOTBAR_SLOTS,
   INVENTORY_SIZE,
   type Inventory,
@@ -54,7 +55,6 @@ import {
   toolKindOf,
   type ToolKind,
 } from "../../game/index.js";
-import type { ChestKey } from "../chest/chest_key.js";
 import { applyItemIconStyle } from "./cells.js";
 
 /**
