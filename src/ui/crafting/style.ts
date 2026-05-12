@@ -50,7 +50,8 @@ const STYLE = `
     transition: transform 0.15s ease-out;
     width: ${CRAFTING_PANEL_WIDTH_PX}px;
     max-height: 80vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     background: rgba(20, 24, 30, 0.96);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-right: none;
@@ -60,6 +61,22 @@ const STYLE = `
     padding: ${PANEL_PAD_PX}px;
   }
   .anarchy-crafting-panel.open { transform: translate(0, -50%); }
+  /*
+   * Scroll viewport (task 565). Sits between the panel chrome and the row
+   * list so the panel bounds don't reflow when the row set changes:
+   * - flex: 1 1 auto + min-height: 0 lets the wrapper shrink inside the
+   *   panel's max-height and trigger its own overflow rather than
+   *   pushing the panel border around.
+   * - scrollbar-gutter: stable reserves the scrollbar lane so the row
+   *   strip doesn't shift horizontally when content crosses the overflow
+   *   threshold.
+   */
+  .anarchy-crafting-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
   /*
    * Inner wrapper that owns the row flow. The hover-anchor logic in
    * index.ts applies a translateY here (not on the panel) so the slide-in

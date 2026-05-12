@@ -24,6 +24,17 @@
  * inventory churn. If the hovered recipe stops being craftable, it stays
  * in the list as a disabled "orphan" until the cursor moves off, so a
  * click that lands mid-update never crafts a different recipe.
+ *
+ * ## Chrome stability (task 565)
+ *
+ * The panel itself owns only the static chrome (border, radius, padding,
+ * slide-in transform). Scrolling lives one layer deeper on
+ * `.anarchy-crafting-scroll` so the panel bounds don't reflow when the
+ * row set changes, and `scrollbar-gutter: stable` on that wrapper
+ * reserves the scrollbar lane so toggling overflow doesn't shift the row
+ * strip horizontally. The hover anchor's `translateY` continues to live
+ * on the innermost `.anarchy-crafting-list` so it operates inside the
+ * scroll viewport.
  */
 
 import type { Inventory } from "../../game/index.js";
@@ -68,9 +79,13 @@ export function mountCraftingUi(
   panel.setAttribute("aria-label", "Crafting");
   root.appendChild(panel);
 
+  const scroll = document.createElement("div");
+  scroll.className = "anarchy-crafting-scroll";
+  panel.appendChild(scroll);
+
   const list = document.createElement("div");
   list.className = "anarchy-crafting-list";
-  panel.appendChild(list);
+  scroll.appendChild(list);
 
   let open = false;
   let hoveredRecipeId: string | null = null;

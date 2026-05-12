@@ -414,6 +414,66 @@ describe("crafting UI", () => {
     expect(row.parentElement).toBe(wrapper);
   });
 
+  it("nests the row list inside a .anarchy-crafting-scroll viewport (task 565)", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+      null,
+      null,
+      ["sticks"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const panel = document.querySelector<HTMLElement>(
+      ".anarchy-crafting-panel",
+    )!;
+    const scroll = panel.querySelector<HTMLElement>(
+      ":scope > .anarchy-crafting-scroll",
+    )!;
+    expect(scroll).not.toBeNull();
+    const list = scroll.querySelector<HTMLElement>(
+      ":scope > .anarchy-crafting-list",
+    )!;
+    expect(list).not.toBeNull();
+  });
+
+  it("re-rendering the row list when craftability flips does not re-mount the panel chrome (task 565)", () => {
+    inventory.replaceFromWire(
+      emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+      null,
+      null,
+      ["sticks", "wood-pickaxe"],
+    );
+    mountCraftingUi({
+      getInventory: () => inventory,
+      sendCraft: () => {},
+    });
+    const panelBefore = document.querySelector<HTMLElement>(
+      ".anarchy-crafting-panel",
+    )!;
+    const scrollBefore = document.querySelector<HTMLElement>(
+      ".anarchy-crafting-scroll",
+    )!;
+    const listBefore = document.querySelector<HTMLElement>(
+      ".anarchy-crafting-list",
+    )!;
+
+    // Hover sticks, then watch it become orphan when wood evaporates: a
+    // reorder that previously could have shifted the panel bounds.
+    const sticks = document.querySelector<HTMLElement>(
+      '.anarchy-crafting-row[data-recipe-id="sticks"]',
+    )!;
+    sticks.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    inventory.replaceFromWire(emptySlots(), null, null, ["wood-pickaxe"]);
+
+    // Chrome nodes are the exact same DOM elements after reorder; only
+    // the row strip inside the list is replaced wholesale.
+    expect(document.querySelector(".anarchy-crafting-panel")).toBe(panelBefore);
+    expect(document.querySelector(".anarchy-crafting-scroll")).toBe(scrollBefore);
+    expect(document.querySelector(".anarchy-crafting-list")).toBe(listBefore);
+  });
+
   it("stops mousedown / contextmenu inside the panel from reaching window", () => {
     inventory.replaceFromWire(
       emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
