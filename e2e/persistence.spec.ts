@@ -105,6 +105,21 @@ async function seedTopBlock(
   }
 }
 
+async function seedChest(
+  cx: number,
+  cy: number,
+  lx: number,
+  ly: number,
+  item: number,
+  count: number,
+): Promise<void> {
+  const url = `${TEST_BASE}/debug/seed-chest/${cx}/${cy}/${lx}/${ly}/${item}/${count}`;
+  const r = await fetch(url, { method: "POST" });
+  if (!r.ok) {
+    throw new Error(`seed chest failed: ${r.status} ${r.statusText}`);
+  }
+}
+
 async function triggerSave(): Promise<void> {
   const r = await fetch(`${TEST_BASE}/debug/save`, { method: "POST" });
   if (!r.ok) {
@@ -123,10 +138,25 @@ async function killServer(server: RunningServer): Promise<void> {
   }
 }
 
+// `chests` shape mirrors the `chest_keys` serde adapter on `Chunk` (task
+// 605): a map keyed by `"<lx>,<ly>"` strings, each value an Inventory
+// (a fixed-length array of `null | { item, count }` slots).
+interface SavedChestSlot {
+  item: string;
+  count: number;
+}
 interface SavedWorld {
   version: number;
   world_name: string;
-  chunks: Record<string, { ground: string[]; top: string[]; players?: unknown }>;
+  chunks: Record<
+    string,
+    {
+      ground: string[];
+      top: string[];
+      players?: unknown;
+      chests?: Record<string, Array<SavedChestSlot | null>>;
+    }
+  >;
 }
 
 function readSavedWorld(): SavedWorld {
@@ -144,6 +174,23 @@ const SEED_LY = 6;
 const SEED_KIND = "wood";
 // Layer is a flat 16-block-wide array indexed `idx = ly * 16 + lx`.
 const SEED_INDEX = SEED_LY * 16 + SEED_LX;
+
+// Second seed: a chest at (cx, cy, 10, 8) holding a small stack of
+// stone in the first slot. The chest must round-trip the save→kill→
+// restart→reload→re-save cycle byte-for-byte. Pre task 605 this would
+// fail at the first save with `key must be a string` because
+// `Chunk::chests` was `HashMap<(u8, u8), Inventory>` and `serde_json`
+// rejects tuple keys.
+const CHEST_LX = 10;
+const CHEST_LY = 8;
+const CHEST_INDEX = CHEST_LY * 16 + CHEST_LX;
+const CHEST_KEY = `${CHEST_LX},${CHEST_LY}`;
+// `ItemId::Stone` is wire value 3 (mirrors `item_id_from_wire` in
+// `network/debug.rs`). Serializes back through the on-disk shape as the
+// kebab-cased string `"stone"`.
+const CHEST_ITEM_WIRE = 3;
+const CHEST_ITEM_KIND = "stone";
+const CHEST_ITEM_COUNT = 7;
 
 test.describe.configure({ mode: "serial", timeout: 180_000 });
 
@@ -165,6 +212,14 @@ test("save / load round-trip preserves a seeded top-layer block across restart",
   try {
     await waitForHello();
     await seedTopBlock(SEED_CX, SEED_CY, SEED_LX, SEED_LY, SEED_KIND);
+    await seedChest(
+      SEED_CX,
+      SEED_CY,
+      CHEST_LX,
+      CHEST_LY,
+      CHEST_ITEM_WIRE,
+      CHEST_ITEM_COUNT,
+    );
     await triggerSave();
 
     // Sanity: the save produced a real JSON file with the seeded block in
@@ -182,6 +237,24 @@ test("save / load round-trip preserves a seeded top-layer block across restart",
     // already speaks lowercase too — the `kind` path segment is
     // case-folded server-side before the parse.
     expect(seededChunk.top[SEED_INDEX]).toBe("wood");
+    // The chest cell carries `BlockType::Chest` on the top layer plus
+    // a `chests[<key>]` entry with the seeded stack in slot 0. Pre-fix
+    // the save itself fails — reaching this assertion is the regression
+    // pin for task 605.
+    expect(seededChunk.top[CHEST_INDEX]).toBe("chest");
+    expect(
+      seededChunk.chests,
+      "chests map missing from saved chunk — task 605 regression",
+    ).toBeDefined();
+    const seededChestSlots = seededChunk.chests?.[CHEST_KEY];
+    expect(
+      seededChestSlots,
+      `chest at ${CHEST_KEY} missing from saved chunk`,
+    ).toBeDefined();
+    expect(seededChestSlots?.[0]).toEqual({
+      item: CHEST_ITEM_KIND,
+      count: CHEST_ITEM_COUNT,
+    });
   } finally {
     await killServer(server);
   }
@@ -200,6 +273,19 @@ test("save / load round-trip preserves a seeded top-layer block across restart",
       reloadedChunk.top[SEED_INDEX],
       "seeded block lost across restart — load path dropped the cell",
     ).toBe("wood");
+    expect(
+      reloadedChunk.top[CHEST_INDEX],
+      "chest cell lost across restart",
+    ).toBe("chest");
+    const reloadedChestSlots = reloadedChunk.chests?.[CHEST_KEY];
+    expect(
+      reloadedChestSlots,
+      `chest at ${CHEST_KEY} lost across restart — load path dropped it`,
+    ).toBeDefined();
+    expect(reloadedChestSlots?.[0]).toEqual({
+      item: CHEST_ITEM_KIND,
+      count: CHEST_ITEM_COUNT,
+    });
   } finally {
     await killServer(server);
   }
