@@ -32,6 +32,23 @@ import {
 import { itemDisplayName } from "../../item_names.js";
 import { textureUrlForItem } from "../../textures.js";
 import type { InventoryUiHandle } from "../inventory/index.js";
+import {
+  CELL_BACKGROUND,
+  CELL_BORDER,
+  CELL_BORDER_RADIUS_PX,
+  CELL_DRAG_SOURCE_OPACITY,
+  CELL_HOVER_BORDER_COLOR,
+  CELL_SPLIT_SOURCE_BORDER_COLOR,
+  CELL_SPLIT_SOURCE_INSET_SHADOW,
+  COUNT_FONT_SIZE_PX,
+  COUNT_FONT_WEIGHT,
+  COUNT_TEXT_SHADOW,
+  ICON_BORDER_RADIUS_PX,
+  ICON_INSET_SHADOW,
+  PANEL_BACKGROUND,
+  PANEL_BORDER,
+  PANEL_BORDER_RADIUS_PX,
+} from "../panel_palette.js";
 
 const STYLE_ID = "anarchy-chest-style";
 
@@ -84,14 +101,18 @@ const STYLE = `
     top: 0;
     display: none;
     flex-direction: column;
-    background: rgba(20, 24, 30, 0.92);
-    border: 1px solid rgba(180, 140, 80, 0.4);
-    border-radius: 8px;
+    background: ${PANEL_BACKGROUND};
+    border: ${PANEL_BORDER};
+    border-radius: ${PANEL_BORDER_RADIUS_PX}px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
     user-select: none;
   }
   .anarchy-chest-panel.open { display: flex; }
+  /* The wood-toned amber accent is the chest-vs-inventory semantic
+     differentiator (task 600). The body chrome above stays in the shared
+     palette; only the focused-panel border and the header below carry
+     the chest accent. */
   .anarchy-chest-panel.focused {
     border-color: rgba(220, 180, 110, 0.85);
     box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
@@ -104,7 +125,7 @@ const STYLE = `
     min-height: ${HEADER_MIN_VISIBLE_PX}px;
     background: rgba(40, 30, 20, 0.55);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 7px 7px 0 0;
+    border-radius: ${PANEL_BORDER_RADIUS_PX - 1}px ${PANEL_BORDER_RADIUS_PX - 1}px 0 0;
     cursor: grab;
     box-sizing: border-box;
   }
@@ -123,7 +144,7 @@ const STYLE = `
     justify-content: center;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    border-radius: ${ICON_BORDER_RADIUS_PX}px;
     color: #f0f0f0;
     font-size: 13px;
     font-weight: 600;
@@ -144,9 +165,9 @@ const STYLE = `
   .anarchy-chest-slot {
     width: 48px;
     height: 48px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 4px;
+    background: ${CELL_BACKGROUND};
+    border: ${CELL_BORDER};
+    border-radius: ${CELL_BORDER_RADIUS_PX}px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -155,23 +176,28 @@ const STYLE = `
     user-select: none;
     box-sizing: border-box;
   }
-  .anarchy-chest-slot:hover { background: rgba(255, 255, 255, 0.10); }
+  .anarchy-chest-slot:hover { border-color: ${CELL_HOVER_BORDER_COLOR}; }
   .anarchy-chest-slot img {
-    width: 36px; height: 36px;
+    width: 70%;
+    height: 70%;
+    border-radius: ${ICON_BORDER_RADIUS_PX}px;
+    box-shadow: ${ICON_INSET_SHADOW};
     image-rendering: pixelated;
     pointer-events: none;
   }
   .anarchy-chest-slot .count {
     position: absolute;
     bottom: 2px; right: 4px;
-    font-size: 11px;
+    font-size: ${COUNT_FONT_SIZE_PX}px;
+    font-weight: ${COUNT_FONT_WEIGHT};
     color: #ffffff;
-    text-shadow: 1px 1px 0 #000;
+    text-shadow: ${COUNT_TEXT_SHADOW};
+    pointer-events: none;
   }
-  .anarchy-chest-slot.drag-source { opacity: 0.4; }
+  .anarchy-chest-slot.drag-source { opacity: ${CELL_DRAG_SOURCE_OPACITY}; }
   .anarchy-chest-slot.split-source {
-    border-color: #ffd34a;
-    box-shadow: 0 0 0 2px rgba(255, 211, 74, 0.5) inset;
+    border-color: ${CELL_SPLIT_SOURCE_BORDER_COLOR};
+    box-shadow: ${CELL_SPLIT_SOURCE_INSET_SHADOW};
   }
 `;
 

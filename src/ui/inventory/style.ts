@@ -3,7 +3,30 @@
  * tag (one per page; identity check by `STYLE_ID`) so the rest of the
  * page stays untouched. The pixel constants are exported for the layout
  * machinery (panel width derives from `SLOT_PX`/`PANEL_GAP_PX`/etc.).
+ *
+ * Visual tokens (panel background, cell frame, hover, count badge,
+ * drag/split highlights) live in `../panel_palette.ts` and are shared
+ * with the chest panel (task 600) so the two panels read as one UI
+ * family.
  */
+
+import {
+  CELL_BACKGROUND,
+  CELL_BORDER,
+  CELL_BORDER_RADIUS_PX,
+  CELL_DRAG_SOURCE_OPACITY,
+  CELL_HOVER_BORDER_COLOR,
+  CELL_SPLIT_SOURCE_BORDER_COLOR,
+  CELL_SPLIT_SOURCE_INSET_SHADOW,
+  COUNT_FONT_SIZE_PX,
+  COUNT_FONT_WEIGHT,
+  COUNT_TEXT_SHADOW,
+  ICON_BORDER_RADIUS_PX,
+  ICON_INSET_SHADOW,
+  PANEL_BACKGROUND,
+  PANEL_BORDER,
+  PANEL_BORDER_RADIUS_PX,
+} from "../panel_palette.js";
 
 export const STYLE_ID = "anarchy-inventory-style";
 
@@ -49,8 +72,8 @@ const STYLE = `
     gap: ${HOTBAR_GAP_PX}px;
     padding: 6px;
     background: rgba(20, 24, 30, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
+    border: ${PANEL_BORDER};
+    border-radius: ${PANEL_BORDER_RADIUS_PX}px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
   .anarchy-equipment-slot.empty .anarchy-inventory-icon {
@@ -66,10 +89,10 @@ const STYLE = `
     transform: translate(-100%, -50%);
     transition: transform 0.15s ease-out;
     width: ${PANEL_WIDTH_PX}px;
-    background: rgba(20, 24, 30, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: ${PANEL_BACKGROUND};
+    border: ${PANEL_BORDER};
     border-left: none;
-    border-radius: 0 8px 8px 0;
+    border-radius: 0 ${PANEL_BORDER_RADIUS_PX}px ${PANEL_BORDER_RADIUS_PX}px 0;
     box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4);
     box-sizing: border-box;
     padding: ${PANEL_PAD_PX}px;
@@ -81,9 +104,9 @@ const STYLE = `
   .anarchy-inventory-slot {
     width: ${SLOT_PX}px;
     height: ${SLOT_PX}px;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 4px;
+    background: ${CELL_BACKGROUND};
+    border: ${CELL_BORDER};
+    border-radius: ${CELL_BORDER_RADIUS_PX}px;
     box-sizing: border-box;
     position: relative;
     display: flex;
@@ -94,7 +117,7 @@ const STYLE = `
      so .selected / .equipped-* / .drag-reject continue to win on cells
      that already carry their own border-color. */
   .anarchy-inventory-slot:hover {
-    border-color: rgba(255, 255, 255, 0.5);
+    border-color: ${CELL_HOVER_BORDER_COLOR};
   }
   .anarchy-inventory-slot.selected {
     border-color: #ffffff;
@@ -133,25 +156,25 @@ const STYLE = `
   .anarchy-inventory-icon {
     width: 70%;
     height: 70%;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+    border-radius: ${ICON_BORDER_RADIUS_PX}px;
+    box-shadow: ${ICON_INSET_SHADOW};
   }
   .anarchy-inventory-count {
     position: absolute;
     bottom: 2px;
     right: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    font-size: ${COUNT_FONT_SIZE_PX}px;
+    font-weight: ${COUNT_FONT_WEIGHT};
+    text-shadow: ${COUNT_TEXT_SHADOW};
     pointer-events: none;
   }
-  .anarchy-inventory-slot.drag-source { opacity: 0.4; }
+  .anarchy-inventory-slot.drag-source { opacity: ${CELL_DRAG_SOURCE_OPACITY}; }
   /* BACKLOG 410: yellow border on the right-click "split source" cell.
      Sticky until the user left-clicks elsewhere. Wins over the white
      hover border thanks to specificity (class + class). */
   .anarchy-inventory-slot.split-source {
-    border-color: #ffd34a;
-    box-shadow: 0 0 0 2px rgba(255, 211, 74, 0.5) inset;
+    border-color: ${CELL_SPLIT_SOURCE_BORDER_COLOR};
+    box-shadow: ${CELL_SPLIT_SOURCE_INSET_SHADOW};
   }
   .anarchy-inventory-drag-preview {
     position: fixed;
@@ -162,7 +185,7 @@ const STYLE = `
     z-index: 9000;
     background: rgba(20, 24, 30, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 4px;
+    border-radius: ${CELL_BORDER_RADIUS_PX}px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
