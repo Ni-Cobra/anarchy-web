@@ -1264,6 +1264,18 @@ describe("inventory UI", () => {
         .getElementById("anarchy-inventory-style")!
         .textContent!.replace(/\s+/g, " ");
       expect(css).toMatch(/\.anarchy-equipment-slot \{[^}]*border-radius: 50%/);
+      // Task 010 — the rule MUST use the double-class selector so it
+      // beats the bare `.anarchy-inventory-slot` rule by specificity.
+      // Bare `.anarchy-equipment-slot { border-radius: 50% }` loses to
+      // the later `.anarchy-inventory-slot { border-radius: 4px }` rule
+      // on source order and leaves the cell visually square.
+      expect(css).toMatch(
+        /\.anarchy-inventory-slot\.anarchy-equipment-slot \{[^}]*border-radius: 50%/,
+      );
+      // And `overflow: hidden` clips any inner element to the circle.
+      expect(css).toMatch(
+        /\.anarchy-inventory-slot\.anarchy-equipment-slot \{[^}]*overflow: hidden/,
+      );
     });
 
     it("clicking an occupied equipment slot is a no-op (mouse-inert)", () => {

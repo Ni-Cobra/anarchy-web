@@ -79,11 +79,15 @@ const STYLE = `
   /* Equipment slots are circular to read as visually distinct from the
      square inventory / hotbar cells, and they're mouse-inert (task 60)
      — the auto-equip paths and the panel-cell toggle from task 570 are
-     the only fillers. The circle is applied on top of the shared
-     inventory-slot rule so size / background / equipped-color rules
-     still apply; cursor: default signals the lack of interactivity. */
-  .anarchy-equipment-slot {
+     the only fillers. The double-class selector (specificity 0,2,0)
+     beats the bare .anarchy-inventory-slot rule below (0,1,0), which
+     otherwise wins on source order and re-imposes the 4px corner — that
+     was task 010's bug. overflow: hidden clips any inner element
+     (today's icon, tomorrow's tint background) to the circle, and
+     cursor: default signals the lack of interactivity. */
+  .anarchy-inventory-slot.anarchy-equipment-slot {
     border-radius: 50%;
+    overflow: hidden;
     cursor: default;
   }
   .anarchy-equipment-slot.empty .anarchy-inventory-icon {
