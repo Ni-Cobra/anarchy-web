@@ -66,10 +66,6 @@ import { makeSlotCell, paintEquipmentSlot, paintSlot } from "./cells.js";
 import {
   attachDragDrop,
   type DragDropHandle,
-  EQUIP_AXE_SLOT_ID,
-  EQUIP_PICKAXE_SLOT_ID,
-  EQUIP_SHOVEL_SLOT_ID,
-  EQUIP_UTILITY_SLOT_ID,
   type SlotRef,
 } from "./dragdrop.js";
 import { injectStyle } from "./style.js";
@@ -331,22 +327,11 @@ export function mountInventoryUi(
       panelCells[i],
     );
   }
-  dragdrop.wireSlotPointerDown(
-    { kind: "player", idx: EQUIP_PICKAXE_SLOT_ID },
-    equipmentCells[0].cell,
-  );
-  dragdrop.wireSlotPointerDown(
-    { kind: "player", idx: EQUIP_AXE_SLOT_ID },
-    equipmentCells[1].cell,
-  );
-  dragdrop.wireSlotPointerDown(
-    { kind: "player", idx: EQUIP_SHOVEL_SLOT_ID },
-    equipmentCells[2].cell,
-  );
-  dragdrop.wireSlotPointerDown(
-    { kind: "player", idx: EQUIP_UTILITY_SLOT_ID },
-    equipmentCells[3].cell,
-  );
+  // Equipment cells (task 60) are deliberately NOT wired into the dragdrop
+  // registry — they're mouse-inert. The auto-equip paths (break-time, pickup)
+  // and the panel-cell toggle (task 570) own filling them; clicks / drags
+  // landing on the equipment cell itself are no-ops because no `SlotRef` is
+  // registered for those DOM nodes (so the drop resolver skips them).
 
   // Hotbar click → select. Bound on `click` (vs. pointerdown) so a drag
   // gesture starting on a hotbar cell doesn't also flip selection on the
@@ -360,17 +345,6 @@ export function mountInventoryUi(
       selectedSlot = idx;
       options.sendSelect(idx);
       render();
-    });
-  }
-
-  // Equipment-slot click → unequip iff occupied. Empty equipment slots
-  // are no-ops on click (there's no panel-cell selection model to source
-  // the equip from). Drag-from-panel covers the equip path.
-  for (const { kind, cell } of equipmentCells) {
-    cell.addEventListener("click", () => {
-      const equipped = options.getInventory().getEquipped(kind);
-      if (equipped === null) return;
-      options.sendUnequip(kind);
     });
   }
 

@@ -76,11 +76,18 @@ const STYLE = `
     border-radius: ${PANEL_BORDER_RADIUS_PX}px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
+  /* Equipment slots are circular to read as visually distinct from the
+     square inventory / hotbar cells, and they're mouse-inert (task 60)
+     — the auto-equip paths and the panel-cell toggle from task 570 are
+     the only fillers. The circle is applied on top of the shared
+     inventory-slot rule so size / background / equipped-color rules
+     still apply; cursor: default signals the lack of interactivity. */
+  .anarchy-equipment-slot {
+    border-radius: 50%;
+    cursor: default;
+  }
   .anarchy-equipment-slot.empty .anarchy-inventory-icon {
     opacity: 0.3;
-  }
-  .anarchy-equipment-slot.drag-reject {
-    border-color: rgba(255, 80, 80, 0.6);
   }
   .anarchy-inventory-panel {
     position: absolute;

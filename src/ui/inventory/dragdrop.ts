@@ -1,41 +1,34 @@
 /**
  * Pointer state machine for inventory cells: pending click vs. promoted
- * drag, plus the drop dispatcher that routes a release to the right wire
- * action (`MoveSlot` / `EquipTool` / `UnequipTool`), AND the right-click
- * split state machine that arms a "source" cell on right-click and ramps
- * a per-tick `TransferItems(src, dst, 1)` while right-mouse is held over
+ * drag, plus the drop dispatcher that routes a release to a `MoveSlot`
+ * (regular → regular, same- or cross-grid), AND the right-click split
+ * state machine that arms a "source" cell on right-click and ramps a
+ * per-tick `TransferItems(src, dst, 1)` while right-mouse is held over
  * a destination.
  *
  * Cells live in one of two grids: the player's own inventory
  * (`kind: "player"`) or an open chest's inventory (`kind: "chest"`,
  * carrying a `chestKey` so the same machinery is ready to address N
  * panels — task 591). Each registered cell carries a `SlotRef` so the
- * state machine can route `MoveSlot` / `TransferItems` with the cross-grid
- * `chestKey` filled in. Equipment sentinels are player-only and use
- * negative `idx` values.
+ * state machine can route `MoveSlot` / `TransferItems` with the cross-
+ * grid `chestKey` filled in.
+ *
+ * Equipment cells (the four tool slots — task 60) are deliberately NOT
+ * wired here. They're mouse-inert: filled by the auto-equip paths and
+ * the panel-cell click toggle (task 570), and never targeted by the
+ * cross-grid drag pipeline. The toggle path lives in this module's
+ * pointer-up handler (panel-cell click on a tool → `sendEquip` /
+ * `sendUnequip`) — that's still routed through the dragdrop machinery
+ * because it shares the drag-vs-click discrimination with regular cells.
  *
  * Every cell that should participate has its pointerdown wired via
  * [`attachDragDrop`]'s returned `wireSlotPointerDown`. Document-level
  * pointermove / pointerup / keydown(Escape) listeners drive promotion +
  * drop + abort and unwind via the returned `detach`.
  *
- * Routing matrix for a completed drop (src → dst):
- * - regular → regular     : `sendMove` (`MoveSlot` with chest keys
- *                            derived from the refs — same-grid or cross-
- *                            grid)
- * - regular → equipment   : `sendEquip` if kind matches AND the source
- *                            is a player cell; chest → equipment is
- *                            rejected (no wire surface for equipping
- *                            from a chest)
- * - equipment → regular   : `sendUnequip` if dst is a player cell;
- *                            equipment → chest is rejected (server picks
- *                            the destination on unequip)
- * - equipment → equipment : silently dropped
- *
- * Right-click split (regular cells only — equipment slots ignore right-
- * click):
- * - First right-click on a non-empty cell **arms** that cell as the
- *   split source (sticky `.split-source` border). Source can be in
+ * Right-click split:
+ * - First right-click on a non-empty regular cell **arms** that cell as
+ *   the split source (sticky `.split-source` border). Source can be in
  *   either grid.
  * - With a source armed, right-clicking a different regular cell
  *   **starts a hold transfer** toward that cell — first frame fires
@@ -85,18 +78,6 @@ export function slotRefEqual(a: SlotRef | null, b: SlotRef | null): boolean {
 }
 
 /**
- * Sentinel slot indices used by the drag-and-drop machinery to identify
- * the equipment slots. Outside `[0, INVENTORY_SIZE)` so the wire
- * `MoveSlot` path can never confuse them with a real slot index — the
- * UI translates the sentinels into `EquipTool` / `UnequipTool` actions
- * before sending.
- */
-export const EQUIP_PICKAXE_SLOT_ID = -1;
-export const EQUIP_AXE_SLOT_ID = -2;
-export const EQUIP_UTILITY_SLOT_ID = -3;
-export const EQUIP_SHOVEL_SLOT_ID = -4;
-
-/**
  * Squared cursor-movement threshold (in CSS pixels) that flips a
  * pointer-down into a drag instead of a click.
  */
@@ -113,14 +94,6 @@ function splitIntervalForElapsed(elapsedMs: number): number {
   return Math.round(
     SPLIT_SLOW_INTERVAL_MS + (SPLIT_FAST_INTERVAL_MS - SPLIT_SLOW_INTERVAL_MS) * t,
   );
-}
-
-export function equipKindForSentinel(idx: number): ToolKind | null {
-  if (idx === EQUIP_PICKAXE_SLOT_ID) return "pickaxe";
-  if (idx === EQUIP_AXE_SLOT_ID) return "axe";
-  if (idx === EQUIP_UTILITY_SLOT_ID) return "utility";
-  if (idx === EQUIP_SHOVEL_SLOT_ID) return "shovel";
-  return null;
 }
 
 export interface DragDropContext {
@@ -196,10 +169,7 @@ export function attachDragDrop(ctx: DragDropContext): DragDropHandle {
       const inv = ctx.getChestInventory(ref.chestKey);
       return inv?.slot(ref.idx)?.item ?? null;
     }
-    const kind = equipKindForSentinel(ref.idx);
-    const inv = ctx.getInventory();
-    if (kind !== null) return inv.getEquipped(kind);
-    return inv.slot(ref.idx)?.item ?? null;
+    return ctx.getInventory().slot(ref.idx)?.item ?? null;
   };
 
   // Pending-gesture state: pointer-down landed on `pointerSrc` at
@@ -221,27 +191,15 @@ export function attachDragDrop(ctx: DragDropContext): DragDropHandle {
     icon.className = "anarchy-inventory-icon";
     applyItemIconStyle(icon, { item, count: 1 });
     preview.appendChild(icon);
-    // Equipment slots hold count-1 tools so we never paint a count
-    // badge for a drag preview originating there. Regular cells read
-    // the stack count from the matching inventory mirror.
-    if (src.kind === "player" && equipKindForSentinel(src.idx) === null) {
-      const inv = ctx.getInventory();
-      const slot = inv.slot(src.idx);
-      if (slot !== null && slot.count > 1) {
-        const count = document.createElement("span");
-        count.className = "anarchy-inventory-count";
-        count.textContent = String(slot.count);
-        preview.appendChild(count);
-      }
-    } else if (src.kind === "chest") {
-      const inv = ctx.getChestInventory(src.chestKey);
-      const slot = inv?.slot(src.idx) ?? null;
-      if (slot !== null && slot.count > 1) {
-        const count = document.createElement("span");
-        count.className = "anarchy-inventory-count";
-        count.textContent = String(slot.count);
-        preview.appendChild(count);
-      }
+    const sourceSlot =
+      src.kind === "player"
+        ? ctx.getInventory().slot(src.idx)
+        : ctx.getChestInventory(src.chestKey)?.slot(src.idx) ?? null;
+    if (sourceSlot !== null && sourceSlot.count > 1) {
+      const count = document.createElement("span");
+      count.className = "anarchy-inventory-count";
+      count.textContent = String(sourceSlot.count);
+      preview.appendChild(count);
     }
     preview.style.left = `${ev.clientX}px`;
     preview.style.top = `${ev.clientY}px`;
@@ -260,33 +218,11 @@ export function attachDragDrop(ctx: DragDropContext): DragDropHandle {
     }
   };
 
-  // Drop resolver. See routing matrix in the module docstring.
+  // Drop resolver. Equipment cells aren't wired into the registry
+  // (task 60), so any drag that releases over one resolves to `null`
+  // and never reaches this function — the routing here only ever sees
+  // regular → regular drops.
   const handleDrop = (src: SlotRef, dst: SlotRef): void => {
-    const srcKind = src.kind === "player" ? equipKindForSentinel(src.idx) : null;
-    const dstKind = dst.kind === "player" ? equipKindForSentinel(dst.idx) : null;
-
-    if (srcKind !== null && dstKind !== null) {
-      return;
-    }
-    if (srcKind === null && dstKind !== null) {
-      // Regular → equipment. Equipment only exists in the player grid;
-      // dragging a chest item directly onto an equipment slot has no
-      // wire surface today.
-      if (src.kind === "chest") return;
-      const inv = ctx.getInventory();
-      const stack = inv.slot(src.idx);
-      if (stack === null) return;
-      if (toolKindOf(stack.item) !== dstKind) return;
-      ctx.sendEquip(src.idx, dstKind);
-      return;
-    }
-    if (srcKind !== null && dstKind === null) {
-      // Equipment → regular. Server picks the destination on unequip;
-      // dragging into a chest grid would not respect intent.
-      if (dst.kind === "chest") return;
-      ctx.sendUnequip(srcKind);
-      return;
-    }
     ctx.sendMove(src, dst);
   };
 
@@ -322,7 +258,6 @@ export function attachDragDrop(ctx: DragDropContext): DragDropHandle {
 
   /** Right-click on `ref`: arm split source or start hold-transfer. */
   const beginSplitGesture = (ref: SlotRef): void => {
-    if (ref.kind === "player" && equipKindForSentinel(ref.idx) !== null) return;
     if (splitSource === null) {
       if (itemAt(ref) === null) return;
       splitSource = ref;
@@ -485,7 +420,6 @@ export function attachDragDrop(ctx: DragDropContext): DragDropHandle {
     }
 
     if (clickSrc === null) return;
-    if (clickSrc.kind === "player" && clickSrc.idx < 0) return;
 
     if (clickSrc.kind === "chest") {
       const inv = ctx.getChestInventory(clickSrc.chestKey);

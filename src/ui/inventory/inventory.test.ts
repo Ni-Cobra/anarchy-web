@@ -1246,21 +1246,51 @@ describe("inventory UI", () => {
       expect(moves).toEqual([[HOTBAR_SLOTS, HOTBAR_SLOTS + 7]]);
     });
 
-    it("clicking an occupied equipment slot ships an UnequipTool action", () => {
-      const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
-      slots[3] = { item: ItemId.IronPickaxe, count: 1 };
-      inventory.replaceFromWire(slots, 3, null);
-      const unequips: string[] = [];
+    // Task 60 — the equipment slots are visually distinct (circular) and
+    // mouse-inert. The auto-equip paths (break-time, pickup) and the
+    // panel-cell click toggle (task 570) own filling them; clicks /
+    // drags / right-clicks landing on the equipment cell itself are
+    // no-ops.
+
+    it("injects a circular border-radius rule scoped to .anarchy-equipment-slot", () => {
       mountInventoryUi({
         getInventory: () => inventory,
         sendSelect: () => {},
         sendMove: () => {},
         sendEquip: () => {},
-        sendUnequip: (kind) => unequips.push(kind),
+        sendUnequip: () => {},
       });
-      const cells = equipmentCells();
-      cells[0].click();
-      expect(unequips).toEqual(["pickaxe"]);
+      const css = document
+        .getElementById("anarchy-inventory-style")!
+        .textContent!.replace(/\s+/g, " ");
+      expect(css).toMatch(/\.anarchy-equipment-slot \{[^}]*border-radius: 50%/);
+    });
+
+    it("clicking an occupied equipment slot is a no-op (mouse-inert)", () => {
+      const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+      slots[3] = { item: ItemId.IronPickaxe, count: 1 };
+      inventory.replaceFromWire(slots, 3, null);
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendEquip: () => {
+          throw new Error("equipment cell must not source an EquipTool");
+        },
+        sendUnequip: () => {
+          throw new Error("equipment cell must not source an UnequipTool");
+        },
+      });
+      equipmentCells()[0].click();
+      // Full pointerdown / pointerup gesture on the cell — would have
+      // promoted to a click-toggle in the old wiring. Now: no-op.
+      const cell = equipmentCells()[0];
+      cell.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, bubbles: true }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, bubbles: true }),
+      );
     });
 
     it("clicking an empty equipment slot is a no-op", () => {
@@ -1268,7 +1298,9 @@ describe("inventory UI", () => {
         getInventory: () => inventory,
         sendSelect: () => {},
         sendMove: () => {},
-        sendEquip: () => {},
+        sendEquip: () => {
+          throw new Error("must not be called for an empty slot click");
+        },
         sendUnequip: () => {
           throw new Error("must not be called for an empty slot click");
         },
@@ -1276,56 +1308,28 @@ describe("inventory UI", () => {
       equipmentCells()[0].click();
     });
 
-    it("dragging a pickaxe onto the pickaxe slot ships an EquipTool", () => {
-      inventory.replaceFromWire(
-        fillSlots({
-          [HOTBAR_SLOTS]: { item: ItemId.WoodPickaxe, count: 1 },
-        }),
-      );
-      const equips: Array<[number, string]> = [];
+    it("right-click on an equipment slot does not arm the split source", () => {
+      const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+      slots[3] = { item: ItemId.IronPickaxe, count: 1 };
+      inventory.replaceFromWire(slots, 3, null);
       mountInventoryUi({
         getInventory: () => inventory,
         sendSelect: () => {},
         sendMove: () => {},
-        sendEquip: (slot, kind) => equips.push([slot, kind]),
+        sendTransfer: () => {
+          throw new Error("equipment cell must not arm a hold-transfer");
+        },
+        sendEquip: () => {},
         sendUnequip: () => {},
       });
-      const panelCell = document.querySelectorAll(
-        ".anarchy-inventory-panel .anarchy-inventory-slot",
-      )[0] as HTMLElement;
-      const pickaxeCell = equipmentCells()[0];
-      const original = document.elementsFromPoint;
-      document.elementsFromPoint = ((_x: number, _y: number) => [
-        pickaxeCell,
-      ]) as typeof document.elementsFromPoint;
-      panelCell.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          button: 0,
-          clientX: 10,
-          clientY: 10,
-          bubbles: true,
-        }),
+      const cell = equipmentCells()[0];
+      cell.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
       );
-      document.dispatchEvent(
-        new PointerEvent("pointermove", {
-          clientX: 200,
-          clientY: 200,
-          bubbles: true,
-        }),
-      );
-      document.dispatchEvent(
-        new PointerEvent("pointerup", {
-          button: 0,
-          clientX: 200,
-          clientY: 200,
-          bubbles: true,
-        }),
-      );
-      document.elementsFromPoint = original;
-      expect(equips).toEqual([[HOTBAR_SLOTS, "pickaxe"]]);
+      expect(cell.classList.contains("split-source")).toBe(false);
     });
 
-    it("dragging a pickaxe onto the axe slot is rejected (kind guard)", () => {
+    it("dragging a pickaxe onto the pickaxe equipment slot is a no-op (no drag in)", () => {
       inventory.replaceFromWire(
         fillSlots({
           [HOTBAR_SLOTS]: { item: ItemId.WoodPickaxe, count: 1 },
@@ -1343,10 +1347,10 @@ describe("inventory UI", () => {
       const panelCell = document.querySelectorAll(
         ".anarchy-inventory-panel .anarchy-inventory-slot",
       )[0] as HTMLElement;
-      const axeCell = equipmentCells()[1];
+      const pickaxeCell = equipmentCells()[0];
       const original = document.elementsFromPoint;
       document.elementsFromPoint = ((_x: number, _y: number) => [
-        axeCell,
+        pickaxeCell,
       ]) as typeof document.elementsFromPoint;
       panelCell.dispatchEvent(
         new PointerEvent("pointerdown", {
@@ -1424,15 +1428,16 @@ describe("inventory UI", () => {
       expect(cells[1].classList.contains("empty")).toBe(true);
     });
 
-    it("dragging from an equipment slot onto a panel slot ships an UnequipTool", () => {
+    it("dragging from an equipment slot is a no-op (no drag out — slot has no pointerdown wiring)", () => {
       const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
       slots[3] = { item: ItemId.IronPickaxe, count: 1 };
       inventory.replaceFromWire(slots, 3, null);
+      const moves: Array<[number, number]> = [];
       const unequips: string[] = [];
       mountInventoryUi({
         getInventory: () => inventory,
         sendSelect: () => {},
-        sendMove: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
         sendEquip: () => {},
         sendUnequip: (kind) => unequips.push(kind),
       });
@@ -1468,7 +1473,10 @@ describe("inventory UI", () => {
         }),
       );
       document.elementsFromPoint = original;
-      expect(unequips).toEqual(["pickaxe"]);
+      // No drag preview ever spawned (the cell isn't a registered drag
+      // source), so the pointer-up resolves as a no-op.
+      expect(unequips).toEqual([]);
+      expect(moves).toEqual([]);
     });
 
     it("paints orange highlight on the equipped pickaxe cell and green on the equipped axe cell", () => {
@@ -1753,15 +1761,16 @@ describe("inventory UI", () => {
       expect(moves).toEqual([[HOTBAR_SLOTS + 4, 7]]);
     });
 
-    it("dragging a tool from a hotbar cell onto its equipment slot ships EquipTool", () => {
+    it("dragging a tool from a hotbar cell onto its equipment slot is a no-op (task 60 — equip via panel-cell click, task 570)", () => {
       inventory.replaceFromWire(
         fillSlots({ 2: { item: ItemId.IronPickaxe, count: 1 } }),
       );
       const equips: Array<[number, string]> = [];
+      const moves: Array<[number, number]> = [];
       mountInventoryUi({
         getInventory: () => inventory,
         sendSelect: () => {},
-        sendMove: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
         sendEquip: (slot, kind) => equips.push([slot, kind]),
         sendUnequip: () => {},
       });
@@ -1769,7 +1778,8 @@ describe("inventory UI", () => {
         ".anarchy-equipment-slot-pickaxe",
       ) as HTMLElement;
       dragWithStubbedHitTest(hotbarCellAt(2), equipPickaxe);
-      expect(equips).toEqual([[2, "pickaxe"]]);
+      expect(equips).toEqual([]);
+      expect(moves).toEqual([]);
     });
 
     it("a click on a hotbar cell still selects (no drag promotion, no MoveSlot fires)", () => {
