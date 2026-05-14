@@ -25,6 +25,7 @@ import { BlockType, CHUNK_SIZE, type Inventory, ItemId, type World } from "../ga
 import { type Renderer } from "../render/index.js";
 import { BLOCK_REGISTRY } from "../textures.js";
 import { ToolTier, toolTierDisplayName } from "../tool_tier.js";
+import { createMiningHint } from "./mining_hint.js";
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
 
@@ -81,43 +82,6 @@ function equippedPickaxeTier(inventory: Inventory): ToolTier | null {
   }
 }
 
-const HINT_ID = "anarchy-mining-hint";
-const HINT_STYLE_ID = "anarchy-mining-hint-style";
-
-function ensureMiningHint(): HTMLDivElement {
-  const existing = document.getElementById(HINT_ID);
-  if (existing) return existing as HTMLDivElement;
-  if (!document.getElementById(HINT_STYLE_ID)) {
-    const style = document.createElement("style");
-    style.id = HINT_STYLE_ID;
-    style.textContent = `
-      #${HINT_ID} {
-        position: fixed;
-        bottom: 96px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9700;
-        padding: 6px 14px;
-        background: rgba(20, 24, 30, 0.92);
-        border: 1px solid rgba(255, 100, 100, 0.45);
-        border-radius: 6px;
-        color: #ffb3b3;
-        font-family: system-ui, -apple-system, sans-serif;
-        font-size: 13px;
-        line-height: 1.3;
-        pointer-events: none;
-        display: none;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-      }
-    `;
-    document.head.appendChild(style);
-  }
-  const el = document.createElement("div");
-  el.id = HINT_ID;
-  document.body.appendChild(el);
-  return el;
-}
-
 /**
  * Install the mousemove / mousedown / mouseup / contextmenu listeners on
  * `target`. Returns a `detach` callback that removes every registered
@@ -139,16 +103,7 @@ export function attachBreakAndPlace(
     | null = null;
   let breakHeartbeat: ReturnType<typeof setInterval> | null = null;
 
-  const hintEl = ensureMiningHint();
-  function setHint(text: string | null): void {
-    if (text === null) {
-      hintEl.style.display = "none";
-      hintEl.textContent = "";
-      return;
-    }
-    hintEl.textContent = text;
-    hintEl.style.display = "block";
-  }
+  const miningHint = createMiningHint();
 
   /**
    * Pick the cell currently under the cursor. Returns the target plus a
@@ -238,16 +193,16 @@ export function attachBreakAndPlace(
   /** Surface the tier-gate hint for `kind`, or hide it when `kind` is null. */
   function applyHint(kind: BlockType | null): void {
     if (kind === null) {
-      setHint(null);
+      miningHint.hide();
       return;
     }
     const meta = BLOCK_REGISTRY[kind];
     const min = meta?.minToolTier ?? null;
     if (min === null) {
-      setHint(null);
+      miningHint.hide();
       return;
     }
-    setHint(
+    miningHint.show(
       `${meta.displayName} requires ${toolTierDisplayName(min)}+ Pickaxe`,
     );
   }
@@ -368,8 +323,6 @@ export function attachBreakAndPlace(
     target.removeEventListener("mousemove", onMouseMoveBreakRetarget);
     target.removeEventListener("contextmenu", onContextMenu);
     stopBreakHeartbeat();
-    setHint(null);
-    hintEl.remove();
-    document.getElementById(HINT_STYLE_ID)?.remove();
+    miningHint.unmount();
   };
 }
