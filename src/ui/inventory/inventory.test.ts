@@ -1673,4 +1673,287 @@ describe("inventory UI", () => {
       expect(hotbarCells[5].classList.contains("equipped-pickaxe")).toBe(true);
     });
   });
+
+  describe("hotbar drag/drop + right-click split (task 20)", () => {
+    function dragWithStubbedHitTest(
+      src: HTMLElement,
+      dst: HTMLElement,
+    ): void {
+      const original = document.elementsFromPoint;
+      document.elementsFromPoint = ((_x: number, _y: number) => [
+        dst,
+      ]) as typeof document.elementsFromPoint;
+      src.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          clientX: 200,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          button: 0,
+          clientX: 200,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      document.elementsFromPoint = original;
+    }
+
+    function hotbarCellAt(idx: number): HTMLElement {
+      return document.querySelectorAll(
+        ".anarchy-hotbar .anarchy-inventory-slot",
+      )[idx] as HTMLElement;
+    }
+
+    function panelCellAt(idx: number): HTMLElement {
+      return document.querySelectorAll(
+        ".anarchy-inventory-panel .anarchy-inventory-slot",
+      )[idx] as HTMLElement;
+    }
+
+    it("dragging from a hotbar cell onto a panel cell ships MoveSlot(hotbar→panel)", () => {
+      inventory.replaceFromWire(
+        fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      dragWithStubbedHitTest(hotbarCellAt(0), panelCellAt(2));
+      expect(moves).toEqual([[0, HOTBAR_SLOTS + 2]]);
+    });
+
+    it("dragging from a panel cell onto a hotbar cell ships MoveSlot(panel→hotbar)", () => {
+      inventory.replaceFromWire(
+        fillSlots({ [HOTBAR_SLOTS + 4]: { item: ItemId.Gold, count: 5 } }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      dragWithStubbedHitTest(panelCellAt(4), hotbarCellAt(7));
+      expect(moves).toEqual([[HOTBAR_SLOTS + 4, 7]]);
+    });
+
+    it("dragging a tool from a hotbar cell onto its equipment slot ships EquipTool", () => {
+      inventory.replaceFromWire(
+        fillSlots({ 2: { item: ItemId.IronPickaxe, count: 1 } }),
+      );
+      const equips: Array<[number, string]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendEquip: (slot, kind) => equips.push([slot, kind]),
+        sendUnequip: () => {},
+      });
+      const equipPickaxe = document.querySelector(
+        ".anarchy-equipment-slot-pickaxe",
+      ) as HTMLElement;
+      dragWithStubbedHitTest(hotbarCellAt(2), equipPickaxe);
+      expect(equips).toEqual([[2, "pickaxe"]]);
+    });
+
+    it("a click on a hotbar cell still selects (no drag promotion, no MoveSlot fires)", () => {
+      // The drag-vs-click discrimination at DRAG_THRESHOLD_PX_SQ must
+      // preserve the existing left-click-to-select affordance: a
+      // pointerdown + pointerup at the same coords should leave moves
+      // empty and flip selection via the per-cell click listener.
+      inventory.replaceFromWire(
+        fillSlots({ 0: { item: ItemId.Gold, count: 4 } }),
+      );
+      const moves: Array<[number, number]> = [];
+      const selects: number[] = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: (slot) => selects.push(slot),
+        sendMove: (src, dst) => moves.push([src, dst]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      const cell = hotbarCellAt(3);
+      cell.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+        }),
+      );
+      // The click event fires only when down+up land on the same cell —
+      // simulate it directly since happy-dom doesn't synthesize it.
+      cell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(moves).toEqual([]);
+      expect(selects).toEqual([3]);
+    });
+
+    it("a small pointermove under threshold still resolves as a click (no drag promotion)", () => {
+      inventory.replaceFromWire(
+        fillSlots({ 0: { item: ItemId.Gold, count: 4 } }),
+      );
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      const src = hotbarCellAt(0);
+      src.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+        }),
+      );
+      // Wiggle by 2 px (well under sqrt(25) = 5 px threshold).
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          clientX: 12,
+          clientY: 11,
+          bubbles: true,
+        }),
+      );
+      // No drag preview means we never promoted.
+      expect(
+        document.querySelector(".anarchy-inventory-drag-preview"),
+      ).toBeNull();
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          button: 0,
+          clientX: 12,
+          clientY: 11,
+          bubbles: true,
+        }),
+      );
+      expect(moves).toEqual([]);
+    });
+
+    it("right-click on a hotbar cell arms a split source", () => {
+      inventory.replaceFromWire(
+        fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
+      );
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendTransfer: () => {},
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      const cell = hotbarCellAt(0);
+      cell.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      expect(cell.classList.contains("split-source")).toBe(true);
+    });
+
+    it("right-click split from a hotbar cell to a panel cell ships TransferItems(src, dst, 1)", () => {
+      inventory.replaceFromWire(
+        fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
+      );
+      const transfers: Array<[number, number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendTransfer: (src, dst, count) => transfers.push([src, dst, count]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      hotbarCellAt(0).dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      panelCellAt(3).dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      expect(transfers).toEqual([[0, HOTBAR_SLOTS + 3, 1]]);
+    });
+
+    it("right-click split from a panel cell to a hotbar cell ships TransferItems(src, dst, 1)", () => {
+      inventory.replaceFromWire(
+        fillSlots({ [HOTBAR_SLOTS]: { item: ItemId.Gold, count: 10 } }),
+      );
+      const transfers: Array<[number, number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendTransfer: (src, dst, count) => transfers.push([src, dst, count]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      panelCellAt(0).dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      hotbarCellAt(5).dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      expect(transfers).toEqual([[HOTBAR_SLOTS, 5, 1]]);
+    });
+
+    it("right-click split from a hotbar cell to another hotbar cell ships TransferItems(src, dst, 1)", () => {
+      inventory.replaceFromWire(
+        fillSlots({ 0: { item: ItemId.Gold, count: 10 } }),
+      );
+      const transfers: Array<[number, number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendTransfer: (src, dst, count) => transfers.push([src, dst, count]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      hotbarCellAt(0).dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      hotbarCellAt(4).dispatchEvent(
+        new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+      );
+      expect(transfers).toEqual([[0, 4, 1]]);
+    });
+
+    it("dragging from an empty hotbar cell does not ship a MoveSlot", () => {
+      const moves: Array<[number, number]> = [];
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: (src, dst) => moves.push([src, dst]),
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      dragWithStubbedHitTest(hotbarCellAt(0), panelCellAt(0));
+      expect(moves).toEqual([]);
+    });
+
+  });
 });

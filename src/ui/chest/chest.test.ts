@@ -165,6 +165,90 @@ describe("chest cross-grid drag/drop + split (task 535/591)", () => {
     expect(document.querySelector(".anarchy-chest-panel")).toBeNull();
   });
 
+  it("dragging from a hotbar cell onto a chest cell ships MoveSlot with dstChestKey (task 20)", () => {
+    const player = emptySlots();
+    player[2] = { item: ItemId.Gold, count: 10 };
+    const { moves } = mountUis(player);
+
+    const src = hotbarCells()[2];
+    const dst = chestCells()[5];
+    dragGesture(src, dst);
+
+    expect(moves).toEqual([
+      {
+        src: 2,
+        dst: 5,
+        srcChestKey: null,
+        dstChestKey: DEFAULT_KEY,
+      },
+    ]);
+  });
+
+  it("dragging from a chest cell onto a hotbar cell ships MoveSlot with srcChestKey (task 20)", () => {
+    const chest = emptySlots();
+    chest[7] = { item: ItemId.Gold, count: 10 };
+    const { moves } = mountUis(emptySlots(), chest);
+
+    const src = chestCells()[7];
+    const dst = hotbarCells()[4];
+    dragGesture(src, dst);
+
+    expect(moves).toEqual([
+      {
+        src: 7,
+        dst: 4,
+        srcChestKey: DEFAULT_KEY,
+        dstChestKey: null,
+      },
+    ]);
+  });
+
+  it("right-click split from a hotbar cell to a chest cell ships TransferItems with dstChestKey (task 20)", () => {
+    const player = emptySlots();
+    player[1] = { item: ItemId.Gold, count: 10 };
+    const { transfers } = mountUis(player);
+
+    hotbarCells()[1].dispatchEvent(
+      new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+    );
+    chestCells()[8].dispatchEvent(
+      new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+    );
+
+    expect(transfers).toEqual([
+      {
+        src: 1,
+        dst: 8,
+        count: 1,
+        srcChestKey: null,
+        dstChestKey: DEFAULT_KEY,
+      },
+    ]);
+  });
+
+  it("right-click split from a chest cell to a hotbar cell ships TransferItems with srcChestKey (task 20)", () => {
+    const chest = emptySlots();
+    chest[0] = { item: ItemId.Gold, count: 10 };
+    const { transfers } = mountUis(emptySlots(), chest);
+
+    chestCells()[0].dispatchEvent(
+      new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+    );
+    hotbarCells()[6].dispatchEvent(
+      new PointerEvent("pointerdown", { button: 2, bubbles: true }),
+    );
+
+    expect(transfers).toEqual([
+      {
+        src: 0,
+        dst: 6,
+        count: 1,
+        srcChestKey: DEFAULT_KEY,
+        dstChestKey: null,
+      },
+    ]);
+  });
+
   it("dragging from a player panel cell onto a chest cell ships MoveSlot with dstChestKey", () => {
     const player = emptySlots();
     player[HOTBAR_SLOTS] = { item: ItemId.Gold, count: 10 };
