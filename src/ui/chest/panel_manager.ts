@@ -213,6 +213,13 @@ export interface PanelManagerOptions {
   readonly inventoryUi: InventoryUiHandle;
   /** Sent when the user clicks the X button on a panel's header. */
   readonly sendCloseChest: (loc: ChestLocation) => void;
+  /**
+   * Resolves the header title for a panel at `loc`. Read once at
+   * mount; default is `"Chest"` for every panel. The chest UI passes
+   * a resolver so tombstones (task 010-tombstone) render as
+   * "Tombstone" while reusing the same panel chrome.
+   */
+  readonly panelTitleFor?: (loc: ChestLocation) => string;
 }
 
 interface PanelEntry {
@@ -391,13 +398,16 @@ export function createPanelManager(
 
     const titleText = document.createElement("div");
     titleText.className = "anarchy-chest-title-text";
-    titleText.textContent = "Chest";
+    titleText.textContent = options.panelTitleFor?.(loc) ?? "Chest";
     header.appendChild(titleText);
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "anarchy-chest-close";
     closeBtn.type = "button";
-    closeBtn.setAttribute("aria-label", "Close chest");
+    closeBtn.setAttribute(
+      "aria-label",
+      `Close ${(titleText.textContent ?? "Chest").toLowerCase()}`,
+    );
     closeBtn.textContent = "X";
     // Stop pointerdown bubbling to the header so a click on X never
     // arms the drag gesture.

@@ -29,6 +29,13 @@ export interface ChestUiOptions {
    * it on X-click with the panel's own `ChestLocation`.
    */
   readonly sendCloseChest: (loc: ChestLocation) => void;
+  /**
+   * Optional resolver for the panel header title. Called once per
+   * mount; the chest UI uses this so a tombstone (task 010-tombstone)
+   * panel reads "Tombstone" instead of "Chest" while the rest of the
+   * chrome stays shared. Default: every panel titled "Chest".
+   */
+  readonly panelTitleFor?: (loc: ChestLocation) => string;
 }
 
 export interface ChestUiHandle {
@@ -39,6 +46,7 @@ export function mountChestUi(options: ChestUiOptions): ChestUiHandle {
   const manager: PanelManagerHandle = createPanelManager({
     inventoryUi: options.inventoryUi,
     sendCloseChest: options.sendCloseChest,
+    panelTitleFor: options.panelTitleFor,
   });
 
   // Per-key contents-listener unsubscribes, indexed by chestKey. Set up

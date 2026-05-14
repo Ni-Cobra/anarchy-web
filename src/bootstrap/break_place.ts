@@ -318,13 +318,16 @@ export function attachBreakAndPlace(
       startBreakHeartbeat();
       return;
     }
-    // Right-click on a chest in range → open it (task 420). The pick path
-    // resolves the cursor's current cell; if its top block is a chest we
-    // ship `OpenChest` instead of `PlaceBlock`. Server validates reach +
-    // cell-is-chest.
+    // Right-click on a chest or tombstone in range → open it (task 420 /
+    // task 010-tombstone). The pick path resolves the cursor's current
+    // cell; if its top block is a storage block we ship `OpenChest`
+    // instead of `PlaceBlock`. Server validates reach + cell-is-storage.
     const place = pickBreakTargetAt(ev.clientX, ev.clientY);
     if (place === null || place.gated) return;
-    if (place.targetBlock === BlockType.Chest && deps.sendOpenChest) {
+    if (
+      (place.targetBlock === BlockType.Chest || place.targetBlock === BlockType.Tombstone) &&
+      deps.sendOpenChest
+    ) {
       deps.sendOpenChest(place.cx, place.cy, place.lx, place.ly);
       return;
     }

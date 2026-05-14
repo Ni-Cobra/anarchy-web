@@ -240,6 +240,13 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
     minToolTier: null,
     isSolidTop: true,
   },
+  [BlockType.Tombstone]: {
+    kind: BlockType.Tombstone,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/tombstone.png`,
+    displayName: "Tombstone",
+    minToolTier: null,
+    isSolidTop: true,
+  },
 };
 
 /**

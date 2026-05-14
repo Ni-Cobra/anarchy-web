@@ -89,6 +89,15 @@ export enum BlockType {
    * `ChestUpdate` per tick the contents change.
    */
   Chest = 24,
+  /**
+   * Task 010-tombstone disconnect-loot grave. Top-layer-only, solid,
+   * axe-broken. Spawned by the server at an unregistered (anonymous)
+   * player's last position when they disconnect, carrying their full
+   * inventory. Right-clicking opens the same UI as a chest (same
+   * `OpenChest` action). Tombstones have no place item; only the
+   * disconnect path produces them.
+   */
+  Tombstone = 25,
 }
 
 /**

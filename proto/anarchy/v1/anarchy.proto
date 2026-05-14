@@ -665,6 +665,15 @@ enum BlockType {
   // contents back into the breaker's inventory (anything that doesn't
   // fit is discarded). Worldgen never generates chests.
   BLOCK_TYPE_CHEST = 24;
+  // Task 010-tombstone disconnect-loot grave. Top-layer-only, solid,
+  // axe-broken. Spawned by the server at an unregistered (anonymous)
+  // player's last position when they disconnect, carrying their full
+  // inventory in the hosting chunk's chest map (reused — a tombstone is
+  // "chest with a different sprite + spawn path"). Right-click opens the
+  // same UI as a chest. No place item exists. Broken tombstone drops the
+  // entirety of its contents back into the breaker's inventory; no block
+  // item is dropped.
+  BLOCK_TYPE_TOMBSTONE = 25;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper

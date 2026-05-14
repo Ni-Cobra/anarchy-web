@@ -31,10 +31,12 @@
  */
 
 import {
+  BlockType,
   type ChestLocation,
   ChestState,
   chestLocationFromKey,
   Inventory,
+  LAYER_SIZE,
   SnapshotBuffer,
   Terrain,
   type ToolKind,
@@ -480,6 +482,12 @@ export function runMain(
     chestState,
     inventoryUi: inventoryUiInner,
     sendCloseChest,
+    panelTitleFor: (loc) => {
+      const chunk = terrain.get(loc.cx, loc.cy);
+      if (chunk === undefined) return "Chest";
+      const kind = chunk.top.blocks[loc.ly * LAYER_SIZE + loc.lx]?.kind;
+      return kind === BlockType.Tombstone ? "Tombstone" : "Chest";
+    },
   });
   teardowns.push(() => chestUi.unmount());
 

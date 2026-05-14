@@ -210,6 +210,8 @@ export const DEFAULT_BREAK_PARTICLE_COLORS: Readonly<Record<BlockType, number>> 
   [BlockType.Torch]: 0xf6761a,
   // Task 420: broken chest puffs warm wooden shards.
   [BlockType.Chest]: 0xb07a3a,
+  // Task 010-tombstone: broken tombstone puffs gray stone shards.
+  [BlockType.Tombstone]: 0x808088,
 };
 
 export function defaultBreakParticleColor(kind: BlockType): number {
