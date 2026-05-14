@@ -30,7 +30,6 @@ import {
   INVENTORY_SIZE,
 } from "../../game/index.js";
 import { itemDisplayName } from "../../item_names.js";
-import { textureUrlForItem } from "../../textures.js";
 import type { InventoryUiHandle } from "../inventory/index.js";
 import {
   CELL_BACKGROUND,
@@ -40,15 +39,12 @@ import {
   CELL_HOVER_BORDER_COLOR,
   CELL_SPLIT_SOURCE_BORDER_COLOR,
   CELL_SPLIT_SOURCE_INSET_SHADOW,
-  COUNT_FONT_SIZE_PX,
-  COUNT_FONT_WEIGHT,
-  COUNT_TEXT_SHADOW,
   ICON_BORDER_RADIUS_PX,
-  ICON_INSET_SHADOW,
   PANEL_BACKGROUND,
   PANEL_BORDER,
   PANEL_BORDER_RADIUS_PX,
 } from "../panel_palette.js";
+import { makeSlotCell, paintSlot } from "../slot_cell.js";
 
 const STYLE_ID = "anarchy-chest-style";
 
@@ -177,23 +173,10 @@ const STYLE = `
     box-sizing: border-box;
   }
   .anarchy-chest-slot:hover { border-color: ${CELL_HOVER_BORDER_COLOR}; }
-  .anarchy-chest-slot img {
-    width: 70%;
-    height: 70%;
-    border-radius: ${ICON_BORDER_RADIUS_PX}px;
-    box-shadow: ${ICON_INSET_SHADOW};
-    image-rendering: pixelated;
-    pointer-events: none;
-  }
-  .anarchy-chest-slot .count {
-    position: absolute;
-    bottom: 2px; right: 4px;
-    font-size: ${COUNT_FONT_SIZE_PX}px;
-    font-weight: ${COUNT_FONT_WEIGHT};
-    color: #ffffff;
-    text-shadow: ${COUNT_TEXT_SHADOW};
-    pointer-events: none;
-  }
+  /* Icon (.anarchy-inventory-icon) + count badge (.anarchy-inventory-count)
+     styling come from the inventory stylesheet — the chest grid reuses
+     the shared cell helpers in src/ui/slot_cell.ts so the badge and the
+     pixelated icon background match the inventory grid exactly. */
   .anarchy-chest-slot.drag-source { opacity: ${CELL_DRAG_SOURCE_OPACITY}; }
   .anarchy-chest-slot.split-source {
     border-color: ${CELL_SPLIT_SOURCE_BORDER_COLOR};
@@ -426,8 +409,7 @@ export function createPanelManager(
     grid.className = "anarchy-chest-grid";
     const cells: HTMLDivElement[] = [];
     for (let i = 0; i < INVENTORY_SIZE; i++) {
-      const cell = document.createElement("div");
-      cell.className = "anarchy-chest-slot";
+      const cell = makeSlotCell("anarchy-chest-slot");
       // Suppress the browser context menu so right-click can drive the
       // split flow without the OS overlay stealing focus. Pointerdown is
       // owned by the dragdrop state machine via `wireChestSlot`.
@@ -481,20 +463,10 @@ export function createPanelManager(
     for (let i = 0; i < INVENTORY_SIZE; i++) {
       const cell = entry.cells[i];
       const slot = inv.slot(i);
-      cell.replaceChildren();
-      cell.title = "";
-      if (slot === null) continue;
-      const url = textureUrlForItem(slot.item);
-      if (url !== null) {
-        const img = document.createElement("img");
-        img.src = url;
-        cell.appendChild(img);
-      }
-      if (slot.count > 1) {
-        const count = document.createElement("span");
-        count.className = "count";
-        count.textContent = String(slot.count);
-        cell.appendChild(count);
+      paintSlot(cell, slot, false, null);
+      if (slot === null) {
+        cell.title = "";
+        continue;
       }
       const name = itemDisplayName(slot.item);
       cell.title = slot.count > 1 ? `${name} (${slot.count})` : name;
