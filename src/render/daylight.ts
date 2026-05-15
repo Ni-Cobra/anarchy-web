@@ -49,12 +49,18 @@ export interface DaylightSample {
 // solid black smear); ambient never tops the day value either, so noon
 // reads as the bright extreme rather than a washed-out midnight.
 export const SUN_PEAK_INTENSITY = 1.1;
-export const NIGHT_FLOOR_INTENSITY = 0.05;
+// Bumped from 0.05 (task 120): the previous floor still painted shaded
+// faces near-black at midnight. 0.12 lifts the sun-light contribution
+// enough that geometry stays readable while preserving the clear "the
+// sun is gone" mood — peak/floor ratio drops from 22× to ~9×, still a
+// strong contrast against the SUN_PEAK_INTENSITY noon extreme.
+export const NIGHT_FLOOR_INTENSITY = 0.12;
 export const DAY_AMBIENT = 0.55;
-// Bumped slightly (task 440): the previous 0.18 floor read too dark for
-// comfortable play. 0.26 keeps a clear day-vs-night contrast against the
-// 0.55 day ambient while making the world legible without a torch.
-export const NIGHT_AMBIENT = 0.26;
+// Bumped from 0.26 (task 120) — the prior tuning still felt "can barely
+// see" at midnight. 0.38 keeps a clear day-vs-night contrast against
+// the 0.55 day ambient (~1.45× day vs ~3.7× before, still mood-shifting)
+// while making the world legible without a torch.
+export const NIGHT_AMBIENT = 0.38;
 
 // Sun-arc orientation (task 440). The arc is originally a great circle in
 // the xz=0 plane — noon sat at the +y zenith, so shaded faces read flat.
