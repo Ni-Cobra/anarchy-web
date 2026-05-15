@@ -32,7 +32,13 @@ export {
   isUtility,
   toolKindOf,
 } from "./inventory.js";
-export type { ItemStack, Slot, ToolKind } from "./inventory.js";
+export type {
+  CraftableRecipe,
+  ItemStack,
+  RecipeAvailability,
+  Slot,
+  ToolKind,
+} from "./inventory.js";
 export { ChestState } from "./chest_state.js";
 export type { ChestLocation } from "./chest_state.js";
 export { chestKeyOf, chestLocationFromKey } from "./chest_key.js";

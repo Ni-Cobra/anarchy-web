@@ -565,11 +565,11 @@ describe("applyServerMessage — InventoryUpdate", () => {
     expect(() => applyServerMessage(msg, deps)).not.toThrow();
   });
 
-  it("forwards craftable_recipe_ids onto the inventory mirror", () => {
+  it("forwards craftable_recipes onto the inventory mirror with availability", () => {
     // Task 100 wiring: every InventoryUpdate carries the per-player
-    // currently-craftable recipe-id list. The wire bridge stores it on
-    // the Inventory mirror so the crafting panel can render rows without
-    // a separate request frame.
+    // advertised recipe list. The wire bridge stores it on the Inventory
+    // mirror so the crafting panel can render rows (with affordability
+    // tier) without a separate request frame.
     const { deps, inventory } = makeInventoryFixture();
     const wireSlots = buildWireSlots({
       0: { item: anarchy.v1.ItemId.ITEM_ID_WOOD, count: 5 },
@@ -578,13 +578,24 @@ describe("applyServerMessage — InventoryUpdate", () => {
       seq: 2,
       inventoryUpdate: {
         slots: wireSlots,
-        craftableRecipeIds: ["wood-pickaxe", "sticks"],
+        craftableRecipes: [
+          { recipeId: "wood-pickaxe" },
+          { recipeId: "sticks" },
+          {
+            recipeId: "torch",
+            availability:
+              anarchy.v1.RecipeAvailability.RECIPE_AVAILABILITY_PARTIAL_HINT,
+          },
+        ],
       },
     });
     applyServerMessage(msg, deps);
-    expect(inventory.getCraftableRecipeIds()).toEqual([
-      "sticks",
-      "wood-pickaxe",
+    // Affordable rows sort to the top lexically; partial-hint rows fall
+    // to the bottom of the list.
+    expect(inventory.getCraftableRecipes()).toEqual([
+      { id: "sticks", availability: "affordable" },
+      { id: "wood-pickaxe", availability: "affordable" },
+      { id: "torch", availability: "partial-hint" },
     ]);
   });
 
@@ -597,11 +608,16 @@ describe("applyServerMessage — InventoryUpdate", () => {
     applyServerMessage(
       decodeRoundtrip({
         seq: 2,
-        inventoryUpdate: { slots, craftableRecipeIds: ["sticks"] },
+        inventoryUpdate: {
+          slots,
+          craftableRecipes: [{ recipeId: "sticks" }],
+        },
       }),
       deps,
     );
-    expect(inventory.getCraftableRecipeIds()).toEqual(["sticks"]);
+    expect(inventory.getCraftableRecipes()).toEqual([
+      { id: "sticks", availability: "affordable" },
+    ]);
 
     applyServerMessage(
       decodeRoundtrip({
@@ -610,7 +626,7 @@ describe("applyServerMessage — InventoryUpdate", () => {
       }),
       deps,
     );
-    expect(inventory.getCraftableRecipeIds()).toEqual([]);
+    expect(inventory.getCraftableRecipes()).toEqual([]);
   });
 });
 

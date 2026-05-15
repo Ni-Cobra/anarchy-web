@@ -208,6 +208,21 @@ export function toolKindOf(item: ItemId): ToolKind | null {
 }
 
 /**
+ * Per-recipe advertise tier (task 100). `affordable` rows render normally
+ * and click to craft; `partial-hint` rows render grayed at the bottom of
+ * the panel and are click-inert — the player has at least one of any
+ * ingredient but not enough to actually craft. Mirrors the server's
+ * `game::RecipeAvailability` enum.
+ */
+export type RecipeAvailability = "affordable" | "partial-hint";
+
+/** One advertised recipe row — a stable id + its current availability tier. */
+export interface CraftableRecipe {
+  readonly id: string;
+  readonly availability: RecipeAvailability;
+}
+
+/**
  * Per-player inventory. Slots are addressed flat — the hotbar/main split is
  * a constant-driven offset, not a separate field.
  *
@@ -223,7 +238,7 @@ export class Inventory {
   private equippedAxeSlot: number | null = null;
   private equippedUtilitySlot: number | null = null;
   private equippedShovelSlot: number | null = null;
-  private craftable: readonly string[] = [];
+  private craftable: readonly CraftableRecipe[] = [];
   private listeners: Array<() => void> = [];
 
   constructor() {
@@ -231,14 +246,14 @@ export class Inventory {
   }
 
   /**
-   * Stable recipe ids (e.g. `"wood-pickaxe"`) that the server most recently
-   * advertised as currently craftable from this inventory's pooled counts.
-   * The client recipe table in [`../recipes.ts`] looks these up to render
-   * the crafting panel's ingredient / output preview. The server still
-   * re-validates at `CraftRequest` time, so this is purely an affordance
-   * filter.
+   * Recipes (task 100) the server most recently advertised for this
+   * inventory. Each entry pairs a stable recipe id with its availability
+   * tier (affordable vs. partial-hint). The list is sorted before storage
+   * so the crafting panel's per-tier render order is stable across ticks.
+   * The server still re-validates at `CraftRequest` time, so this is
+   * purely an affordance filter.
    */
-  getCraftableRecipeIds(): readonly string[] {
+  getCraftableRecipes(): readonly CraftableRecipe[] {
     return this.craftable;
   }
 
@@ -318,17 +333,21 @@ export class Inventory {
    * equipped"; out-of-range or non-tool-bearing indices are normalized
    * to `null` defensively so the UI never paints a wrong-color highlight.
    *
-   * `craftableRecipeIds` carries the server's per-tick advertise of recipes
-   * whose ingredients are currently covered (task 090). The list is stored
-   * verbatim — the recipe-id space is the server's responsibility — and
-   * sorted before storage so the crafting panel's render order is stable
-   * across ticks.
+   * `craftableRecipes` carries the server's per-tick advertise of recipes
+   * (task 100). Each entry pairs a stable recipe id with its availability
+   * tier — `affordable` rows are fully craftable; `partial-hint` rows are
+   * the "you have some but not enough" tier. Sorted before storage so the
+   * panel's per-tier render order is stable: affordable rows first
+   * (lexically), partial-hint rows after (lexically).
+   *
+   * Accepts a plain string array for back-compat with tests that have not
+   * yet migrated — every id in that shape is treated as `affordable`.
    */
   replaceFromWire(
     slots: readonly Slot[],
     equippedPickaxeSlot: number | null = null,
     equippedAxeSlot: number | null = null,
-    craftableRecipeIds: readonly string[] = [],
+    craftableRecipes: readonly CraftableRecipe[] | readonly string[] = [],
     equippedUtilitySlot: number | null = null,
     equippedShovelSlot: number | null = null,
   ): void {
@@ -342,7 +361,7 @@ export class Inventory {
     this.equippedAxeSlot = normalizeEquipped(this.slots, equippedAxeSlot, "axe");
     this.equippedUtilitySlot = normalizeEquipped(this.slots, equippedUtilitySlot, "utility");
     this.equippedShovelSlot = normalizeEquipped(this.slots, equippedShovelSlot, "shovel");
-    this.craftable = [...craftableRecipeIds].sort();
+    this.craftable = sortCraftable(normalizeCraftable(craftableRecipes));
     for (const listener of this.listeners) listener();
   }
 
@@ -371,4 +390,23 @@ function normalizeEquipped(
   if (cell === null) return null;
   if (toolKindOf(cell.item) !== kind) return null;
   return slot;
+}
+
+function normalizeCraftable(
+  input: readonly CraftableRecipe[] | readonly string[],
+): CraftableRecipe[] {
+  return input.map((entry) =>
+    typeof entry === "string"
+      ? { id: entry, availability: "affordable" }
+      : entry,
+  );
+}
+
+function sortCraftable(entries: CraftableRecipe[]): CraftableRecipe[] {
+  return [...entries].sort((a, b) => {
+    if (a.availability !== b.availability) {
+      return a.availability === "affordable" ? -1 : 1;
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
 }

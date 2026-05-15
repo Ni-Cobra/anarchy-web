@@ -10,7 +10,13 @@
  * crosses the wire — there is no "another player's inventory" path.
  */
 import { anarchy } from "../gen/anarchy.js";
-import { INVENTORY_SIZE, ItemId, type Slot } from "../game/index.js";
+import {
+  INVENTORY_SIZE,
+  ItemId,
+  type CraftableRecipe,
+  type RecipeAvailability,
+  type Slot,
+} from "../game/index.js";
 
 import type { WireDeps } from "./wire.js";
 
@@ -40,15 +46,37 @@ export function applyInventoryUpdate(
   const equippedAxeSlot = equippedSlotFromWire(update.equippedAxeSlot);
   const equippedUtilitySlot = equippedSlotFromWire(update.equippedUtilitySlot);
   const equippedShovelSlot = equippedSlotFromWire(update.equippedShovelSlot);
-  const craftableRecipeIds = update.craftableRecipeIds ?? [];
+  const craftableRecipes = (update.craftableRecipes ?? [])
+    .map(craftableRecipeFromWire)
+    .filter((r): r is CraftableRecipe => r !== null);
   deps.inventory.replaceFromWire(
     slots,
     equippedPickaxeSlot,
     equippedAxeSlot,
-    craftableRecipeIds,
+    craftableRecipes,
     equippedUtilitySlot,
     equippedShovelSlot,
   );
+}
+
+function craftableRecipeFromWire(
+  entry: anarchy.v1.IRecipeEntry,
+): CraftableRecipe | null {
+  const id = entry.recipeId ?? "";
+  if (id.length === 0) return null;
+  return { id, availability: recipeAvailabilityFromWire(entry.availability) };
+}
+
+function recipeAvailabilityFromWire(
+  a: anarchy.v1.RecipeAvailability | null | undefined,
+): RecipeAvailability {
+  // Treat the proto3 default and any unknown value as `affordable` — the
+  // server's `AFFORDABLE = 0` makes it the natural identity, and an
+  // older client should not silently flip a fully-craftable recipe into
+  // the partial-hint tier.
+  return a === anarchy.v1.RecipeAvailability.RECIPE_AVAILABILITY_PARTIAL_HINT
+    ? "partial-hint"
+    : "affordable";
 }
 
 function equippedSlotFromWire(slot: number | null | undefined): number | null {

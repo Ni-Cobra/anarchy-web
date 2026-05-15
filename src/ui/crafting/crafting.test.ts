@@ -817,4 +817,130 @@ describe("crafting UI", () => {
       expect(node === null || node.style.display === "none").toBe(true);
     });
   });
+
+  describe("partial-hint rows (task 100)", () => {
+    it("renders affordable rows above partial-hint rows, lexically within tier", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+        null,
+        null,
+        [
+          { id: "wood-axe", availability: "affordable" },
+          { id: "torch", availability: "partial-hint" },
+          { id: "stone-pickaxe", availability: "partial-hint" },
+          { id: "sticks", availability: "affordable" },
+        ],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const rows = Array.from(
+        document.querySelectorAll<HTMLElement>(".anarchy-crafting-row"),
+      );
+      expect(rows.map((r) => r.dataset.recipeId)).toEqual([
+        "sticks",
+        "wood-axe",
+        "stone-pickaxe",
+        "torch",
+      ]);
+    });
+
+    it("paints partial-hint rows with the .partial-hint class and aria-disabled", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+        null,
+        null,
+        [
+          { id: "sticks", availability: "affordable" },
+          { id: "torch", availability: "partial-hint" },
+        ],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const torch = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="torch"]',
+      )!;
+      expect(torch.classList.contains("partial-hint")).toBe(true);
+      expect(torch.getAttribute("aria-disabled")).toBe("true");
+      const sticks = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="sticks"]',
+      )!;
+      expect(sticks.classList.contains("partial-hint")).toBe(false);
+    });
+
+    it("clicking a partial-hint row does not ship CraftRequest", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Stick, count: 1 } }),
+        null,
+        null,
+        [{ id: "torch", availability: "partial-hint" }],
+      );
+      const sent: string[] = [];
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: (id) => sent.push(id),
+      });
+      const torch = document.querySelector<HTMLButtonElement>(
+        '.anarchy-crafting-row[data-recipe-id="torch"]',
+      )!;
+      torch.click();
+      expect(sent).toEqual([]);
+    });
+
+    it("partial-hint rows omit the max-craft badge", () => {
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 1 } }),
+        null,
+        null,
+        [{ id: "wood-pickaxe", availability: "partial-hint" }],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      const row = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="wood-pickaxe"]',
+      )!;
+      expect(row.querySelector(".anarchy-crafting-arrow-count")).toBeNull();
+    });
+
+    it("demoting a recipe affordable → partial-hint keeps it in the panel", () => {
+      // The whole point of the tier: a recipe the player ate the last
+      // ingredient of stays visible (grayed at the bottom) instead of
+      // popping out of view.
+      inventory.replaceFromWire(
+        emptySlots({
+          0: { item: ItemId.Wood, count: 5 },
+          [HOTBAR_SLOTS]: { item: ItemId.Stick, count: 2 },
+        }),
+        null,
+        null,
+        [{ id: "wood-axe", availability: "affordable" }],
+      );
+      mountCraftingUi({
+        getInventory: () => inventory,
+        sendCraft: () => {},
+      });
+      let row = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="wood-axe"]',
+      )!;
+      expect(row.classList.contains("partial-hint")).toBe(false);
+
+      // Player consumed all the sticks — server demotes wood-axe to
+      // partial-hint instead of dropping it.
+      inventory.replaceFromWire(
+        emptySlots({ 0: { item: ItemId.Wood, count: 5 } }),
+        null,
+        null,
+        [{ id: "wood-axe", availability: "partial-hint" }],
+      );
+      row = document.querySelector<HTMLElement>(
+        '.anarchy-crafting-row[data-recipe-id="wood-axe"]',
+      )!;
+      expect(row.classList.contains("partial-hint")).toBe(true);
+    });
+  });
 });

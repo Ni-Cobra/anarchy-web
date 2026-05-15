@@ -128,6 +128,24 @@ const STYLE = `
     background: rgba(0, 0, 0, 0.3);
     border-color: rgba(255, 255, 255, 0.1);
   }
+  /*
+   * Partial-hint rows (task 100). The server advertises recipes the
+   * player has *some* of an ingredient toward but cannot yet craft;
+   * they sort to the bottom of the panel and render desaturated so the
+   * player reads "you're partway here" without confusing them with the
+   * full-color affordable rows above. Click is a no-op (gated in
+   * index.ts) and the hover highlight is suppressed so the row reads
+   * as inert.
+   */
+  .anarchy-crafting-row.partial-hint {
+    opacity: 0.45;
+    filter: grayscale(0.8);
+    cursor: not-allowed;
+  }
+  .anarchy-crafting-row.partial-hint:hover {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
   .anarchy-crafting-side {
     display: flex;
     flex: 1 1 0;

@@ -27,15 +27,25 @@ import { textureUrlForItem } from "../../textures.js";
  * `maxCount` is the number of times the recipe can currently be crafted
  * given the inventory pools the caller chose to consider; pass `0` to
  * suppress the badge entirely.
+ *
+ * `partialHint` (task 100) toggles the grayed-bottom treatment used for
+ * recipes the player has *some* of an ingredient toward but cannot yet
+ * craft. Callers also gate the click handler — the styling alone is not
+ * load-bearing for the no-op behavior.
  */
 export function makeRecipeRow(
   recipe: Recipe,
   maxCount: number,
+  partialHint = false,
 ): HTMLButtonElement {
   const row = document.createElement("button");
   row.type = "button";
   row.className = "anarchy-crafting-row";
   row.dataset.recipeId = recipe.id;
+  if (partialHint) {
+    row.classList.add("partial-hint");
+    row.setAttribute("aria-disabled", "true");
+  }
   row.setAttribute(
     "aria-label",
     recipeAriaLabel(recipe),
@@ -56,7 +66,7 @@ export function makeRecipeRow(
   arrow.setAttribute("aria-hidden", "true");
   arrowCell.appendChild(arrow);
 
-  if (maxCount > 0) {
+  if (maxCount > 0 && !partialHint) {
     const count = document.createElement("span");
     count.className = "anarchy-crafting-arrow-count";
     count.textContent = String(maxCount);

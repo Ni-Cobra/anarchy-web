@@ -1,15 +1,24 @@
 /**
  * Crafting overlay (task 100): a slide-in side panel that mirrors the
  * inventory panel's open/close lifecycle but anchors on the right edge of
- * the viewport. Each row in the panel is one currently-craftable recipe,
- * laid out as `[ingredients] → [output]`. Clicking a row ships a
- * `CraftRequest(recipe_id)` to the server; the server is authoritative and
- * the row disappears as soon as the next `InventoryUpdate`'s
- * `craftable_recipe_ids` list no longer contains that id.
+ * the viewport. Each row in the panel is one server-advertised recipe,
+ * laid out as `[ingredients] → [output]`. Clicking an affordable row
+ * ships a `CraftRequest(recipe_id)` to the server; the server is
+ * authoritative and the row updates on the next `InventoryUpdate`.
  *
  * Network-free: this module reads the live `Inventory` mirror through a
  * `getInventory` thunk and subscribes to its change channel so the panel
  * re-renders on every `InventoryUpdate` without a round-trip.
+ *
+ * ## Affordability tiering (task 100)
+ *
+ * The server advertises recipes in two tiers — `affordable` (fully
+ * craftable now) and `partial-hint` (the player has at least one of any
+ * ingredient but not enough to actually craft). Affordable rows sort
+ * first; partial-hint rows fall to the bottom of the panel and render
+ * grayed + click-inert. Recipes the player has zero relevant ingredients
+ * for stay hidden — the partial-hint tier is meant as a "you're getting
+ * closer" affordance, not a recipe browser.
  *
  * ## Submodules
  *
@@ -37,7 +46,7 @@
  * scroll viewport.
  */
 
-import type { Inventory } from "../../game/index.js";
+import type { CraftableRecipe, Inventory } from "../../game/index.js";
 import { recipeById } from "../../recipes.js";
 import { attachTooltip, type TooltipHandle } from "../tooltip.js";
 import { maxCraftCount } from "./max_craft.js";
@@ -110,12 +119,15 @@ export function mountCraftingUi(
     );
 
   const render = (): void => {
-    const naturalIds = options.getInventory().getCraftableRecipeIds();
-    let displayIds: readonly string[] = naturalIds;
+    const natural = options.getInventory().getCraftableRecipes();
+    let display: readonly CraftableRecipe[] = natural;
     let orphanId: string | null = null;
-    if (hoveredRecipeId !== null && !naturalIds.includes(hoveredRecipeId)) {
+    if (
+      hoveredRecipeId !== null &&
+      !natural.some((r) => r.id === hoveredRecipeId)
+    ) {
       orphanId = hoveredRecipeId;
-      displayIds = insertSorted(naturalIds, hoveredRecipeId);
+      display = insertOrphan(natural, hoveredRecipeId);
     }
 
     // Capture the hovered row's viewport-y *before* the DOM mutates so we
@@ -132,7 +144,7 @@ export function mountCraftingUi(
 
     detachAllTooltips();
     list.replaceChildren();
-    if (displayIds.length === 0) {
+    if (display.length === 0) {
       const empty = document.createElement("div");
       empty.className = "anarchy-crafting-empty";
       empty.textContent = "No craftable recipes.";
@@ -140,16 +152,22 @@ export function mountCraftingUi(
       return;
     }
     const inventory = options.getInventory();
-    for (const id of displayIds) {
-      const recipe = recipeById(id);
+    for (const entry of display) {
+      const recipe = recipeById(entry.id);
       if (!recipe) continue;
-      const row = makeRecipeRow(recipe, maxCraftCount(recipe, inventory));
-      if (id === orphanId) {
+      const partialHint = entry.availability === "partial-hint";
+      const row = makeRecipeRow(
+        recipe,
+        maxCraftCount(recipe, inventory),
+        partialHint,
+      );
+      if (entry.id === orphanId) {
         row.classList.add("uncraftable");
         row.setAttribute("aria-disabled", "true");
       }
+      const inert = partialHint || entry.id === orphanId;
       row.addEventListener("click", () => {
-        if (id === orphanId) return;
+        if (inert) return;
         options.sendCraft(recipe.id);
       });
       tooltipHandles.push(
@@ -236,16 +254,33 @@ export function mountCraftingUi(
   };
 }
 
-function insertSorted(arr: readonly string[], value: string): string[] {
-  const out: string[] = [];
+/**
+ * Insert an orphan recipe id into the natural advertise list at its
+ * lexically-sorted position inside the affordable tier (orphans always
+ * read as "this used to be craftable" — they go above the partial-hint
+ * tier so the hover anchor doesn't drop the row past the gray section).
+ */
+function insertOrphan(
+  arr: readonly CraftableRecipe[],
+  id: string,
+): CraftableRecipe[] {
+  const orphan: CraftableRecipe = { id, availability: "affordable" };
+  const out: CraftableRecipe[] = [];
   let inserted = false;
-  for (const id of arr) {
-    if (!inserted && value < id) {
-      out.push(value);
+  for (const entry of arr) {
+    if (!inserted && entry.availability === "partial-hint") {
+      out.push(orphan);
+      inserted = true;
+    } else if (
+      !inserted &&
+      entry.availability === "affordable" &&
+      id < entry.id
+    ) {
+      out.push(orphan);
       inserted = true;
     }
-    out.push(id);
+    out.push(entry);
   }
-  if (!inserted) out.push(value);
+  if (!inserted) out.push(orphan);
   return out;
 }

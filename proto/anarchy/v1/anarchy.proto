@@ -856,13 +856,43 @@ message InventoryUpdate {
   // `equipped_pickaxe_slot`. Empty by default; populated when a shovel
   // tier is equipped. The matching cell paints yellow.
   int32 equipped_shovel_slot = 8;
-  // Recipes (task 090) the player can currently craft from their pooled
-  // inventory + hotbar contents. Stable string ids — `"sticks"`,
-  // `"wood-pickaxe"`, etc. — that the client looks up against its own
-  // recipe table for the display name + ingredient/output preview. Only
-  // an "ingredients are satisfied" check; the server still re-validates
-  // and may reject (e.g. inventory full to receive the output) at
-  // `CraftRequest` time. Re-emitted on every `InventoryUpdate` so the
-  // crafting panel stays current as the player picks up / drops items.
-  repeated string craftable_recipe_ids = 6;
+  // Field 6 originally carried `repeated string craftable_recipe_ids`
+  // (task 090). Task 100 reshaped it into a richer
+  // `repeated RecipeEntry` so each row carries its availability tier
+  // (affordable vs. partial-hint). Old field number is reserved so no
+  // future schema edit reuses it with a different shape.
+  reserved 6;
+  reserved "craftable_recipe_ids";
+  // Recipes (task 100) the server is advertising for this player. Each
+  // entry carries a stable string id — `"sticks"`, `"wood-pickaxe"`,
+  // etc. — that the client looks up against its own recipe table for the
+  // display name + ingredient/output preview, plus an availability tier
+  // distinguishing fully-affordable rows from partial-hint rows (player
+  // has at least one of any ingredient but not enough to actually craft).
+  // The server omits recipes the player has zero relevant ingredients
+  // for, keeping the wire small. Re-emitted on every `InventoryUpdate`
+  // so the crafting panel stays current as the player picks up / drops
+  // items. The server still re-validates at `CraftRequest` time and may
+  // reject (e.g. inventory full to receive the output) — affordability
+  // is purely an affordance filter.
+  repeated RecipeEntry craftable_recipes = 9;
+}
+
+// One recipe row shipped to the client (task 100). `availability` shapes
+// how the client renders the row — affordable rows render normally and
+// click to craft, partial-hint rows render grayed and are click-inert.
+message RecipeEntry {
+  string recipe_id = 1;
+  RecipeAvailability availability = 2;
+}
+
+// Whether a `RecipeEntry` is fully craftable from the player's pooled
+// inventory or only partially hinted. `AFFORDABLE = 0` so a default-
+// constructed entry reads as the natural "you can craft this" tier;
+// `PARTIAL_HINT` is the explicit "you have some but not enough" tier.
+// Mirrors the `BlockType` precedent (proto3 zero is the natural
+// identity, no separate `*_UNSPECIFIED` sentinel).
+enum RecipeAvailability {
+  RECIPE_AVAILABILITY_AFFORDABLE = 0;
+  RECIPE_AVAILABILITY_PARTIAL_HINT = 1;
 }
