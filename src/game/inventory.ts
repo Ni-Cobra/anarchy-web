@@ -130,6 +130,12 @@ export enum ItemId {
    * matching `BlockType.Grass` back down via the standard right-click flow.
    */
   Grass = 42,
+  /**
+   * Task 140 bioluminescent mushroom drop. Placeable; right-click places a
+   * `BlockType.LightMushroom` into a top-layer Air cell. Stacks like the
+   * other decorative block items.
+   */
+  LightMushroom = 43,
 }
 
 /** A non-empty pile of one item kind. */

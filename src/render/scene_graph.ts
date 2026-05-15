@@ -24,11 +24,13 @@ import {
 } from "./effects/index.js";
 import { GhostMesh } from "./ghost_mesh.js";
 import { LanternLights } from "./lantern_lights.js";
+import { MushroomLights } from "./mushroom_lights.js";
 import { TorchLights } from "./torch_lights.js";
 import {
   buildChunkMesh,
   buildTerrainMesh,
   disposeTerrainMesh,
+  mushroomPositionsInChunk,
   torchPositionsInChunk,
 } from "./terrain.js";
 import {
@@ -99,6 +101,7 @@ export class SceneGraph {
   readonly beams: BeamLayer;
   readonly breakParticles: BreakParticles;
   readonly torchLights: TorchLights;
+  readonly mushroomLights: MushroomLights;
   readonly lanternLights: LanternLights;
   readonly sun: THREE.DirectionalLight;
   readonly ambient: THREE.AmbientLight;
@@ -181,20 +184,28 @@ export class SceneGraph {
     this.torchLights = new TorchLights();
     this.scene.add(this.torchLights.scene());
 
+    this.mushroomLights = new MushroomLights();
+    this.scene.add(this.mushroomLights.scene());
+
     this.lanternLights = new LanternLights();
     this.scene.add(this.lanternLights.scene());
 
     if (initialTerrain !== null) {
       this.terrainGroupRef = buildTerrainMesh(initialTerrain, this.blockTextures);
       this.scene.add(this.terrainGroupRef);
-      // Seed the torch-light layer from any chunks that came in with the
-      // initial terrain — `replaceChunk` is the steady-state path, but
-      // construction with a non-null terrain bypasses it.
+      // Seed the torch + mushroom light layers from any chunks that came
+      // in with the initial terrain — `replaceChunk` is the steady-state
+      // path, but construction with a non-null terrain bypasses it.
       for (const [coord, chunk] of initialTerrain.iter()) {
         this.torchLights.setChunkTorches(
           coord[0],
           coord[1],
           torchPositionsInChunk(coord[0], coord[1], chunk),
+        );
+        this.mushroomLights.setChunkMushrooms(
+          coord[0],
+          coord[1],
+          mushroomPositionsInChunk(coord[0], coord[1], chunk),
         );
       }
     }
@@ -237,6 +248,11 @@ export class SceneGraph {
       cy,
       torchPositionsInChunk(cx, cy, chunk),
     );
+    this.mushroomLights.setChunkMushrooms(
+      cx,
+      cy,
+      mushroomPositionsInChunk(cx, cy, chunk),
+    );
   }
 
   /** Drop a chunk's sub-group from the terrain mesh. */
@@ -244,6 +260,7 @@ export class SceneGraph {
     if (!this.terrainGroupRef) return;
     this.disposeChunkSubgroup(cx, cy, this.terrainGroupRef);
     this.torchLights.removeChunk(cx, cy);
+    this.mushroomLights.removeChunk(cx, cy);
   }
 
   /** Debug overlay shown only in zoom-out mode (see `Renderer.setZoomedOut`). */
@@ -275,6 +292,8 @@ export class SceneGraph {
     this.breakParticles.dispose();
     this.torchLights.dispose();
     this.scene.remove(this.torchLights.scene());
+    this.mushroomLights.dispose();
+    this.scene.remove(this.mushroomLights.scene());
     this.lanternLights.dispose();
     this.scene.remove(this.lanternLights.scene());
     this.scene.remove(this.chunkBorderGrid);

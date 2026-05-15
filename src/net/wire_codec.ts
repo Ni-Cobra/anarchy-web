@@ -89,6 +89,8 @@ export function blockTypeFromWire(
       return BlockType.Chest;
     case anarchy.v1.BlockType.BLOCK_TYPE_TOMBSTONE:
       return BlockType.Tombstone;
+    case anarchy.v1.BlockType.BLOCK_TYPE_LIGHT_MUSHROOM:
+      return BlockType.LightMushroom;
     case anarchy.v1.BlockType.BLOCK_TYPE_AIR:
     default:
       return BlockType.Air;

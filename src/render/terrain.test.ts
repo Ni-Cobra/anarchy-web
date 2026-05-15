@@ -12,6 +12,7 @@ import {
   buildChunkMesh,
   buildTerrainMesh,
   disposeTerrainMesh,
+  mushroomPositionsInChunk,
   tileCenterToScene,
   torchPositionsInChunk,
 } from "./terrain.js";
@@ -266,6 +267,30 @@ describe("torchPositionsInChunk", () => {
     const positions = torchPositionsInChunk(2, -1, c);
     expect(positions).toHaveLength(1);
     expect(positions[0]).toEqual(tileCenterToScene(2, -1, 0, 0));
+  });
+});
+
+describe("mushroomPositionsInChunk", () => {
+  it("returns scene-space centers for every LightMushroom top-layer cell", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 2, 4, { kind: BlockType.LightMushroom });
+    setBlock(c.top, 9, 0, { kind: BlockType.LightMushroom });
+    // Non-mushroom top blocks must be ignored.
+    setBlock(c.top, 1, 1, { kind: BlockType.Torch });
+    setBlock(c.top, 3, 3, { kind: BlockType.FlowerRed });
+    const positions = mushroomPositionsInChunk(0, 0, c);
+    expect(positions).toHaveLength(2);
+    const sorted = [...positions].sort((a, b) => a.x - b.x);
+    expect(sorted[0]).toEqual(tileCenterToScene(0, 0, 2, 4));
+    expect(sorted[1]).toEqual(tileCenterToScene(0, 0, 9, 0));
+  });
+
+  it("offsets by chunk coord", () => {
+    const c = emptyChunk();
+    setBlock(c.top, 0, 0, { kind: BlockType.LightMushroom });
+    const positions = mushroomPositionsInChunk(-1, 3, c);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]).toEqual(tileCenterToScene(-1, 3, 0, 0));
   });
 });
 

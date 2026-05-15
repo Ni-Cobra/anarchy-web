@@ -98,6 +98,14 @@ export enum BlockType {
    * disconnect path produces them.
    */
   Tombstone = 25,
+  /**
+   * Task 140 bioluminescent mushroom. Top-layer-only, non-solid (walk-
+   * through), low durability, hand-broken. Drops `ItemId.LightMushroom`.
+   * Worldgen scatters them in Dense Forest and inside mountain caves; the
+   * renderer attaches a per-block soft cool point light weaker than a
+   * torch (see `mushroom_lights.ts`).
+   */
+  LightMushroom = 26,
 }
 
 /**

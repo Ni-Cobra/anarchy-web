@@ -680,6 +680,12 @@ enum BlockType {
   // entirety of its contents back into the breaker's inventory; no block
   // item is dropped.
   BLOCK_TYPE_TOMBSTONE = 25;
+  // Task 140 bioluminescent mushroom. Top-layer-only, non-solid (walk-
+  // through), low durability, hand-broken. Renders as a small mushroom +
+  // a soft cool point light weaker than a torch. Worldgen scatters in
+  // DenseForest and inside mountain caves; players may also place them
+  // via the standard right-click flow.
+  BLOCK_TYPE_LIGHT_MUSHROOM = 26;
 }
 
 // One tile. Field set is intentionally minimal today — the wrapper
@@ -811,6 +817,10 @@ enum ItemId {
   // drops an `ITEM_ID_GRASS` (stackable like other block items); the item
   // places `BLOCK_TYPE_GRASS` via the standard right-click flow.
   ITEM_ID_GRASS = 42;
+  // Task 140 bioluminescent mushroom drop. Placeable; right-click places
+  // a `BLOCK_TYPE_LIGHT_MUSHROOM` into a top-layer Air cell. Stacks like a
+  // normal block item.
+  ITEM_ID_LIGHT_MUSHROOM = 43;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server

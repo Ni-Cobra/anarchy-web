@@ -116,6 +116,10 @@ const FALLBACK_BLOCK_COLOR: Partial<Record<BlockType, number>> = {
   [BlockType.StoneLight]: 0xa8aeb6,
   [BlockType.StoneDark]: 0x525255,
   [BlockType.Torch]: 0xf6761a,
+  // Cool teal-cyan placeholder for the bioluminescent mushroom (task 140) —
+  // close enough to the real glow that the no-texture test path still reads
+  // as "a glowy mushroom" rather than the magenta missing-kind marker.
+  [BlockType.LightMushroom]: 0x9fd9ff,
 };
 
 const GROUND_THICKNESS = 0.02;
@@ -182,6 +186,14 @@ const TORCH_WIDTH = 0.4;
 const TORCH_HEIGHT = 0.85;
 const TORCH_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
 const TORCH_Y = TORCH_BOTTOM + TORCH_HEIGHT / 2;
+
+// Bioluminescent mushroom (task 140) — flowery cross-quad billboard at
+// ~flower scale so a patch reads as forest decoration rather than torch-
+// height upright. Non-solid server-side; the alpha-cropped texture shows
+// only the cap + stalk silhouette.
+const MUSHROOM_WIDTH = 0.7;
+const MUSHROOM_HEIGHT = 0.55;
+const MUSHROOM_BOTTOM = GROUND_Y + GROUND_THICKNESS / 2;
 
 /**
  * Build a per-chunk sub-group named `chunk:cx,cy`. Exported so the renderer
@@ -286,6 +298,11 @@ export function buildChunkMesh(
   // shares a single transparent material instance.
   let torchGeom: THREE.BoxGeometry | null = null;
   let torchMat: THREE.Material | null = null;
+
+  // Mushroom geometry (task 140). One cross-quad BufferGeometry shared across
+  // every mushroom in the chunk; material comes from the decor-mat cache so
+  // it shares the alpha-transparent path with flowers / bushes.
+  let mushroomGeom: THREE.BufferGeometry | null = null;
 
   const group = new THREE.Group();
   group.name = `chunk:${cx},${cy}`;
@@ -394,6 +411,18 @@ export function buildChunkMesh(
         // texture and the standard shadow pass would silhouette the full
         // box, painting an opaque rectangle on the ground that doesn't
         // match the painted flame.
+        mesh.receiveShadow = true;
+        group.add(mesh);
+      } else if (topBlock.kind === BlockType.LightMushroom) {
+        if (!mushroomGeom)
+          mushroomGeom = buildCrossQuadsGeometry(MUSHROOM_WIDTH, MUSHROOM_HEIGHT);
+        const mat = textures
+          ? decorMaterialFor(BlockType.LightMushroom)
+          : materialFor(BlockType.LightMushroom);
+        const mesh = new THREE.Mesh(mushroomGeom, mat);
+        mesh.position.set(scene.x, MUSHROOM_BOTTOM, scene.z);
+        // Alpha-cropped silhouette — same reason as flowers / bush.
+        mesh.castShadow = false;
         mesh.receiveShadow = true;
         group.add(mesh);
       } else {
@@ -541,6 +570,28 @@ export function torchPositionsInChunk(
   for (let y = 0; y < LAYER_SIZE; y++) {
     for (let x = 0; x < LAYER_SIZE; x++) {
       if (getBlock(chunk.top, x, y).kind !== BlockType.Torch) continue;
+      const scene = tileCenterToScene(cx, cy, x, y);
+      out.push({ x: scene.x, z: scene.z });
+    }
+  }
+  return out;
+}
+
+/**
+ * Scene-space positions of every `LightMushroom` top-layer cell in `chunk` at
+ * `(cx, cy)`. The mushroom-light subsystem (`mushroom_lights.ts`) consumes
+ * this on `applyChunkLoaded` so each chunk's mushrooms contribute to the
+ * per-frame nearest-N pick around the local player (task 140).
+ */
+export function mushroomPositionsInChunk(
+  cx: number,
+  cy: number,
+  chunk: Chunk,
+): Array<{ x: number; z: number }> {
+  const out: Array<{ x: number; z: number }> = [];
+  for (let y = 0; y < LAYER_SIZE; y++) {
+    for (let x = 0; x < LAYER_SIZE; x++) {
+      if (getBlock(chunk.top, x, y).kind !== BlockType.LightMushroom) continue;
       const scene = tileCenterToScene(cx, cy, x, y);
       out.push({ x: scene.x, z: scene.z });
     }

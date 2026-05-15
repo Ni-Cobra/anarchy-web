@@ -212,6 +212,8 @@ export const DEFAULT_BREAK_PARTICLE_COLORS: Readonly<Record<BlockType, number>> 
   [BlockType.Chest]: 0xb07a3a,
   // Task 010-tombstone: broken tombstone puffs gray stone shards.
   [BlockType.Tombstone]: 0x808088,
+  // Task 140: broken bioluminescent mushroom puffs cool cyan spore shards.
+  [BlockType.LightMushroom]: 0x9fd9ff,
 };
 
 export function defaultBreakParticleColor(kind: BlockType): number {

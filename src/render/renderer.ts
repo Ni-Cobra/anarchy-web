@@ -439,6 +439,10 @@ export class Renderer {
     // player keeps the "32 nearest torches" pick stable as the world
     // streams in around them.
     this.graph.torchLights.update({ x: focus.x, z: focus.z }, sample.nightFactor);
+    // Mushrooms (task 140): cool-glow companion pool to the torch one,
+    // same nearest-N pick around the focus, weaker radius/intensity so
+    // they read as atmosphere rather than navigable light.
+    this.graph.mushroomLights.update({ x: focus.x, z: focus.z }, sample.nightFactor);
     // Lanterns (task 370): one light per player wearing one. Driven by
     // the same `nightFactor` so the day cycle reads consistent across
     // every warm light source.

@@ -290,6 +290,12 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: BlockType.Grass,
     textureUrl: `${BLOCK_TEXTURES_BASE}/grass.png`,
   },
+  [ItemId.LightMushroom]: {
+    id: ItemId.LightMushroom,
+    displayName: "Light Mushroom",
+    placesBlock: BlockType.LightMushroom,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/light-mushroom.png`,
+  },
 };
 
 /**

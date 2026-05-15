@@ -247,6 +247,13 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockMeta> = {
     minToolTier: null,
     isSolidTop: true,
   },
+  [BlockType.LightMushroom]: {
+    kind: BlockType.LightMushroom,
+    textureUrl: `${BLOCK_TEXTURES_BASE}/light-mushroom.png`,
+    displayName: "Light Mushroom",
+    minToolTier: null,
+    isSolidTop: false,
+  },
 };
 
 /**
