@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "./test-shared";
 
+import { AdminItemId, adminGiveItem, adminSetBlock } from "./admin";
+
 // BACKLOG task 100 e2e: client wiring of the server-side crafting flow
 // (task 090 server). The fresh-admit inventory has 10 Gold (slot 0) and
 // the 10 task-090 starter tools planted at the bottom of the panel — no
@@ -160,6 +162,123 @@ test("clicking a row ships CraftRequest; server consumes ingredients and inserts
   // natural layout takes over.
   await page.mouse.move(10, 10);
   await expect(orphan).toHaveCount(0);
+});
+
+test("an open chest pools ingredients into the craftable pane and the craft drains it", async ({
+  page,
+}) => {
+  // Task 170: with a chest open, recipes whose ingredients are covered
+  // by the union of the player's inventory + the chest contents should
+  // advertise as Affordable. Triggering the craft drains ingredients
+  // from the union (inventory-first, chest-second per task 590) and
+  // shows up on the next InventoryUpdate / ChestUpdate.
+  await openClient(page, "craft-chest-pool");
+
+  const playerId = await page.evaluate(() =>
+    window.__anarchy!.getLocalPlayerId(),
+  );
+  expect(playerId).not.toBeNull();
+
+  const CHEST = { cx: 0, cy: 0, lx: 3, ly: 0 } as const;
+  try {
+    // Give the player one Chest, plant it at a known spot, then move
+    // four Logs into the chest so the recipe pool reaches across the
+    // open boundary.
+    await adminGiveItem(playerId!, AdminItemId.Chest, 1);
+    await page.waitForFunction(
+      () => window.__anarchy!.inventory.countOf(36) === 1,
+    );
+    await page.keyboard.press("Digit2");
+    await page.waitForFunction(
+      () => window.__anarchy!.getSelectedHotbarSlot() === 1,
+    );
+    await page.evaluate((tile) => {
+      window.__anarchy!.sendPlaceBlock(tile.cx, tile.cy, tile.lx, tile.ly);
+    }, CHEST);
+    await page.waitForFunction(
+      (tile) => {
+        const chunk = window.__anarchy!.terrain.get(tile.cx, tile.cy);
+        if (!chunk) return false;
+        const idx = tile.ly * 16 + tile.lx;
+        return chunk.top.blocks[idx]?.kind !== 0;
+      },
+      CHEST,
+    );
+
+    // Open the chest and wait for the mirror to land.
+    await page.evaluate((tile) => {
+      window.__anarchy!.sendOpenChest(tile.cx, tile.cy, tile.lx, tile.ly);
+    }, CHEST);
+    await page.waitForFunction(
+      () => window.__anarchy!.chestState.locations().length === 1,
+    );
+
+    // Drop 4 Logs in the player's inventory, then move them into the
+    // chest's first slot. The post-move InventoryUpdate must show the
+    // chest's Logs counted in the craftable pane.
+    await seedInventory(page, ITEM_ID_LOG, 4);
+    await page.waitForFunction(
+      () => window.__anarchy!.inventory.countOf(35) === 4,
+    );
+    // Find the slot the logs landed in (player inventory main grid).
+    const logSlot = await page.evaluate(() => {
+      const inv = window.__anarchy!.inventory;
+      for (let i = 0; i < 45; i++) {
+        const s = inv.slot(i);
+        if (s !== null && s.item === 35) return i;
+      }
+      return -1;
+    });
+    expect(logSlot).toBeGreaterThanOrEqual(0);
+    await page.evaluate(
+      ({ slot, tile }) => {
+        window.__anarchy!.sendMoveSlot(slot, 0, null, tile);
+      },
+      { slot: logSlot, tile: CHEST },
+    );
+    await page.waitForFunction(
+      ({ tile }) => {
+        const inv = window.__anarchy!.chestState.inventoryFor(tile);
+        const s = inv?.slot(0) ?? null;
+        return s !== null && s.item === 35 && s.count === 4;
+      },
+      { tile: CHEST },
+    );
+    await page.waitForFunction(
+      () => window.__anarchy!.inventory.countOf(35) === 0,
+    );
+
+    // Open the inventory + crafting pane. The Stick-from-Log recipe
+    // (1 Log → 4 Sticks) should advertise as Affordable now that the
+    // chest's Log contributes to the pool.
+    await page.keyboard.press("KeyE");
+    await expect(
+      page.locator(
+        ".anarchy-crafting-row[data-recipe-id='sticks-from-log']:not(.partial-hint)",
+      ),
+    ).toHaveCount(1, { timeout: 5_000 });
+
+    // Click craft. The server consumes 1 Log from the chest and
+    // inserts 4 Sticks into the player's inventory.
+    await page
+      .locator(".anarchy-crafting-row[data-recipe-id='sticks-from-log']")
+      .click();
+    await page.waitForFunction(
+      ({ tile }) => {
+        const handle = window.__anarchy!;
+        const inv = handle.chestState.inventoryFor(tile);
+        const chestSlot = inv?.slot(0) ?? null;
+        const chestOk =
+          chestSlot !== null && chestSlot.item === 35 && chestSlot.count === 3;
+        const stickOk = handle.inventory.countOf(1) === 4;
+        return chestOk && stickOk;
+      },
+      { tile: CHEST },
+    );
+  } finally {
+    await adminSetBlock(CHEST.cx, CHEST.cy, "top", CHEST.lx, CHEST.ly, "air")
+      .catch(() => {});
+  }
 });
 
 test("multi-stack ingredient row renders both ingredient stacks on the left half", async ({
