@@ -195,4 +195,42 @@ describe("BeamLayer", () => {
     layer.update(() => null, 0);
     expect((layer.scene().children[0] as THREE.Line).visible).toBe(false);
   });
+
+  // Task 160 regression pin: the renderer drives `applyChestTargets` +
+  // `update` every frame, not only when the player mesh re-syncs. A
+  // standing-still driver tick that just observes a new open chest must
+  // still spawn the beam in the same frame, and a tick that clears the
+  // open set must clear it — no position change required either direction.
+  it("opens and clears chest beams from set-diff calls alone, without any player movement", () => {
+    const layer = makeLayer();
+    const pos = { x: 3, y: 4 };
+    const lookup = (id: number) => (id === 1 ? pos : null);
+
+    // Quiescent: no open chests, position lookup steady — nothing to draw.
+    layer.update(lookup, 0);
+    expect(layer.chestBeamCount()).toBe(0);
+
+    // World reports an open chest this tick. Same position lookup; the
+    // beam set diff alone must produce a visible beam.
+    layer.applyChestTargets([{ playerId: 1, cx: 0, cy: 0, lx: 4, ly: 5 }]);
+    layer.update(lookup, 0);
+    expect(layer.chestBeamCount()).toBe(1);
+    const line = layer.scene().children[0] as THREE.Line;
+    expect(line.visible).toBe(true);
+
+    // Player opens a second chest, still standing still. One beam per
+    // (player, chest) must coexist — pins the multi-open invariant.
+    layer.applyChestTargets([
+      { playerId: 1, cx: 0, cy: 0, lx: 4, ly: 5 },
+      { playerId: 1, cx: 0, cy: 0, lx: 6, ly: 7 },
+    ]);
+    layer.update(lookup, 0);
+    expect(layer.chestBeamCount()).toBe(2);
+
+    // Player closes both chests in the same tick. Same position; the
+    // wholesale-replace must clear both beams that frame.
+    layer.applyChestTargets([]);
+    layer.update(lookup, 0);
+    expect(layer.chestBeamCount()).toBe(0);
+  });
 });
