@@ -9,6 +9,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   ENTITY_STACK_OFFSET_RADIUS,
+  SPIDER_HEIGHT,
+  SPIDER_SIDE,
+  SPIDER_Y,
   entityLerpPosition,
   smoothstep,
   stackingOffset,
@@ -66,6 +69,26 @@ describe("entityLerpPosition", () => {
     const p = entityLerpPosition(0, 0, 10, 0, 0.25);
     expect(p.x).toBeLessThan(2.5);
     expect(p.x).toBeGreaterThan(0);
+  });
+});
+
+describe("spider mesh dimensions", () => {
+  it("is a quarter-tile cube (task 040)", () => {
+    // The brief calls for a 0.25 × 0.25 × 0.25 cube — block-shaped, not a
+    // flat slab — so the spider reads against walkable top-layer decor.
+    expect(SPIDER_SIDE).toBeCloseTo(0.25, 10);
+    expect(SPIDER_HEIGHT).toBeCloseTo(0.25, 10);
+  });
+
+  it("sits with its bottom face above the tallest walkable top-layer block", () => {
+    // Mirrors the renderer constants in `terrain.ts`: the tallest
+    // walkable (non-solid) top-layer block is the Torch at
+    //   TORCH_BOTTOM (0.025) + TORCH_HEIGHT (0.85) = 0.875.
+    // The spider's bottom face must clear that so it draws *above* any
+    // walkable top-layer item co-occupying its tile (sticks/flowers/etc.).
+    const WALKABLE_TOP_LAYER_MAX_Y = 0.875;
+    const spiderBottomY = SPIDER_Y - SPIDER_HEIGHT / 2;
+    expect(spiderBottomY).toBeGreaterThanOrEqual(WALKABLE_TOP_LAYER_MAX_Y);
   });
 });
 
