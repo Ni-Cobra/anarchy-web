@@ -20,7 +20,12 @@
  * actions never even ship.
  */
 
-import { BREAK_HEARTBEAT_TICKS, INPUT_TICK_INTERVAL_MS, REACH_BLOCKS } from "../config.js";
+import {
+  ATTACK_RANGE_TILES,
+  BREAK_HEARTBEAT_TICKS,
+  INPUT_TICK_INTERVAL_MS,
+  REACH_BLOCKS,
+} from "../config.js";
 import { BlockType, CHUNK_SIZE, type Inventory, ItemId, type World } from "../game/index.js";
 import { type Renderer } from "../render/index.js";
 import { BLOCK_REGISTRY } from "../textures.js";
@@ -29,13 +34,6 @@ import { createMiningHint } from "./mining_hint.js";
 
 const REACH_BLOCKS_SQ = REACH_BLOCKS * REACH_BLOCKS;
 
-/**
- * Attack-range gate for the left-click target-pick. Mirrors the server
- * constant `ATTACK_RANGE_TILES` (= 4) — a misbehaving client cannot
- * bypass it, but suppressing out-of-range intents at the client keeps
- * the wire traffic clean and the player UX honest.
- */
-export const ATTACK_RANGE_TILES = 4;
 const ATTACK_RANGE_TILES_SQ = ATTACK_RANGE_TILES * ATTACK_RANGE_TILES;
 
 export interface BreakPlaceDeps {

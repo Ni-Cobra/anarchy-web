@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { InputController, type InputSink } from "./controller.js";
+import { InputController, type InputSink, type MoveIntentGate } from "./controller.js";
 
 interface KeyEventInit {
   code: string;
@@ -261,5 +261,38 @@ describe("InputController", () => {
     const stop = ctrl.start(target);
     expect(() => ctrl.start(target)).toThrow(/already started/);
     stop();
+  });
+
+  describe("move-intent gate (task 110)", () => {
+    it("suppresses outbound intents while the gate reports charging", () => {
+      const { sent, sink } = makeSink();
+      let charging = false;
+      const gate: MoveIntentGate = { isLocalCharging: () => charging };
+      const ctrl = new InputController(sink, 50, gate);
+      const stop = ctrl.start(target);
+
+      dispatchKey(target, "keydown", { code: "KeyD" });
+      // First flush before any charge: a normal intent ships.
+      vi.advanceTimersByTime(50);
+      expect(sent).toEqual([{ dx: 1, dy: 0 }]);
+
+      charging = true;
+      // 14 ticks worth of held-key flushes with the gate active — none
+      // of them ship while the local player is mid-charge.
+      vi.advanceTimersByTime(50 * 14);
+      expect(sent).toEqual([{ dx: 1, dy: 0 }]);
+
+      // Lock releases; the very next flush re-ships the held intent
+      // (the gate forced lastSent to zero during the lock so a still-held
+      // key always re-emits afterwards).
+      charging = false;
+      vi.advanceTimersByTime(50);
+      expect(sent).toEqual([
+        { dx: 1, dy: 0 },
+        { dx: 1, dy: 0 },
+      ]);
+
+      stop();
+    });
   });
 });

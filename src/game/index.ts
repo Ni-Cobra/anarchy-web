@@ -12,6 +12,10 @@ export { Direction8, DEFAULT_FACING, MAX_PLAYER_HEALTH } from "./player.js";
 export { maxHealthForKind } from "./entity.js";
 export { World } from "./world.js";
 export { SnapshotBuffer } from "./snapshot_buffer.js";
+export {
+  LOCAL_CHARGE_FAILSAFE_MS,
+  LocalAttackChargeTracker,
+} from "./local_attack_charge_tracker.js";
 export type { Block, Chunk, ChunkCoord, Layer } from "./terrain.js";
 export {
   BlockType,

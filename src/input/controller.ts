@@ -13,6 +13,18 @@ export interface InputSink {
 }
 
 /**
+ * Optional gate (task 110). When supplied, the controller asks before
+ * every flush whether the local player is currently mid attack-charge;
+ * while it returns `true`, outbound intents are suppressed and the
+ * controller's "last sent" mirror is forced to zero so the *next* flush
+ * after the lock releases will reliably emit a fresh intent (rather than
+ * being elided as unchanged).
+ */
+export interface MoveIntentGate {
+  isLocalCharging(): boolean;
+}
+
+/**
  * Tracks which movement keys are held and pushes a `MoveIntent` to `sink`
  * whenever the held set produces a new normalized intent vector (plus a
  * periodic heartbeat resend when the intent is non-zero).
@@ -44,6 +56,7 @@ export class InputController {
   constructor(
     private readonly sink: InputSink,
     private readonly tickIntervalMs: number = INPUT_TICK_INTERVAL_MS,
+    private readonly moveGate: MoveIntentGate | null = null,
   ) {}
 
   /**
@@ -93,6 +106,16 @@ export class InputController {
    */
   flush(): void {
     const intent = this.computeIntent();
+    // Task 110: while the local player is mid attack-charge the server
+    // is ignoring every `MoveIntent` anyway — suppress the send so the
+    // wire stays clean. Force the next post-charge intent to ship by
+    // pretending the last send was zero, since the lock period may have
+    // covered an intent change the server never observed.
+    if (this.moveGate?.isLocalCharging() ?? false) {
+      this.lastSent = { dx: 0, dy: 0 };
+      this.heartbeatCounter = 0;
+      return;
+    }
     const changed = this.lastSent.dx !== intent.dx || this.lastSent.dy !== intent.dy;
     const moving = intent.dx !== 0 || intent.dy !== 0;
 

@@ -27,6 +27,7 @@ import {
   chestLocationFromKey,
   Inventory,
   LAYER_SIZE,
+  LocalAttackChargeTracker,
   SnapshotBuffer,
   Terrain,
   type ToolKind,
@@ -335,6 +336,11 @@ export function constructSession(deps: SessionDeps): Session {
   const terrain = new Terrain();
   const inventory = new Inventory();
   const chestState = new ChestState();
+  // Task 110: tracks whether the local player is mid attack-charge so
+  // the input controller can suppress outbound `MoveIntent` frames the
+  // server is going to ignore anyway. Fed by the wire layer's per-tick
+  // `attack_events` fan-out below.
+  const localAttackChargeTracker = new LocalAttackChargeTracker();
   // Forward-declared so the renderer's per-frame ghost driver can read the
   // currently-selected hotbar slot. The UI is mounted later in this
   // function (it depends on `sendSelectSlot` / `sendMoveSlot`, which in
@@ -415,6 +421,9 @@ export function constructSession(deps: SessionDeps): Session {
             if (events.length > 0) {
               lastAttackEvent = events[events.length - 1];
             }
+            for (const ev of events) {
+              localAttackChargeTracker.onAttackEvent(ev, localPlayerId);
+            }
             renderer.onAttackEvents(events, tickReceivedMs);
           },
         },
@@ -430,6 +439,10 @@ export function constructSession(deps: SessionDeps): Session {
           setLocalPlayerId: (id) => {
             localPlayerId = id;
             renderer.setLocalPlayerId(id);
+            // A local-player reassign means a fresh session — drop any
+            // in-flight charge lock so the previous session can't leak
+            // a frozen input state into the new one.
+            localAttackChargeTracker.reset();
           },
           getLocalPlayerId: () => localPlayerId,
         },
@@ -464,7 +477,11 @@ export function constructSession(deps: SessionDeps): Session {
     sendAttackIntent,
   } = createActionSenders(conn);
 
-  const input = new InputController({ sendMoveIntent });
+  const input = new InputController(
+    { sendMoveIntent },
+    undefined,
+    localAttackChargeTracker,
+  );
   const stopInput = input.start(window);
   teardowns.push(stopInput);
 

@@ -38,6 +38,26 @@ export const REACH_BLOCKS = 4.0;
  */
 export const PLAYER_RADIUS = 0.35;
 
+/**
+ * Maximum Euclidean distance (world units) between the local player and an
+ * attack target at click time. Mirrors `combat/config.rs::ATTACK_RANGE_TILES`
+ * on the server — must stay equal so the client's left-click target-pick
+ * agrees with the server's admission gate. Bumped 4 → 6 in task 110
+ * alongside the charge-immobility lock so attackers can't close the gap
+ * during the locked charge window.
+ */
+export const ATTACK_RANGE_TILES = 6;
+
+/**
+ * Charge window for a swung attack, in seconds. Mirrors
+ * `combat/config.rs::CHARGE_DURATION_SECS` on the server. The local
+ * predictor reads this to drive the charge-lock failsafe (task 110): if a
+ * `CHARGE_STARTED` event never receives its matching resolution within
+ * `CHARGE_DURATION_SECS + 1.0 s` the lock is forcibly released so a
+ * dropped resolution packet can't strand the local player frozen.
+ */
+export const CHARGE_DURATION_SECS = 0.7;
+
 // ---- Render ----
 
 /**

@@ -285,7 +285,7 @@ describe("attachBreakAndPlace — task 070b target-pick", () => {
       buildAttackDeps({
         attackPick: { kind: "player", id: 99 },
         // Player at (2.5, 0.5) is ~2 tiles from local (0.5, 0.5) — well
-        // inside the 4-tile ATTACK_RANGE.
+        // inside the 6-tile ATTACK_RANGE.
         targetPos: { x: 2.5, y: 0.5 },
         sendAttackIntent,
         sendBreakIntent,
@@ -297,6 +297,25 @@ describe("attachBreakAndPlace — task 070b target-pick", () => {
     expect(sendAttackIntent).toHaveBeenCalledTimes(1);
     expect(sendAttackIntent).toHaveBeenCalledWith("player", 99);
     expect(sendBreakIntent).not.toHaveBeenCalled();
+  });
+
+  it("admits a target at 5.5 tiles (would have rejected pre-110)", () => {
+    // Task 110 bumped ATTACK_RANGE_TILES 4 → 6. A target 5.5 tiles east
+    // would have rejected under the old gate but admits now.
+    const sendAttackIntent = vi.fn();
+    detach = attachBreakAndPlace(
+      window,
+      buildAttackDeps({
+        attackPick: { kind: "player", id: 99 },
+        targetPos: { x: 6.0, y: 0.5 },
+        sendAttackIntent,
+      }),
+    );
+
+    fireMouseDown(0, 400, 300);
+
+    expect(sendAttackIntent).toHaveBeenCalledTimes(1);
+    expect(sendAttackIntent).toHaveBeenCalledWith("player", 99);
   });
 
   it("ships AttackIntent for an entity target in range", () => {
@@ -326,7 +345,7 @@ describe("attachBreakAndPlace — task 070b target-pick", () => {
       window,
       buildAttackDeps({
         attackPick: { kind: "player", id: 99 },
-        // ~30 tiles east — far beyond the 4-tile range gate.
+        // ~30 tiles east — far beyond the 6-tile range gate.
         targetPos: { x: 30.5, y: 0.5 },
         sendAttackIntent,
         sendBreakIntent,
