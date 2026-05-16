@@ -57,6 +57,7 @@ import {
   defaultPlayerMeshFactory,
 } from "./player_mesh.js";
 import { SceneGraph, type Viewport } from "./scene_graph.js";
+import { ScreenShake, type ScreenShakeOffset } from "./screen_shake.js";
 import { ZoomController, clampZoomHeight } from "./zoom.js";
 
 export type { Viewport } from "./scene_graph.js";
@@ -155,6 +156,15 @@ export class Renderer {
    * exist for symmetry but the UI only reads the local entry.
    */
   private readonly cooldownStartMsByAttacker = new Map<PlayerId, number>();
+  /**
+   * Damage-feedback shake (task 120). Source-agnostic — the session calls
+   * `triggerScreenShake(...)` on a local-HP drop; task 130 wires the
+   * attacker's own strike-shake through the same surface. Sampled in
+   * `updateCamera` so the offset perturbs both `camera.position` and the
+   * look-at target by the same vector, producing a pure visual translation
+   * without rotating the view.
+   */
+  private readonly screenShake = new ScreenShake();
 
   constructor(
     private readonly world: World,
@@ -215,6 +225,7 @@ export class Renderer {
     this.activeDashes.clear();
     this.tickAnchorByAttacker.clear();
     this.cooldownStartMsByAttacker.clear();
+    this.screenShake.reset();
     this.graph.attackBeams.clearAll();
   }
 
@@ -439,6 +450,27 @@ export class Renderer {
    */
   getAttackBeamCount(): number {
     return this.graph.attackBeams.size();
+  }
+
+  /**
+   * Damage-feedback hook (task 120). Caller (today: the bootstrap session
+   * on a local-HP drop) supplies a peak magnitude (tiles) and a duration
+   * (ms); the renderer applies the resulting offset to the camera each
+   * frame. Magnitude is clamped inside `ScreenShake` so an absurd input
+   * cannot eject the camera. The trigger surface is source-agnostic — task
+   * 130 wires the attacker's own strike-shake here as well.
+   */
+  triggerScreenShake(magnitudeTiles: number, durationMs: number): void {
+    this.screenShake.trigger(magnitudeTiles, durationMs, this.now());
+  }
+
+  /**
+   * Test handle (task 120): current shake offset in tile units, or
+   * `(0, 0)` when no shake is active. Lets e2e + bootstrap unit tests
+   * pin the shake state end-to-end without inspecting the camera.
+   */
+  getScreenShakeOffset(): ScreenShakeOffset {
+    return this.screenShake.offsetAt(this.now());
   }
 
   /**
@@ -710,7 +742,16 @@ export class Renderer {
       ? tileToScene(local.x, local.y)
       : new THREE.Vector3(0, 0, 0);
     const height = this.zoom.sample(this.now());
-    this.graph.camera.position.set(focus.x, height, focus.z);
-    this.graph.camera.lookAt(focus);
+    // Damage-feedback shake (task 120). Tile-space `(dx, dy)` from the
+    // shake module maps to scene-space `(dx, 0, -dy)` (mirrors `tileToScene`),
+    // then we perturb both the camera position and the look-at by the same
+    // vector so the view translates without rotating. Applied as the very
+    // last camera adjustment — the offset must not feed back into snapshot
+    // reconciliation or the dash override.
+    const shake = this.screenShake.offsetAt(this.now());
+    const shakeDx = shake.dx;
+    const shakeDz = -shake.dy;
+    this.graph.camera.position.set(focus.x + shakeDx, height, focus.z + shakeDz);
+    this.graph.camera.lookAt(focus.x + shakeDx, focus.y, focus.z + shakeDz);
   }
 }

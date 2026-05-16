@@ -37,6 +37,7 @@ export {
   mountHpBar,
   hpFillColorFor,
   hpFillWidthPx,
+  HP_FLASH_DURATION_MS,
   HP_THRESHOLD_HIGH,
   HP_THRESHOLD_LOW,
 } from "./hp_bar.js";

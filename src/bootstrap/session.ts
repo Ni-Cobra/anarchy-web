@@ -46,6 +46,11 @@ import {
 } from "../net/index.js";
 import { Renderer, type GhostState } from "../render/index.js";
 import {
+  durationForDamage,
+  magnitudeForDamage,
+  type ScreenShakeOffset,
+} from "../render/screen_shake.js";
+import {
   mountAttackCooldown,
   mountChestUi,
   mountCoordsHud,
@@ -259,6 +264,18 @@ export interface AnarchyHandle {
    * coordinates from the live camera transform. Pass `null` to clear.
    */
   setCursorNdc: (ndc: { x: number; y: number } | null) => void;
+  /**
+   * Test handle (task 120): current screen-shake offset in tile units, or
+   * `(0, 0)` when no shake is active. Lets an e2e spec assert "the shake
+   * fired" without inspecting the camera.
+   */
+  getScreenShakeOffset: () => ScreenShakeOffset;
+  /**
+   * Test handle (task 120): true while the HP bar's damage-flash overlay
+   * is active. Mirrors the DOM class on the bar root so the assertion is
+   * a one-call read.
+   */
+  isHpBarFlashing: () => boolean;
   stop: () => void;
   readonly stopped: Promise<void>;
   /**
@@ -373,6 +390,13 @@ export function constructSession(deps: SessionDeps): Session {
 
   let localPlayerId: number | null = null;
 
+  // Damage-feedback detection state (task 120). The `pumpCoords` rAF loop
+  // (defined below) mirrors the local player's HP across frames; whenever
+  // it drops it fires `renderer.triggerScreenShake` + `hpBar.flashWhite`.
+  // Declared up here so the local-player reassign callback in the wire
+  // bridge can reset it without a forward-reference.
+  let lastSeenLocalHp: number | null = null;
+
   // Test-handle observability for the task 070 effects feed. The
   // renderer-visible effects layer is internal; these mirrors give
   // Playwright (and unit tests for the bootstrap wire) a way to assert
@@ -443,6 +467,10 @@ export function constructSession(deps: SessionDeps): Session {
             // in-flight charge lock so the previous session can't leak
             // a frozen input state into the new one.
             localAttackChargeTracker.reset();
+            // Also drop the damage-feedback HP mirror so the first HP
+            // we observe on the new player never spuriously fires
+            // shake/flash against a stale previous-session value.
+            lastSeenLocalHp = null;
           },
           getLocalPlayerId: () => localPlayerId,
         },
@@ -623,7 +651,24 @@ export function constructSession(deps: SessionDeps): Session {
     const id = localPlayerId;
     const me = id === null ? null : world.getPlayer(id);
     coordsHud.update(me ? { x: me.x, y: me.y } : null);
-    hpBar.update(me ? me.health : null);
+    const currentHp = me ? me.health : null;
+    if (currentHp === null) {
+      // No admitted local player (yet) — drop the mirror so the first HP
+      // we observe after admission never spuriously fires feedback.
+      lastSeenLocalHp = null;
+    } else if (lastSeenLocalHp !== null && currentHp < lastSeenLocalHp) {
+      // HP went down. Respawn ships `MAX_PLAYER_HEALTH` post-death so it
+      // never trips this branch; admin-damage / attack hits do. Compute
+      // the delta and fire both feedback effects.
+      const damage = lastSeenLocalHp - currentHp;
+      renderer.triggerScreenShake(
+        magnitudeForDamage(damage),
+        durationForDamage(damage),
+      );
+      hpBar.flashWhite();
+    }
+    if (currentHp !== null) lastSeenLocalHp = currentHp;
+    hpBar.update(currentHp);
     const strikeMs = id === null ? null : renderer.getStrikeStartedMs(id);
     attackCooldown.update(performance.now(), strikeMs);
     coordsRaf = window.requestAnimationFrame(pumpCoords);
@@ -736,6 +781,8 @@ export function constructSession(deps: SessionDeps): Session {
     getChestBeamCount: () => renderer.getChestBeamCount(),
     getRenderedEntities: () => renderer.getRenderedEntities(),
     setCursorNdc: (ndc) => renderer.setCursorNdc(ndc),
+    getScreenShakeOffset: () => renderer.getScreenShakeOffset(),
+    isHpBarFlashing: () => hpBar.isFlashing(),
     sendAttackIntent,
     getAttackBeamCount: () => renderer.getAttackBeamCount(),
     getLastAttackEvent: () => lastAttackEvent,

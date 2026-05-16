@@ -45,6 +45,15 @@ const BAR_WIDTH_PX = 476;
 export const HP_THRESHOLD_HIGH = 0.6;
 export const HP_THRESHOLD_LOW = 0.3;
 
+/**
+ * Default duration of the damage-flash overlay (task 120). The HP bar
+ * background flashes white briefly when the local player takes damage,
+ * then fades back to the normal panel colour.
+ */
+export const HP_FLASH_DURATION_MS = 150;
+
+const FLASH_CLASS = "anarchy-hp-bar--damage-flash";
+
 const FILL_HIGH = "#3fb950";
 const FILL_MID = "#d4a017";
 const FILL_LOW = "#d04a4a";
@@ -66,6 +75,11 @@ const STYLE = `
     overflow: hidden;
     font-family: system-ui, -apple-system, sans-serif;
     user-select: none;
+    transition: background-color 80ms ease-out;
+  }
+  #${ROOT_ID}.${FLASH_CLASS} {
+    background: #ffffff;
+    transition: none;
   }
   #${ROOT_ID}.hidden { display: none; }
   #${ROOT_ID} .anarchy-hp-fill {
@@ -95,6 +109,19 @@ export interface HpBarHandle {
    * (no admitted local player yet).
    */
   update(health: number | null): void;
+  /**
+   * Damage-feedback overlay (task 120). Briefly paints the bar background
+   * white, then fades back to the normal panel colour after `durationMs`.
+   * Overlapping calls reset the timer — a follow-up hit re-flashes rather
+   * than skipping.
+   */
+  flashWhite(durationMs?: number): void;
+  /**
+   * Test handle (task 120): true while the damage-flash overlay is
+   * active. Pinned via a class on the bar root so e2e + unit tests can
+   * read the state without poking at internals.
+   */
+  isFlashing(): boolean;
   unmount(): void;
 }
 
@@ -148,6 +175,12 @@ export function mountHpBar(): HpBarHandle {
   let lastText: string | null = null;
   let lastColor: string | null = null;
   let lastWidth = -1;
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearFlash = (): void => {
+    root.classList.remove(FLASH_CLASS);
+    flashTimer = null;
+  };
 
   return {
     update: (health) => {
@@ -174,7 +207,17 @@ export function mountHpBar(): HpBarHandle {
       }
       root.classList.remove("hidden");
     },
+    flashWhite: (durationMs = HP_FLASH_DURATION_MS) => {
+      if (flashTimer !== null) clearTimeout(flashTimer);
+      root.classList.add(FLASH_CLASS);
+      flashTimer = setTimeout(clearFlash, durationMs);
+    },
+    isFlashing: () => root.classList.contains(FLASH_CLASS),
     unmount: () => {
+      if (flashTimer !== null) {
+        clearTimeout(flashTimer);
+        flashTimer = null;
+      }
       root.remove();
     },
   };

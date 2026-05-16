@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_PLAYER_HEALTH } from "../game/player.js";
 import {
   hpFillColorFor,
   hpFillWidthPx,
+  HP_FLASH_DURATION_MS,
   HP_THRESHOLD_HIGH,
   HP_THRESHOLD_LOW,
   mountHpBar,
@@ -103,6 +104,55 @@ describe("mountHpBar", () => {
     const bar = mountHpBar();
     expect(document.getElementById("anarchy-hp-bar")).not.toBeNull();
     bar.unmount();
+    expect(document.getElementById("anarchy-hp-bar")).toBeNull();
+  });
+});
+
+describe("HpBarHandle.flashWhite (task 120)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("adds the damage-flash class and clears it after the duration", () => {
+    const bar = mountHpBar();
+    bar.update(80);
+    bar.flashWhite();
+    const root = document.getElementById("anarchy-hp-bar")!;
+    expect(root.classList.contains("anarchy-hp-bar--damage-flash")).toBe(true);
+    expect(bar.isFlashing()).toBe(true);
+
+    vi.advanceTimersByTime(HP_FLASH_DURATION_MS + 5);
+    expect(root.classList.contains("anarchy-hp-bar--damage-flash")).toBe(false);
+    expect(bar.isFlashing()).toBe(false);
+    bar.unmount();
+  });
+
+  it("rapid successive calls reset the timer so the second call wins", () => {
+    const bar = mountHpBar();
+    bar.update(80);
+    bar.flashWhite(200);
+    vi.advanceTimersByTime(100);
+    bar.flashWhite(200);
+    // First timeout would have fired at 200 ms; the second call resets it
+    // to 300 ms. Advance to 250 — the flash should still be active.
+    vi.advanceTimersByTime(150);
+    expect(bar.isFlashing()).toBe(true);
+    // Now advance past the second timer's expiry.
+    vi.advanceTimersByTime(100);
+    expect(bar.isFlashing()).toBe(false);
+    bar.unmount();
+  });
+
+  it("unmount cancels a pending flash timer", () => {
+    const bar = mountHpBar();
+    bar.update(80);
+    bar.flashWhite(500);
+    bar.unmount();
+    // Should not throw or reattach a removed node.
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
     expect(document.getElementById("anarchy-hp-bar")).toBeNull();
   });
 });
