@@ -31,6 +31,10 @@ message ClientMessage {
     TransferItems transfer_items = 28;
     OpenChest open_chest = 29;
     CloseChest close_chest = 30;
+    // Task 070 attack — left-click target nomination. Latest-wins per
+    // player; the server runs a charge → strike state machine driven by
+    // tick time and emits `AttackEvent`s back through `TickUpdate`.
+    AttackIntent attack_intent = 31;
   }
 }
 
@@ -287,6 +291,69 @@ message MoveSlot {
   optional ChestLocation dst_chest = 7;
 }
 
+// Whether a wire `AttackIntent` / `AttackEvent` references a player target
+// or an entity target (task 070). `TARGET_KIND_UNSPECIFIED = 0` is the
+// proto3 default sentinel and is treated as a malformed action by the
+// server (silently dropped).
+enum TargetKind {
+  TARGET_KIND_UNSPECIFIED = 0;
+  TARGET_KIND_PLAYER = 1;
+  TARGET_KIND_ENTITY = 2;
+}
+
+// Stage of an attack the server is broadcasting (task 070). The client
+// renders the charge beam between `CHARGE_STARTED` and the matching
+// `STRIKE_HIT` / `STRIKE_MISSED_OUT_OF_REACH`. `ATTACK_OUTCOME_UNSPECIFIED`
+// is the proto3 default sentinel and never emitted by the server.
+enum AttackOutcome {
+  ATTACK_OUTCOME_UNSPECIFIED = 0;
+  // The 0.7s charge began this tick. Client starts rendering the beam.
+  ATTACK_OUTCOME_CHARGE_STARTED = 1;
+  // Strike landed: target took damage (or died). Beam terminates.
+  ATTACK_OUTCOME_STRIKE_HIT = 2;
+  // Strike missed because the target was out of `STRIKE_RANGE_TILES` at
+  // the resolution tick. No damage. Beam terminates.
+  ATTACK_OUTCOME_STRIKE_MISSED_OUT_OF_REACH = 3;
+}
+
+// Client→server "left-click target" intent (task 070). The server
+// validates: attacker not in cooldown, target exists, target within
+// `ATTACK_RANGE_TILES` (= 4) of the attacker, target is not self. On
+// accept the attacker transitions to the Charging state for 0.7s;
+// otherwise the intent is silently dropped. Latest-wins per player —
+// the player can re-issue while idle without piling up backlog. Same
+// silent-failure posture as `BreakIntent` / `PlaceBlock`.
+message AttackIntent {
+  TargetKind target_kind = 1;
+  // Player id when `target_kind == TARGET_KIND_PLAYER`; entity id when
+  // `target_kind == TARGET_KIND_ENTITY`. Both id spaces are `u64` and
+  // disjoint by construction (players and entities allocate from
+  // separate counters), but the discriminator avoids any future
+  // collision and lets the server keep two lookup paths distinct.
+  uint64 target_id = 2;
+  uint64 client_seq = 3;
+}
+
+// Server→client attack lifecycle event (task 070), routed through
+// `TickUpdate.attack_events`. One event per state transition for each
+// attack in progress: `CHARGE_STARTED` once when the charge admits, then
+// exactly one terminating `STRIKE_HIT` / `STRIKE_MISSED_OUT_OF_REACH`
+// when the 0.7s charge resolves. Scoped to the recipient's view window
+// in the per-client compose: an event whose attacker is outside the
+// receiver's window is suppressed (the receiver wouldn't see the beam
+// anyway).
+message AttackEvent {
+  uint64 attacker_player_id = 1;
+  TargetKind target_kind = 2;
+  uint64 target_id = 3;
+  AttackOutcome outcome = 4;
+  // Tick the charge began on (set on every event for this attack so a
+  // late-joining recipient can reconstruct the shrinking-beam phase
+  // from server time rather than wall-clock). Pinned at `CHARGE_STARTED`
+  // emission and copied verbatim onto the matching strike event.
+  uint64 started_at_tick = 5;
+}
+
 // Identifies which equipment slot a wire `EquipTool` / `UnequipTool` action
 // targets. The wire kind must agree with the kind of the item at
 // `EquipTool.source_slot` — a Wood Pickaxe equipped to the Axe slot is
@@ -494,6 +561,12 @@ message TickUpdate {
   // stay possible without a wire change. Re-shipped every tick so a freshly
   // arrived client sees the world clock without waiting for a state change.
   double time_of_day_seconds = 5;
+  // Per-tick attack lifecycle events (task 070). One `CHARGE_STARTED` when
+  // an attack admits; exactly one terminating `STRIKE_HIT` /
+  // `STRIKE_MISSED_OUT_OF_REACH` when the 0.7s charge resolves. Scoped to
+  // the recipient's view window (events whose attacker is outside the
+  // window are dropped). Empty when no attack events fired this tick.
+  repeated AttackEvent attack_events = 6;
 }
 
 // One block edit emitted by the server this tick. `Placed` covers

@@ -60,6 +60,11 @@ export const AdminItemId = {
   Log: 35,
   // Task 050 e2e: wood-sword output, verified after the craft.
   WoodSword: 44,
+  // Task 070a e2e: sword ladder used by the admin-driven attack specs.
+  StoneSword: 45,
+  CopperSword: 46,
+  IronSword: 47,
+  TungstenSword: 48,
 } as const;
 
 export type AdminItemId = (typeof AdminItemId)[keyof typeof AdminItemId];
@@ -193,4 +198,26 @@ export async function adminDamageEntity(
   amount: number,
 ): Promise<DamageOutcome> {
   return postDamage(`${SERVER_URL}/admin/damage-entity/${entityId}/${amount}`);
+}
+
+/**
+ * Synthesize an admin-driven `AttackIntent` from `attackerId` against
+ * the named player or entity target (task 070a). Routes through the
+ * same admission path a real `AttackIntent` from the client would take
+ * — the server validates cooldown / range / self-target / existence
+ * inside `World::apply_attack_intent`. A `400` from the server (e.g.
+ * out of range, attacker still on cooldown) throws.
+ */
+export async function adminAttackPlayer(
+  attackerId: number,
+  targetId: number,
+): Promise<void> {
+  await postOk(`${SERVER_URL}/admin/attack-player/${attackerId}/${targetId}`);
+}
+
+export async function adminAttackEntity(
+  attackerId: number,
+  entityId: number,
+): Promise<void> {
+  await postOk(`${SERVER_URL}/admin/attack-entity/${attackerId}/${entityId}`);
 }
