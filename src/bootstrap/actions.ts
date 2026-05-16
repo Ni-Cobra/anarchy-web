@@ -79,6 +79,8 @@ function toolKindToWire(kind: ToolKind): number {
       return 3;
     case "shovel":
       return 4;
+    case "sword":
+      return 5;
   }
 }
 

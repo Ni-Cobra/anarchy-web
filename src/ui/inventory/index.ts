@@ -203,6 +203,7 @@ export function mountInventoryUi(
     { kind: "pickaxe", cell: makeSlotCell() },
     { kind: "axe", cell: makeSlotCell() },
     { kind: "shovel", cell: makeSlotCell() },
+    { kind: "sword", cell: makeSlotCell() },
     { kind: "utility", cell: makeSlotCell() },
   ];
   for (const { kind, cell } of equipmentCells) {
@@ -249,6 +250,8 @@ export function mountInventoryUi(
             return "Axe slot (empty)";
           case "shovel":
             return "Shovel slot (empty)";
+          case "sword":
+            return "Sword slot (empty)";
           case "utility":
             return "Utility slot (empty)";
         }
@@ -294,11 +297,13 @@ export function mountInventoryUi(
     const pickaxeSlot = inv.getEquippedSlot("pickaxe");
     const axeSlot = inv.getEquippedSlot("axe");
     const shovelSlot = inv.getEquippedSlot("shovel");
+    const swordSlot = inv.getEquippedSlot("sword");
     const utilitySlot = inv.getEquippedSlot("utility");
     const equipMarkAt = (idx: number): ToolKind | null => {
       if (idx === pickaxeSlot) return "pickaxe";
       if (idx === axeSlot) return "axe";
       if (idx === shovelSlot) return "shovel";
+      if (idx === swordSlot) return "sword";
       if (idx === utilitySlot) return "utility";
       return null;
     };

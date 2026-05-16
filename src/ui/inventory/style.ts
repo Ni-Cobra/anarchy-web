@@ -180,10 +180,17 @@ const STYLE = `
     background: rgba(210, 180, 30, 0.45);
     border-color: rgba(245, 215, 80, 0.85);
   }
+  /* Task 050 fifth equipment kind. Red reads "combat" / sword against the
+     orange/green/blue/yellow siblings without colliding. */
+  .anarchy-inventory-slot.equipped-sword {
+    background: rgba(196, 58, 58, 0.45);
+    border-color: rgba(240, 110, 110, 0.85);
+  }
   .anarchy-inventory-slot.equipped-pickaxe.selected,
   .anarchy-inventory-slot.equipped-axe.selected,
   .anarchy-inventory-slot.equipped-utility.selected,
-  .anarchy-inventory-slot.equipped-shovel.selected {
+  .anarchy-inventory-slot.equipped-shovel.selected,
+  .anarchy-inventory-slot.equipped-sword.selected {
     border-color: #ffffff;
   }
   .anarchy-inventory-icon {

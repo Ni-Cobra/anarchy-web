@@ -55,6 +55,11 @@ export const AdminItemId = {
   // Task 592 e2e: chest item, used by the multi-chest spec to seed two
   // placeable chests into the player's inventory.
   Chest: 36,
+  // Task 050 e2e: log is used by the sword spec to seed wood-sword
+  // ingredients into the player's inventory.
+  Log: 35,
+  // Task 050 e2e: wood-sword output, verified after the craft.
+  WoodSword: 44,
 } as const;
 
 export type AdminItemId = (typeof AdminItemId)[keyof typeof AdminItemId];

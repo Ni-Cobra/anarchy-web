@@ -307,6 +307,12 @@ enum ToolKind {
   // `Gravel`, `Grass` with the matching tier; wrong tool falls back to
   // the soft tool gate (task 520) — slow and dropless.
   TOOL_KIND_SHOVEL = 4;
+  // Task 050 fifth equipment slot — swords in five material tiers. This
+  // task ships the slot + items + recipes only; combat (damage, attack
+  // ranges, PvP/PvE) lands in task 070. The equipped sword slot is
+  // mirrored to the wire so a future task can render the held sword
+  // sprite without an extra schema bump.
+  TOOL_KIND_SWORD = 5;
 }
 
 // Client→server "equip the tool currently at `source_slot` into the
@@ -860,6 +866,14 @@ enum ItemId {
   // a `BLOCK_TYPE_LIGHT_MUSHROOM` into a top-layer Air cell. Stacks like a
   // normal block item.
   ITEM_ID_LIGHT_MUSHROOM = 43;
+  // Task 050 fifth tool family — swords in five material tiers. Recipes
+  // mirror the pickaxe ladder shape. Combat lands in task 070; for now the
+  // sword is inert beyond filling its equipment slot.
+  ITEM_ID_WOOD_SWORD = 44;
+  ITEM_ID_STONE_SWORD = 45;
+  ITEM_ID_COPPER_SWORD = 46;
+  ITEM_ID_IRON_SWORD = 47;
+  ITEM_ID_TUNGSTEN_SWORD = 48;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server
@@ -905,6 +919,10 @@ message InventoryUpdate {
   // `equipped_pickaxe_slot`. Empty by default; populated when a shovel
   // tier is equipped. The matching cell paints yellow.
   int32 equipped_shovel_slot = 8;
+  // Inventory slot index of the equipped sword (task 050) — see
+  // `equipped_pickaxe_slot`. Empty by default; populated when a sword
+  // tier is equipped. The matching cell paints red.
+  int32 equipped_sword_slot = 10;
   // Field 6 originally carried `repeated string craftable_recipe_ids`
   // (task 090). Task 100 reshaped it into a richer
   // `repeated RecipeEntry` so each row carries its availability tier

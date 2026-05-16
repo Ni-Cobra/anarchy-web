@@ -296,6 +296,36 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: BlockType.LightMushroom,
     textureUrl: `${BLOCK_TEXTURES_BASE}/light-mushroom.png`,
   },
+  [ItemId.WoodSword]: {
+    id: ItemId.WoodSword,
+    displayName: "Wood Sword",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/wood-sword.png`,
+  },
+  [ItemId.StoneSword]: {
+    id: ItemId.StoneSword,
+    displayName: "Stone Sword",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/stone-sword.png`,
+  },
+  [ItemId.CopperSword]: {
+    id: ItemId.CopperSword,
+    displayName: "Copper Sword",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/copper-sword.png`,
+  },
+  [ItemId.IronSword]: {
+    id: ItemId.IronSword,
+    displayName: "Iron Sword",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/iron-sword.png`,
+  },
+  [ItemId.TungstenSword]: {
+    id: ItemId.TungstenSword,
+    displayName: "Tungsten Sword",
+    placesBlock: null,
+    textureUrl: `${ITEM_TEXTURES_BASE}/tungsten-sword.png`,
+  },
 };
 
 /**

@@ -71,6 +71,7 @@ export function paintSlot(
   cell.classList.toggle("equipped-axe", equipped === "axe");
   cell.classList.toggle("equipped-utility", equipped === "utility");
   cell.classList.toggle("equipped-shovel", equipped === "shovel");
+  cell.classList.toggle("equipped-sword", equipped === "sword");
   cell.replaceChildren();
   if (slot === null) return;
   const icon = document.createElement("div");

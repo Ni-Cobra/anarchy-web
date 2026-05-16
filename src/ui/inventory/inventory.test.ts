@@ -993,10 +993,10 @@ describe("inventory UI", () => {
       ) as HTMLElement[];
     }
 
-    it("renders four empty equipment cells next to the hotbar", () => {
-      // Pickaxe + axe (task 100) + shovel (task 530) + utility (task 360).
-      // Empty by default — silhouettes for the tool kinds, plain blank for
-      // utility.
+    it("renders five empty equipment cells next to the hotbar", () => {
+      // Pickaxe + axe (task 100) + shovel (task 530) + sword (task 050) +
+      // utility (task 360). Empty by default — silhouettes for the tool
+      // kinds, plain blank for utility.
       mountInventoryUi({
         getInventory: () => inventory,
         sendSelect: () => {},
@@ -1005,12 +1005,42 @@ describe("inventory UI", () => {
         sendUnequip: () => {},
       });
       const cells = equipmentCells();
-      expect(cells).toHaveLength(4);
+      expect(cells).toHaveLength(5);
       // Empty cells get the `.empty` class (drives the silhouette opacity).
       expect(cells[0].classList.contains("empty")).toBe(true);
       expect(cells[1].classList.contains("empty")).toBe(true);
       expect(cells[2].classList.contains("empty")).toBe(true);
       expect(cells[3].classList.contains("empty")).toBe(true);
+      expect(cells[4].classList.contains("empty")).toBe(true);
+    });
+
+    it("renders the sword slot as the fourth equipment cell with a red background when populated", () => {
+      // Task 050: sword slot sits between shovel and utility. The
+      // .equipped-sword class drives the red background (style.ts).
+      const slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, () => null);
+      slots[5] = { item: ItemId.IronSword, count: 1 };
+      // replaceFromWire signature: slots, pickaxe, axe, recipes, utility,
+      // shovel, sword.
+      inventory.replaceFromWire(slots, null, null, [], null, null, 5);
+      mountInventoryUi({
+        getInventory: () => inventory,
+        sendSelect: () => {},
+        sendMove: () => {},
+        sendEquip: () => {},
+        sendUnequip: () => {},
+      });
+      // Sword slot is the fourth equipment cell (index 3). Populated → not
+      // empty; the underlying hotbar cell paints with .equipped-sword.
+      const cells = equipmentCells();
+      expect(cells).toHaveLength(5);
+      expect(cells[3].classList.contains("empty")).toBe(false);
+      expect(cells[3].classList.contains("anarchy-equipment-slot-sword")).toBe(true);
+      // The inventory cell at slot 5 carries the equipped-sword class
+      // (mirrored equipment highlight on the hotbar/panel cell).
+      const sourceCell = document.querySelectorAll(
+        ".anarchy-hotbar .anarchy-inventory-slot",
+      )[5] as HTMLElement;
+      expect(sourceCell.classList.contains("equipped-sword")).toBe(true);
     });
 
     it("paints the equipped tool when populated", () => {

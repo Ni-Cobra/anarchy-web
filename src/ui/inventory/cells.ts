@@ -60,6 +60,8 @@ function utilityPlaceholder(kind: ToolKind): ItemStack | null {
       return { item: ItemId.WoodAxe, count: 1 };
     case "shovel":
       return { item: ItemId.WoodShovel, count: 1 };
+    case "sword":
+      return { item: ItemId.WoodSword, count: 1 };
     case "utility":
       return null;
   }

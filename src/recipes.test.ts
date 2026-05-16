@@ -181,6 +181,46 @@ describe("recipes", () => {
         ],
         output: { item: ItemId.TungstenShovel, count: 1 },
       },
+      {
+        id: "wood-sword",
+        ingredients: [
+          { item: ItemId.Log, count: 3 },
+          { item: ItemId.Stick, count: 2 },
+        ],
+        output: { item: ItemId.WoodSword, count: 1 },
+      },
+      {
+        id: "stone-sword",
+        ingredients: [
+          { item: ItemId.Stone, count: 3 },
+          { item: ItemId.Stick, count: 2 },
+        ],
+        output: { item: ItemId.StoneSword, count: 1 },
+      },
+      {
+        id: "copper-sword",
+        ingredients: [
+          { item: ItemId.CopperIngot, count: 3 },
+          { item: ItemId.Stick, count: 2 },
+        ],
+        output: { item: ItemId.CopperSword, count: 1 },
+      },
+      {
+        id: "iron-sword",
+        ingredients: [
+          { item: ItemId.IronIngot, count: 3 },
+          { item: ItemId.Stick, count: 2 },
+        ],
+        output: { item: ItemId.IronSword, count: 1 },
+      },
+      {
+        id: "tungsten-sword",
+        ingredients: [
+          { item: ItemId.TungstenIngot, count: 3 },
+          { item: ItemId.Stick, count: 2 },
+        ],
+        output: { item: ItemId.TungstenSword, count: 1 },
+      },
     ]);
   });
 

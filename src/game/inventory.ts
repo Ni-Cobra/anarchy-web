@@ -136,6 +136,16 @@ export enum ItemId {
    * other decorative block items.
    */
   LightMushroom = 43,
+  /**
+   * Task 050 fifth tool family — swords in five material tiers. Combat
+   * lands in task 070; for now equipping a sword has no in-game effect
+   * beyond the slot being filled.
+   */
+  WoodSword = 44,
+  StoneSword = 45,
+  CopperSword = 46,
+  IronSword = 47,
+  TungstenSword = 48,
 }
 
 /** A non-empty pile of one item kind. */
@@ -157,7 +167,7 @@ export type Slot = ItemStack | null;
  * with task 100; Utility (task 360) is the third slot, sitting next to
  * them; Shovel (task 530) is the fourth.
  */
-export type ToolKind = "pickaxe" | "axe" | "utility" | "shovel";
+export type ToolKind = "pickaxe" | "axe" | "utility" | "shovel" | "sword";
 
 /**
  * `true` iff `item` is one of the five pickaxe tiers. Used by the
@@ -204,11 +214,23 @@ export function isShovel(item: ItemId): boolean {
   );
 }
 
+/** True iff `item` is one of the five sword tiers (task 050). */
+export function isSword(item: ItemId): boolean {
+  return (
+    item === ItemId.WoodSword ||
+    item === ItemId.StoneSword ||
+    item === ItemId.CopperSword ||
+    item === ItemId.IronSword ||
+    item === ItemId.TungstenSword
+  );
+}
+
 /** Tool family the item belongs to, or `null` for non-tool items. */
 export function toolKindOf(item: ItemId): ToolKind | null {
   if (isPickaxe(item)) return "pickaxe";
   if (isAxe(item)) return "axe";
   if (isShovel(item)) return "shovel";
+  if (isSword(item)) return "sword";
   if (isUtility(item)) return "utility";
   return null;
 }
@@ -244,6 +266,7 @@ export class Inventory {
   private equippedAxeSlot: number | null = null;
   private equippedUtilitySlot: number | null = null;
   private equippedShovelSlot: number | null = null;
+  private equippedSwordSlot: number | null = null;
   private craftable: readonly CraftableRecipe[] = [];
   private listeners: Array<() => void> = [];
 
@@ -278,6 +301,8 @@ export class Inventory {
         return this.equippedUtilitySlot;
       case "shovel":
         return this.equippedShovelSlot;
+      case "sword":
+        return this.equippedSwordSlot;
     }
   }
 
@@ -356,6 +381,7 @@ export class Inventory {
     craftableRecipes: readonly CraftableRecipe[] | readonly string[] = [],
     equippedUtilitySlot: number | null = null,
     equippedShovelSlot: number | null = null,
+    equippedSwordSlot: number | null = null,
   ): void {
     if (slots.length !== INVENTORY_SIZE) {
       throw new Error(
@@ -367,6 +393,7 @@ export class Inventory {
     this.equippedAxeSlot = normalizeEquipped(this.slots, equippedAxeSlot, "axe");
     this.equippedUtilitySlot = normalizeEquipped(this.slots, equippedUtilitySlot, "utility");
     this.equippedShovelSlot = normalizeEquipped(this.slots, equippedShovelSlot, "shovel");
+    this.equippedSwordSlot = normalizeEquipped(this.slots, equippedSwordSlot, "sword");
     this.craftable = sortCraftable(normalizeCraftable(craftableRecipes));
     for (const listener of this.listeners) listener();
   }

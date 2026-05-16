@@ -46,6 +46,7 @@ export function applyInventoryUpdate(
   const equippedAxeSlot = equippedSlotFromWire(update.equippedAxeSlot);
   const equippedUtilitySlot = equippedSlotFromWire(update.equippedUtilitySlot);
   const equippedShovelSlot = equippedSlotFromWire(update.equippedShovelSlot);
+  const equippedSwordSlot = equippedSlotFromWire(update.equippedSwordSlot);
   const craftableRecipes = (update.craftableRecipes ?? [])
     .map(craftableRecipeFromWire)
     .filter((r): r is CraftableRecipe => r !== null);
@@ -56,6 +57,7 @@ export function applyInventoryUpdate(
     craftableRecipes,
     equippedUtilitySlot,
     equippedShovelSlot,
+    equippedSwordSlot,
   );
 }
 
@@ -183,6 +185,16 @@ export function itemIdFromWire(
       return ItemId.Grass;
     case anarchy.v1.ItemId.ITEM_ID_LIGHT_MUSHROOM:
       return ItemId.LightMushroom;
+    case anarchy.v1.ItemId.ITEM_ID_WOOD_SWORD:
+      return ItemId.WoodSword;
+    case anarchy.v1.ItemId.ITEM_ID_STONE_SWORD:
+      return ItemId.StoneSword;
+    case anarchy.v1.ItemId.ITEM_ID_COPPER_SWORD:
+      return ItemId.CopperSword;
+    case anarchy.v1.ItemId.ITEM_ID_IRON_SWORD:
+      return ItemId.IronSword;
+    case anarchy.v1.ItemId.ITEM_ID_TUNGSTEN_SWORD:
+      return ItemId.TungstenSword;
     default:
       return null;
   }

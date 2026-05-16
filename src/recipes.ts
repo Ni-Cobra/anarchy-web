@@ -226,6 +226,49 @@ export const RECIPES: readonly Recipe[] = [
     ],
     output: { item: ItemId.TungstenShovel, count: 1 },
   },
+  // Task 050 sword ladder — mirrors the pickaxe / shovel shape exactly
+  // (3 of the head material + 2 sticks → 1 sword). Wood-sword consumes
+  // raw `Log`s for symmetry with the wood-pickaxe / wood-shovel path.
+  {
+    id: "wood-sword",
+    ingredients: [
+      { item: ItemId.Log, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.WoodSword, count: 1 },
+  },
+  {
+    id: "stone-sword",
+    ingredients: [
+      { item: ItemId.Stone, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.StoneSword, count: 1 },
+  },
+  {
+    id: "copper-sword",
+    ingredients: [
+      { item: ItemId.CopperIngot, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.CopperSword, count: 1 },
+  },
+  {
+    id: "iron-sword",
+    ingredients: [
+      { item: ItemId.IronIngot, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.IronSword, count: 1 },
+  },
+  {
+    id: "tungsten-sword",
+    ingredients: [
+      { item: ItemId.TungstenIngot, count: 3 },
+      { item: ItemId.Stick, count: 2 },
+    ],
+    output: { item: ItemId.TungstenSword, count: 1 },
+  },
 ];
 
 const RECIPES_BY_ID: ReadonlyMap<string, Recipe> = new Map(
