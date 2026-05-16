@@ -29,6 +29,9 @@ import {
   type BlockType,
   type Chunk,
   type ChunkCoord,
+  type Entity,
+  type EntityId,
+  EntityKind,
   LAYER_AREA,
   type Layer,
   LAYER_SIZE,
@@ -295,7 +298,30 @@ function chunkFromWire(
       openChests: openChestsFromWire(p.openChests),
     });
   }
-  return [[cx, cy] as const, { ground, top, players }];
+  const entities = new Map<EntityId, Entity>();
+  for (const e of wire.entities ?? []) {
+    const kind = entityKindFromWire(e.kind);
+    if (kind === null) continue;
+    const id = toNumber(e.id);
+    entities.set(id, {
+      id,
+      kind,
+      tileX: e.tileX ?? 0,
+      tileY: e.tileY ?? 0,
+    });
+  }
+  return [[cx, cy] as const, { ground, top, players, entities }];
+}
+
+function entityKindFromWire(
+  kind: anarchy.v1.EntityKind | null | undefined,
+): EntityKind | null {
+  switch (kind) {
+    case anarchy.v1.EntityKind.ENTITY_KIND_SPIDER:
+      return EntityKind.Spider;
+    default:
+      return null;
+  }
 }
 
 function openChestsFromWire(

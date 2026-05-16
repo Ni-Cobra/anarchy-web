@@ -5,6 +5,7 @@ import {
   BlockType,
   DEFAULT_FACING,
   Direction8,
+  EntityKind,
   INVENTORY_SIZE,
   Inventory,
   ItemId,
@@ -268,6 +269,77 @@ describe("applyServerMessage — TickUpdate", () => {
     expect(world.getPlayer(2)).toBeUndefined();
     expect(world.getPlayer(1)).toBeDefined();
     expect(onChunkUnloaded).toContainEqual([1, 0]);
+  });
+
+  it("populates chunk.entities from the wire and clears them on an empty refresh (task 010-entities)", () => {
+    const { deps, terrain } = makeTerrainFixture();
+    // Tick 1: chunk (0,0) carries two spiders.
+    const tick1 = decodeRoundtrip({
+      seq: 2,
+      tickUpdate: {
+        fullStateChunks: [
+          {
+            coord: { cx: 0, cy: 0 },
+            ground: airLayerWire(),
+            top: airLayerWire(),
+            players: [],
+            entities: [
+              {
+                id: 1,
+                kind: anarchy.v1.EntityKind.ENTITY_KIND_SPIDER,
+                tileX: 3,
+                tileY: 4,
+              },
+              {
+                id: 2,
+                kind: anarchy.v1.EntityKind.ENTITY_KIND_SPIDER,
+                tileX: 5,
+                tileY: 6,
+              },
+            ],
+          },
+        ],
+        unmodifiedChunks: [],
+      },
+    });
+    applyServerMessage(tick1, deps);
+    const chunk1 = terrain.get(0, 0);
+    expect(chunk1).toBeDefined();
+    expect(chunk1?.entities.size).toBe(2);
+    expect(chunk1?.entities.get(1)).toEqual({
+      id: 1,
+      kind: EntityKind.Spider,
+      tileX: 3,
+      tileY: 4,
+    });
+    expect(chunk1?.entities.get(2)).toEqual({
+      id: 2,
+      kind: EntityKind.Spider,
+      tileX: 5,
+      tileY: 6,
+    });
+
+    // Tick 2: same chunk with no entities — full-state apply must clear
+    // the prior set (the server is canonical on entity membership).
+    const tick2 = decodeRoundtrip({
+      seq: 3,
+      tickUpdate: {
+        fullStateChunks: [
+          {
+            coord: { cx: 0, cy: 0 },
+            ground: airLayerWire(),
+            top: airLayerWire(),
+            players: [],
+            entities: [],
+          },
+        ],
+        unmodifiedChunks: [],
+      },
+    });
+    applyServerMessage(tick2, deps);
+    const chunk2 = terrain.get(0, 0);
+    expect(chunk2).toBeDefined();
+    expect(chunk2?.entities.size).toBe(0);
   });
 
   it("drops snapshot-buffer entries for players that fell out of view", () => {

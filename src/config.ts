@@ -90,6 +90,19 @@ export const ZOOM_STEP_FACTOR = 1.2;
 export const ZOOM_TWEEN_MS = 180;
 
 /**
+ * How long the entity-step animation takes — the renderer lerps from the
+ * previous tile to the current one over this window each time the
+ * server-mirrored tile changes (task 010-entities, client half 020).
+ *
+ * Pinned well under the server's mean step interval — a spider has a 10%
+ * chance per 50 ms tick to step, so the mean gap is 500 ms — so a stepped
+ * entity reaches its new tile and settles for a clear majority of the gap
+ * before the next possible step. If the entity steps again mid-transition
+ * the renderer just re-snapshots and restarts; no queueing.
+ */
+export const ENTITY_STEP_TRANSITION_MS = 150;
+
+/**
  * Length of a full day-cycle in seconds (task 310). Mirrors the server's
  * `DAY_LENGTH_SECONDS` — must stay equal so the client's renderer phases
  * the directional sun the same way the operator's tuning intends. The

@@ -11,6 +11,7 @@
  * public API takes plain `(cx, cy)` numbers and never exposes the string.
  */
 
+import type { Entity, EntityId } from "./entity.js";
 import type { Player, PlayerId } from "./player.js";
 
 /**
@@ -181,17 +182,24 @@ export function setBlock(layer: Layer, x: number, y: number, block: Block): void
 
 /**
  * One chunk: walkable `ground` floor + sparse `top` standing geometry +
- * the players whose center currently falls inside the chunk. Naming
- * mirrors the server `Chunk { ground, top, players }`.
+ * the players whose center currently falls inside the chunk + the
+ * tile-bound entities (task 010-entities) hosted by the chunk. Naming
+ * mirrors the server `Chunk { ground, top, players, entities }`.
  */
 export interface Chunk {
   readonly ground: Layer;
   readonly top: Layer;
   readonly players: ReadonlyMap<PlayerId, Player>;
+  readonly entities: ReadonlyMap<EntityId, Entity>;
 }
 
 export function emptyChunk(): Chunk {
-  return { ground: emptyLayer(), top: emptyLayer(), players: new Map() };
+  return {
+    ground: emptyLayer(),
+    top: emptyLayer(),
+    players: new Map(),
+    entities: new Map(),
+  };
 }
 
 export function chunkKey(cx: number, cy: number): string {

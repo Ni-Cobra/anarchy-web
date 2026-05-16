@@ -109,6 +109,30 @@ export async function adminTeleport(
 }
 
 /**
+ * Spawn a fresh entity of `kind` at world tile `(tileX, tileY)` (task
+ * 010-entities). Returns the allocated entity id parsed from the
+ * response body. `409 Conflict` when the target tile isn't walkable;
+ * the helper throws in that case so a failing test reads naturally.
+ */
+export async function adminSpawnEntity(
+  kind: "spider",
+  tileX: number,
+  tileY: number,
+): Promise<number> {
+  const url = `${SERVER_URL}/admin/spawn-entity/${kind}/${tileX}/${tileY}`;
+  const r = await fetch(url, { method: "POST" });
+  if (!r.ok) {
+    throw new Error(`admin call failed: POST ${url} → ${r.status} ${r.statusText}`);
+  }
+  const body = await r.text();
+  const id = Number.parseInt(body, 10);
+  if (!Number.isFinite(id)) {
+    throw new Error(`admin spawn-entity returned non-numeric id: "${body}"`);
+  }
+  return id;
+}
+
+/**
  * Overwrite the world's authoritative `time_of_day_seconds` scalar (task
  * 330). The natural per-tick advance still applies; this just lets a
  * spec jump to a known phase (midnight to assert the night view radius,

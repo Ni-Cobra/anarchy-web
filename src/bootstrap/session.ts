@@ -213,6 +213,14 @@ export interface AnarchyHandle {
    */
   getChestBeamCount: () => number;
   /**
+   * Test handle (task 020-entities): scene-space positions of every
+   * entity the renderer is currently showing, keyed by `EntityId`.
+   * Lets a Playwright spec assert a spider mesh exists at a seeded
+   * tile and that it moves across a wait window without inspecting
+   * Three.js internals.
+   */
+  getRenderedEntities: () => Record<number, { x: number; z: number }>;
+  /**
    * Test handle (task 020): drive the renderer's cursor NDC directly,
    * bypassing the page's mouse event plumbing. Lets a Playwright spec aim
    * the ghost preview at a known tile without computing screen-space
@@ -644,6 +652,7 @@ export function constructSession(deps: SessionDeps): Session {
     getGhostState: () => renderer.getGhostState(),
     getLanternLightCount: () => renderer.getLanternLightCount(),
     getChestBeamCount: () => renderer.getChestBeamCount(),
+    getRenderedEntities: () => renderer.getRenderedEntities(),
     setCursorNdc: (ndc) => renderer.setCursorNdc(ndc),
     stop,
     stopped,

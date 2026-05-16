@@ -315,6 +315,11 @@ export class Renderer {
     this.refreshGhostPreview();
     this.graph.effects.update(nowMs);
     this.graph.breakParticles.update(nowMs);
+    // Entities (task 010-entities, client half 020). Reads the
+    // game-state entity mirror — populated by the wire bridge into
+    // `Chunk.entities` — and smoothes mesh positions between tile
+    // teleports.
+    this.graph.entities.update(this.terrain, nowMs);
     // Chest beams (task 040) — refresh from the open-chest set carried
     // on every player snapshot so a beam exists for every (player,
     // chest) the server says is currently open. The world is rebuilt
@@ -379,6 +384,22 @@ export class Renderer {
    */
   getChestBeamCount(): number {
     return this.graph.beams.chestBeamCount();
+  }
+
+  /**
+   * Test handle (task 020-entities): scene-space `(x, z)` of every
+   * entity mesh the renderer is currently showing, keyed by `EntityId`.
+   * Lets an e2e spec pin "a spider appeared at the seeded tile" and "the
+   * mesh has moved across the wait window" without inspecting Three.js
+   * internals. The local `y` (height above ground) is omitted — it's
+   * constant per kind and not load-bearing for the assertions.
+   */
+  getRenderedEntities(): Record<number, { x: number; z: number }> {
+    const out: Record<number, { x: number; z: number }> = {};
+    for (const r of this.graph.entities.iterRendered()) {
+      out[r.id] = { x: r.x, z: r.z };
+    }
+    return out;
   }
 
   private refreshHoverBillboards(): void {
