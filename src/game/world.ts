@@ -31,6 +31,7 @@ export class World {
         colorIndex: p.colorIndex,
         equippedUtility: p.equippedUtility,
         openChests: p.openChests,
+        health: p.health,
       });
     }
   }

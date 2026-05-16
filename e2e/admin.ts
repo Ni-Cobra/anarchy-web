@@ -147,3 +147,50 @@ export async function adminSpawnEntity(
 export async function adminSetTimeOfDay(seconds: number): Promise<void> {
   await postOk(`${SERVER_URL}/admin/set-time-of-day/${seconds}`);
 }
+
+/**
+ * Outcome of a damage call. `alive` carries the post-hit HP; `killed`
+ * means the hit landed the kill blow (and on the player path, the death
+ * pipeline has already run — tombstone, inventory clear, respawn).
+ */
+export type DamageOutcome = { kind: "alive"; remainingHealth: number } | { kind: "killed" };
+
+async function postDamage(url: string): Promise<DamageOutcome> {
+  const r = await fetch(url, { method: "POST" });
+  if (!r.ok) {
+    throw new Error(`admin call failed: POST ${url} → ${r.status} ${r.statusText}`);
+  }
+  const body = (await r.text()).trim();
+  if (body === "killed") return { kind: "killed" };
+  if (body.startsWith("alive:")) {
+    const hp = Number.parseInt(body.slice("alive:".length), 10);
+    return { kind: "alive", remainingHealth: hp };
+  }
+  throw new Error(`admin damage returned unparseable body: "${body}"`);
+}
+
+/**
+ * Apply `amount` damage to player `playerId` (task 060). On a killing
+ * blow the server runs the death pipeline (tombstone + respawn) before
+ * returning, so the helper's resolution implies the world is already
+ * post-respawn. Returns the server's damage outcome.
+ */
+export async function adminDamagePlayer(
+  playerId: number,
+  amount: number,
+): Promise<DamageOutcome> {
+  return postDamage(`${SERVER_URL}/admin/damage-player/${playerId}/${amount}`);
+}
+
+/**
+ * Apply `amount` damage to entity `entityId` (task 060). On kill the
+ * server removes the entity from its chunk before returning. Drops
+ * (task 080's spider-string drop) are out of scope for this endpoint —
+ * use the spec's normal tick-driven flow once they land.
+ */
+export async function adminDamageEntity(
+  entityId: number,
+  amount: number,
+): Promise<DamageOutcome> {
+  return postDamage(`${SERVER_URL}/admin/damage-entity/${entityId}/${amount}`);
+}

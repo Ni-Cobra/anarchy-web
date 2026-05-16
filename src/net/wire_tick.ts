@@ -38,7 +38,8 @@ import {
   type Player,
   type PlayerId,
 } from "../game/index.js";
-import type { OpenChestRef } from "../game/player.js";
+import { MAX_PLAYER_HEALTH, type OpenChestRef } from "../game/player.js";
+import { maxHealthForKind } from "../game/entity.js";
 
 import type { WireDeps } from "./wire.js";
 import {
@@ -287,6 +288,11 @@ function chunkFromWire(
   const players = new Map<PlayerId, Player>();
   for (const p of wire.players ?? []) {
     const id = toNumber(p.id);
+    // Proto3 default for unset `uint32` is `0`. The server never ships a
+    // live player at 0 HP (the kill pipeline respawns them at full before
+    // the snapshot ships), so we treat the wire `0` as "missing field —
+    // older server pre-task 060" and fall back to MAX_PLAYER_HEALTH.
+    const wireHealth = p.health ?? 0;
     players.set(id, {
       id,
       x: p.x ?? 0,
@@ -296,6 +302,7 @@ function chunkFromWire(
       colorIndex: p.colorIndex ?? 0,
       equippedUtility: itemIdFromWire(p.equippedUtility),
       openChests: openChestsFromWire(p.openChests),
+      health: wireHealth === 0 ? MAX_PLAYER_HEALTH : wireHealth,
     });
   }
   const entities = new Map<EntityId, Entity>();
@@ -303,11 +310,16 @@ function chunkFromWire(
     const kind = entityKindFromWire(e.kind);
     if (kind === null) continue;
     const id = toNumber(e.id);
+    // Same proto3 default treatment as players above — a 0-HP entity is
+    // dropped server-side before its chunk ships, so wire `0` means
+    // "older server, no health field".
+    const entHealth = e.health ?? 0;
     entities.set(id, {
       id,
       kind,
       tileX: e.tileX ?? 0,
       tileY: e.tileY ?? 0,
+      health: entHealth === 0 ? maxHealthForKind(kind) : entHealth,
     });
   }
   return [[cx, cy] as const, { ground, top, players, entities }];

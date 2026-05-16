@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { canPlaceTopBlock } from "./place_validation.js";
-import { DEFAULT_FACING, Direction8, type Player } from "./player.js";
+import {
+  DEFAULT_FACING,
+  Direction8,
+  MAX_PLAYER_HEALTH,
+  type Player,
+} from "./player.js";
 import {
   BlockType,
   CHUNK_SIZE,
@@ -16,7 +21,17 @@ const me = (
   x: number,
   y: number,
   facing: Direction8 = DEFAULT_FACING,
-): Player => ({ id, x, y, facing, username: "", colorIndex: 0, equippedUtility: null, openChests: [] });
+): Player => ({
+  id,
+  x,
+  y,
+  facing,
+  username: "",
+  colorIndex: 0,
+  equippedUtility: null,
+  openChests: [],
+  health: MAX_PLAYER_HEALTH,
+});
 
 function setup(local: Player, others: Player[] = []): { world: World; terrain: Terrain } {
   const world = new World();

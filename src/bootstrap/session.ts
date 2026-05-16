@@ -47,6 +47,7 @@ import {
   mountChestUi,
   mountCoordsHud,
   mountCraftingUi,
+  mountHpBar,
   mountInventoryUi,
   mountSidePanel,
   type CraftingUiHandle,
@@ -554,17 +555,20 @@ export function constructSession(deps: SessionDeps): Session {
   // renderer's animation loop so the readout keeps refreshing even if the
   // canvas is occluded (rAF still fires when the tab is focused).
   const coordsHud = mountCoordsHud();
+  const hpBar = mountHpBar();
   let coordsRaf = 0;
   const pumpCoords = (): void => {
     const id = localPlayerId;
     const me = id === null ? null : world.getPlayer(id);
     coordsHud.update(me ? { x: me.x, y: me.y } : null);
+    hpBar.update(me ? me.health : null);
     coordsRaf = window.requestAnimationFrame(pumpCoords);
   };
   coordsRaf = window.requestAnimationFrame(pumpCoords);
   teardowns.push(() => {
     window.cancelAnimationFrame(coordsRaf);
     coordsHud.unmount();
+    hpBar.unmount();
   });
 
   teardowns.push(attachKeybindings(window, { inventoryUi, renderer }));

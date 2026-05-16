@@ -33,5 +33,13 @@ export { attachInputGate } from "./input_gate.js";
 export type { InputGateHandle } from "./input_gate.js";
 export { mountCoordsHud, formatCoords } from "./coords_hud.js";
 export type { CoordsHudHandle } from "./coords_hud.js";
+export {
+  mountHpBar,
+  hpFillColorFor,
+  hpFillWidthPx,
+  HP_THRESHOLD_HIGH,
+  HP_THRESHOLD_LOW,
+} from "./hp_bar.js";
+export type { HpBarHandle } from "./hp_bar.js";
 export { attachTooltip } from "./tooltip.js";
 export type { TooltipContent, TooltipHandle } from "./tooltip.js";

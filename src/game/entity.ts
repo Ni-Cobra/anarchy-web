@@ -33,4 +33,20 @@ export interface Entity {
   readonly kind: EntityKind;
   readonly tileX: number;
   readonly tileY: number;
+  /**
+   * Current HP (task 060). The wire only carries `> 0` (a 0-HP entity is
+   * dropped server-side before its chunk ships). Mirrored here so a
+   * future floating health bar / damage-flash effect has the data
+   * available without a follow-up wire round-trip; not rendered this
+   * iteration.
+   */
+  readonly health: number;
+}
+
+/** Per-kind max HP — mirrors the server's `EntityKind::max_health`. */
+export function maxHealthForKind(kind: EntityKind): number {
+  switch (kind) {
+    case EntityKind.Spider:
+      return 20;
+  }
 }

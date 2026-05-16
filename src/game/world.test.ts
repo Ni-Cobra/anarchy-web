@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_FACING, Direction8, type Player } from "./player.js";
+import {
+  DEFAULT_FACING,
+  Direction8,
+  MAX_PLAYER_HEALTH,
+  type Player,
+} from "./player.js";
 import { World } from "./world.js";
 
 const p = (
@@ -8,7 +13,17 @@ const p = (
   x = 0,
   y = 0,
   facing: Direction8 = DEFAULT_FACING,
-): Player => ({ id, x, y, facing, username: "", colorIndex: 0, equippedUtility: null, openChests: [] });
+): Player => ({
+  id,
+  x,
+  y,
+  facing,
+  username: "",
+  colorIndex: 0,
+  equippedUtility: null,
+  openChests: [],
+  health: MAX_PLAYER_HEALTH,
+});
 
 describe("World", () => {
   it("starts empty", () => {
@@ -31,6 +46,7 @@ describe("World", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
     expect(w.getPlayer(2)).toEqual({
       id: 2,
@@ -41,6 +57,7 @@ describe("World", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
   });
 
@@ -59,6 +76,7 @@ describe("World", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
     expect(w.getPlayer(3)).toBeUndefined();
   });
@@ -78,6 +96,7 @@ describe("World", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
   });
 

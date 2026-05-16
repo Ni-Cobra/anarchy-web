@@ -10,6 +10,7 @@ import {
   Inventory,
   ItemId,
   LAYER_AREA,
+  MAX_PLAYER_HEALTH,
   SnapshotBuffer,
   Terrain,
   World,
@@ -109,7 +110,17 @@ describe("applyServerMessage — Welcome", () => {
   it("publishes the local player id and clears any prior state", () => {
     const { deps, world, buffer, localCalls } = makeFixture();
     world.applySnapshot([
-      { id: 99, x: 5, y: 5, facing: DEFAULT_FACING, username: "", colorIndex: 0, equippedUtility: null, openChests: [] },
+      {
+        id: 99,
+        x: 5,
+        y: 5,
+        facing: DEFAULT_FACING,
+        username: "",
+        colorIndex: 0,
+        equippedUtility: null,
+        openChests: [],
+        health: MAX_PLAYER_HEALTH,
+      },
     ]);
     buffer.push(99, 5, 5, 100);
 
@@ -192,6 +203,7 @@ describe("applyServerMessage — TickUpdate", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
     expect(buffer.samplesOf(1)).toHaveLength(1);
     expect(buffer.samplesOf(1)[0]).toMatchObject({ x: 1.5, y: 2.5, timeMs: 5_000 });
@@ -311,12 +323,14 @@ describe("applyServerMessage — TickUpdate", () => {
       kind: EntityKind.Spider,
       tileX: 3,
       tileY: 4,
+      health: 20,
     });
     expect(chunk1?.entities.get(2)).toEqual({
       id: 2,
       kind: EntityKind.Spider,
       tileX: 5,
       tileY: 6,
+      health: 20,
     });
 
     // Tick 2: same chunk with no entities — full-state apply must clear
@@ -412,6 +426,7 @@ describe("applyServerMessage — TickUpdate", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
     expect(terrain.size()).toBe(1);
   });
@@ -456,6 +471,7 @@ describe("applyServerMessage — TickUpdate", () => {
       colorIndex: 0,
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     });
   });
 

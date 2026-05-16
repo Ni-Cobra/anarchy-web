@@ -5,6 +5,7 @@ import {
   BlockType,
   DEFAULT_FACING,
   Inventory,
+  MAX_PLAYER_HEALTH,
   World,
   type Player,
 } from "../game/index.js";
@@ -46,6 +47,7 @@ function buildPlayer(): Player {
     colorIndex: 0,
     equippedUtility: null,
     openChests: [],
+    health: MAX_PLAYER_HEALTH,
   };
 }
 

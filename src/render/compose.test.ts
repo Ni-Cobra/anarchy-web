@@ -4,6 +4,7 @@ import { REMOTE_RENDER_DELAY_MS } from "../config.js";
 import {
   DEFAULT_FACING,
   Direction8,
+  MAX_PLAYER_HEALTH,
   SnapshotBuffer,
   World,
   type Player,
@@ -27,6 +28,7 @@ const player = (
   colorIndex: 0,
   equippedUtility: null,
   openChests: [],
+  health: MAX_PLAYER_HEALTH,
 });
 
 function setup() {

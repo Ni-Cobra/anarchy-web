@@ -71,7 +71,23 @@ export interface Player {
    * player to each chest they have open. Empty when nothing is open.
    */
   openChests: readonly OpenChestRef[];
+  /**
+   * Current HP (task 060). `0` means dead; `MAX_PLAYER_HEALTH` is full.
+   * The local player's HP feeds the bottom-of-screen HP bar; remote
+   * players' HP is on the wire too but is not rendered this iteration.
+   * Defaults to `MAX_PLAYER_HEALTH` when the wire field is unset (older
+   * server snapshots pre-task 060).
+   */
+  health: number;
 }
+
+/**
+ * Hard cap on player HP — mirrors the server's `MAX_PLAYER_HEALTH`. Pinned
+ * client-side so the HP bar can compute its fill fraction without an extra
+ * wire field. Bump in lockstep with the server constant in
+ * `anarchy-server/src/game/player/health.rs`.
+ */
+export const MAX_PLAYER_HEALTH = 100;
 
 /**
  * One chest the player currently has open. Block-coord form

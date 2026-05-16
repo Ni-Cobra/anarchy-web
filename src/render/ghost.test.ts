@@ -4,6 +4,7 @@ import {
   BlockType,
   DEFAULT_FACING,
   ItemId,
+  MAX_PLAYER_HEALTH,
   Terrain,
   World,
   emptyChunk,
@@ -49,6 +50,7 @@ function setupWorld(playerId: number, x: number, y: number): { world: World; ter
       username: "tester",
       equippedUtility: null,
       openChests: [],
+      health: MAX_PLAYER_HEALTH,
     },
   ]);
   const terrain = new Terrain();

@@ -575,6 +575,14 @@ message PlayerSnapshot {
   // the player has no chest open. The set is bounded by
   // `Player::MAX_OPEN_CHESTS` on the server.
   repeated ChestLocation open_chests = 9;
+  // Current HP (task 060). `0` means dead; the server's
+  // `MAX_PLAYER_HEALTH` (`100`) is full. Shipped on every player snapshot
+  // so the local player's HP bar reads from the same channel that ships
+  // position. When the field is unset on the wire (older server snapshots
+  // pre-task 060), receivers treat it as `MAX_PLAYER_HEALTH` — a freshly
+  // spawned player at full HP is the only "missing value" the legacy
+  // shape can intend.
+  uint32 health = 10;
 }
 
 // 8-way facing for the sphere-with-eyes player model. Cardinal first, then
@@ -752,6 +760,13 @@ message Entity {
   // sides.
   int32 tile_x = 3;
   int32 tile_y = 4;
+  // Current HP (task 060). `0` would mean dead but a 0-HP entity is
+  // dropped from its chunk by the server before this message ships, so
+  // the wire only ever carries `> 0`. When the field is unset on the
+  // wire (older server snapshots pre-task 060) receivers treat it as
+  // the per-kind `max_health` — a freshly spawned entity at full HP is
+  // the only "missing value" the legacy shape can intend.
+  uint32 health = 5;
 }
 
 // Kinds of entity. `ENTITY_KIND_UNSPECIFIED = 0` is the proto3 default
