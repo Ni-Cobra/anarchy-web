@@ -51,13 +51,13 @@ import {
   type ScreenShakeOffset,
 } from "../render/screen_shake.js";
 import {
-  mountAttackCooldown,
   mountChestUi,
   mountCoordsHud,
   mountCraftingUi,
   mountHpBar,
   mountInventoryUi,
   mountSidePanel,
+  mountSwordCooldownRing,
   type CraftingUiHandle,
   type InventoryUiHandle,
   type SidePanelAction,
@@ -648,10 +648,21 @@ export function constructSession(deps: SessionDeps): Session {
   // canvas is occluded (rAF still fires when the tab is focused).
   const coordsHud = mountCoordsHud();
   const hpBar = mountHpBar();
-  // Task 070b cooldown affordance — driven from the same rAF loop. The
-  // renderer captures the latest strike timestamp; the HUD reads it and
-  // renders a depleting badge for the local player.
-  const attackCooldown = mountAttackCooldown();
+  // Task 140 cooldown affordance — driven from the same rAF loop. The
+  // renderer captures the latest strike timestamp; the ring reads it and
+  // draws a depleting arc over the sword equipment slot. The equipment
+  // bar is mounted once for the lifetime of the session (cells are
+  // stable across inventory re-renders — see `cells.ts` / `mountInventoryUi`),
+  // so a single mount on the sword slot survives every paintSlot tick.
+  const swordSlotEl = document.querySelector<HTMLElement>(
+    ".anarchy-equipment-slot-sword",
+  );
+  if (swordSlotEl === null) {
+    throw new Error(
+      "sword equipment slot not found — inventory UI did not mount as expected",
+    );
+  }
+  const swordCooldownRing = mountSwordCooldownRing(swordSlotEl);
   let coordsRaf = 0;
   const pumpCoords = (): void => {
     const id = localPlayerId;
@@ -676,7 +687,10 @@ export function constructSession(deps: SessionDeps): Session {
     if (currentHp !== null) lastSeenLocalHp = currentHp;
     hpBar.update(currentHp);
     const strikeMs = id === null ? null : renderer.getStrikeStartedMs(id);
-    attackCooldown.update(performance.now(), strikeMs);
+    // `getStrikeStartedMs` is wall-clock (`Date.now`) — pass the same
+    // time base so the elapsed delta stays meaningful. `performance.now`
+    // is a monotonic-since-page-load clock and would skew by ~1e12 ms.
+    swordCooldownRing.update(Date.now(), strikeMs);
     coordsRaf = window.requestAnimationFrame(pumpCoords);
   };
   coordsRaf = window.requestAnimationFrame(pumpCoords);
@@ -684,7 +698,7 @@ export function constructSession(deps: SessionDeps): Session {
     window.cancelAnimationFrame(coordsRaf);
     coordsHud.unmount();
     hpBar.unmount();
-    attackCooldown.unmount();
+    swordCooldownRing.unmount();
   });
 
   teardowns.push(attachKeybindings(window, { inventoryUi, renderer }));

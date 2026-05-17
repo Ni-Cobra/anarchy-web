@@ -21,15 +21,28 @@ export {
  * silhouette of the wood-tier tool so the slot affordance reads as a
  * pickaxe / axe slot at a glance; populated slots paint the equipped
  * tool's full icon.
+ *
+ * Manages just the `.anarchy-inventory-icon` child in place — other
+ * children (notably the sword-slot cooldown ring added by task 140)
+ * are preserved across renders so external overlays don't get wiped
+ * on every `InventoryUpdate`.
  */
 export function paintEquipmentSlot(
   cell: HTMLDivElement,
   kind: ToolKind,
   item: ItemId | null,
 ): void {
-  cell.replaceChildren();
-  const icon = document.createElement("div");
-  icon.className = "anarchy-inventory-icon";
+  let icon = cell.querySelector<HTMLDivElement>(":scope > .anarchy-inventory-icon");
+  if (icon === null) {
+    icon = document.createElement("div");
+    icon.className = "anarchy-inventory-icon";
+    cell.appendChild(icon);
+  } else {
+    // Clear any stale background-* styles before re-applying — switching
+    // from a populated slot back to the empty branch must drop the
+    // previous icon's texture.
+    icon.removeAttribute("style");
+  }
   if (item !== null) {
     applyItemIconStyle(icon, { item, count: 1 });
     cell.classList.remove("empty");
@@ -49,7 +62,6 @@ export function paintEquipmentSlot(
     }
     cell.classList.add("empty");
   }
-  cell.appendChild(icon);
 }
 
 function utilityPlaceholder(kind: ToolKind): ItemStack | null {

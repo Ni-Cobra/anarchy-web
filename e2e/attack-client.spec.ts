@@ -272,12 +272,77 @@ test("real-click PvP: A clicks B in range with wood sword, B HP drops by 15 and 
     );
     expect(cooldownMs).not.toBeNull();
 
+    // Task 140: the cooldown affordance is the sword-slot ring, not the
+    // old bottom-right badge. The ring must appear quickly on the sword
+    // slot, and the legacy badge must not exist in the DOM at all.
+    await a.waitForFunction(() => {
+      const ring = document.querySelector(
+        ".anarchy-equipment-slot-sword .anarchy-sword-cooldown-ring",
+      );
+      return ring !== null && ring.classList.contains("active");
+    }, undefined, { timeout: 500 });
+    const legacyBadge = await a.evaluate(
+      () => document.getElementById("anarchy-attack-cooldown") !== null,
+    );
+    expect(legacyBadge).toBe(false);
+
     // A second left-click within the 5 s cooldown window does nothing —
     // server silently rejects the intent; B's HP stays at 85.
     const click2 = await clientCoordsForTarget(a, 2.5, 0.5);
     await a.mouse.click(click2.x, click2.y);
     await a.waitForTimeout(CHARGE_MS + RESOLUTION_PAD_MS);
     expect(await readRemoteHp(a, meB.id)).toBe(85);
+
+    // After the 5 s cooldown elapses the ring hides again. Strike fired
+    // at roughly `cooldownMs`; wait past `cooldownMs + 5 s` plus a small
+    // rAF-tick slack.
+    await a.waitForFunction(() => {
+      const ring = document.querySelector(
+        ".anarchy-equipment-slot-sword .anarchy-sword-cooldown-ring",
+      );
+      return ring !== null && !ring.classList.contains("active");
+    }, undefined, { timeout: 6_000 });
+
+    // Drive a second strike to confirm the ring re-activates cleanly on
+    // a fresh strike (not a stale one-shot affordance). Re-teleport B
+    // back in range — the first hit dashes A forward but leaves B at
+    // (2.5, 0.5); we re-pin both to keep the projection deterministic.
+    await adminTeleport(meA.id, 0.5, 0.5);
+    await adminTeleport(meB.id, 2.5, 0.5);
+    await a.waitForFunction(
+      (id: number) => {
+        const me = window.__anarchy!.world.getPlayer(
+          window.__anarchy!.getLocalPlayerId()!,
+        );
+        const them = window.__anarchy!.world.getPlayer(id);
+        return (
+          me !== undefined &&
+          Math.abs(me.x - 0.5) < 0.1 &&
+          them !== undefined &&
+          Math.abs(them.x - 2.5) < 0.1
+        );
+      },
+      meB.id,
+    );
+    const firstStrikeMs = cooldownMs!;
+    await a.evaluate(
+      (id: number) => window.__anarchy!.sendAttackIntent("player", id),
+      meB.id,
+    );
+    await a.waitForFunction(
+      (prev: number) => {
+        const next = window.__anarchy!.getLocalCooldownStartedMs();
+        return next !== null && next !== prev;
+      },
+      firstStrikeMs,
+      { timeout: CHARGE_MS + RESOLUTION_PAD_MS },
+    );
+    await a.waitForFunction(() => {
+      const ring = document.querySelector(
+        ".anarchy-equipment-slot-sword .anarchy-sword-cooldown-ring",
+      );
+      return ring !== null && ring.classList.contains("active");
+    }, undefined, { timeout: 500 });
   } finally {
     await ctxA.close();
     await ctxB.close();

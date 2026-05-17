@@ -45,7 +45,8 @@ export type { HpBarHandle } from "./hp_bar.js";
 export { attachTooltip } from "./tooltip.js";
 export type { TooltipContent, TooltipHandle } from "./tooltip.js";
 export {
-  mountAttackCooldown,
+  mountSwordCooldownRing,
   ATTACK_COOLDOWN_DURATION_MS,
-} from "./attack_cooldown.js";
-export type { AttackCooldownHandle } from "./attack_cooldown.js";
+  dashOffsetForRemainingFrac,
+} from "./sword_cooldown_ring.js";
+export type { SwordCooldownRingHandle } from "./sword_cooldown_ring.js";
