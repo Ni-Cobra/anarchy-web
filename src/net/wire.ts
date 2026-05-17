@@ -18,6 +18,7 @@ import {
   type ChunkCoord,
   type Inventory,
   type PlayerId,
+  type RosterStore,
   type SnapshotBuffer,
   type Terrain,
   type World,
@@ -26,6 +27,7 @@ import {
 import { applyChestUpdate, type ChestSink } from "./wire_chest.js";
 import { toNumber } from "./wire_codec.js";
 import { applyInventoryUpdate } from "./wire_inventory.js";
+import { applyConnectedPlayersList } from "./wire_roster.js";
 import {
   applyTickUpdate,
   type DaylightSink,
@@ -103,6 +105,13 @@ export interface WireDeps {
    * a `ChestState` here so `ChestUpdate` frames feed the chest panel.
    */
   readonly chestSink?: ChestSink;
+  /**
+   * Task 170 connected-player roster store. Optional — tests that don't
+   * exercise the player-list HUD leave it absent; production bootstrap
+   * mounts a `RosterStore` here so the welcome's `initial_roster` and
+   * the per-join/leave `ConnectedPlayersList` broadcasts feed the HUD.
+   */
+  readonly rosterStore?: RosterStore;
   /** Wall-clock for stamping samples. Override in tests. */
   readonly now?: () => number;
 }
@@ -128,6 +137,11 @@ export function applyServerMessage(
       }
     }
     deps.world.applySnapshot([]);
+    // Task 170: seed the roster from the welcome's `initial_roster`
+    // snapshot so the HUD paints before the first join/leave event.
+    if (msg.welcome.initialRoster) {
+      applyConnectedPlayersList(msg.welcome.initialRoster, deps.rosterStore);
+    }
     return;
   }
 
@@ -143,6 +157,11 @@ export function applyServerMessage(
 
   if (msg.chestUpdate) {
     applyChestUpdate(msg.chestUpdate, deps.chestSink);
+    return;
+  }
+
+  if (msg.connectedPlayersList) {
+    applyConnectedPlayersList(msg.connectedPlayersList, deps.rosterStore);
     return;
   }
 }

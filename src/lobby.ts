@@ -168,5 +168,7 @@ export function lobbyRejectMessage(reason: LobbyRejectReason): string {
       return "Incorrect password for this username.";
     case "username-taken-by-registration":
       return "This username is registered. Switch to Returning player and enter the password.";
+    case "server-full":
+      return "Server is full. Try again in a moment.";
   }
 }

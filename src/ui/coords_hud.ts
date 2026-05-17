@@ -21,7 +21,11 @@ const STYLE = `
   #${ROOT_ID} {
     position: fixed;
     top: 12px;
-    left: 12px;
+    /* Task 170: the player-list HUD badge sits at top: 12px / left: 12px;
+       shift the coords readout right so the two don't overlap. The badge
+       fits a "32 / 32" label comfortably in ~80px including padding +
+       icon; 100px leaves a small gap. */
+    left: 100px;
     z-index: 8500;
     pointer-events: none;
     padding: 6px 10px;

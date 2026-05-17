@@ -44,7 +44,8 @@ export type LobbyRejectReason =
   | "reconnect-no-record"
   | "password-required"
   | "password-incorrect"
-  | "username-taken-by-registration";
+  | "username-taken-by-registration"
+  | "server-full";
 
 /**
  * Lifecycle hooks for the lobby UI. `onLobbyReject` fires when the server
@@ -193,6 +194,8 @@ function lobbyRejectReasonFromWire(
       return "password-incorrect";
     case anarchy.v1.LobbyReject.Reason.LOBBY_REJECT_REASON_USERNAME_TAKEN_BY_REGISTRATION:
       return "username-taken-by-registration";
+    case anarchy.v1.LobbyReject.Reason.LOBBY_REJECT_REASON_SERVER_FULL:
+      return "server-full";
     default:
       return null;
   }

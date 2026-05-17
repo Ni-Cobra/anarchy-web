@@ -49,6 +49,11 @@ message ServerMessage {
     TickUpdate tick_update = 20;
     InventoryUpdate inventory_update = 30;
     ChestUpdate chest_update = 31;
+    // Task 170 connected-roster broadcast. The server emits one on every
+    // join / leave so each client can render the player-list HUD without
+    // tick-rate spam. The initial roster also rides in ServerWelcome so
+    // a fresh client paints the list before the first join/leave event.
+    ConnectedPlayersList connected_players_list = 32;
   }
 }
 
@@ -96,6 +101,11 @@ message ServerWelcome {
   // the window are eligible for full-state delivery and chunks outside are
   // dropped from the client's known set. ADR 0003 §3.
   int32 view_radius_chunks = 4;
+  // Task 170: initial connected-player roster snapshot taken at admit
+  // time (includes the just-admitted player). The client populates its
+  // player-list HUD from this on welcome, then keeps it current via the
+  // sibling `ConnectedPlayersList` broadcasts on every join/leave.
+  ConnectedPlayersList initial_roster = 5;
 }
 
 // Server reply sent in response to a `ClientHello` whose admission failed.
@@ -120,6 +130,10 @@ message LobbyReject {
     // password. Distinct from `PASSWORD_REQUIRED` (reconnect path) so the
     // lobby UX can render "this name is taken — sign in to claim it".
     LOBBY_REJECT_REASON_USERNAME_TAKEN_BY_REGISTRATION = 5;
+    // Task 170: connected-player count is at `MAX_PLAYERS`. The client
+    // surfaces this as a "server full" message in the lobby. Reconnect
+    // attempts count against the same cap.
+    LOBBY_REJECT_REASON_SERVER_FULL = 6;
   }
   Reason reason = 1;
 }
@@ -150,6 +164,28 @@ message RegisterAccountResult {
     REGISTER_ACCOUNT_STATUS_ERROR = 3;
   }
   Status status = 1;
+}
+
+// === Roster (task 170) ===
+
+// Server→client snapshot of the full connected-player roster. Sent once
+// on welcome (via `ServerWelcome.initial_roster`) and again as a sibling
+// `ServerMessage` payload on every join/leave. Carries only what the
+// player-list HUD needs — username + stable id — so the message stays
+// small even at the `MAX_PLAYERS = 32` cap.
+//
+// `entries` is sorted ascending by `player_id` so the wire form is
+// deterministic for tests and clients comparing snapshots.
+message ConnectedPlayersList {
+  message Entry {
+    uint64 player_id = 1;
+    string username = 2;
+  }
+  repeated Entry entries = 1;
+  // Server-side hard cap (`config::MAX_PLAYERS`) so the client can
+  // render `N / max` without mirroring the constant. Re-shipped on
+  // every broadcast in case the constant is ever retuned at runtime.
+  uint32 max_players = 2;
 }
 
 // === Heartbeat ===

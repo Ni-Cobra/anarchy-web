@@ -34,6 +34,15 @@ export type { InputGateHandle } from "./input_gate.js";
 export { mountCoordsHud, formatCoords } from "./coords_hud.js";
 export type { CoordsHudHandle } from "./coords_hud.js";
 export {
+  mountPlayerListHud,
+  formatRosterLabel,
+  sortedRosterEntries,
+} from "./player_list_hud.js";
+export type {
+  PlayerListHudHandle,
+  PlayerListHudOptions,
+} from "./player_list_hud.js";
+export {
   mountHpBar,
   hpFillColorFor,
   hpFillWidthPx,

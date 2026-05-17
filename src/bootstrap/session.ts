@@ -28,6 +28,7 @@ import {
   Inventory,
   LAYER_SIZE,
   LocalAttackChargeTracker,
+  RosterStore,
   SnapshotBuffer,
   Terrain,
   type ToolKind,
@@ -57,6 +58,7 @@ import {
   mountDeathOverlay,
   mountHpBar,
   mountInventoryUi,
+  mountPlayerListHud,
   mountSidePanel,
   mountSwordCooldownRing,
   type CraftingUiHandle,
@@ -380,6 +382,7 @@ export function constructSession(deps: SessionDeps): Session {
   const terrain = new Terrain();
   const inventory = new Inventory();
   const chestState = new ChestState();
+  const rosterStore = new RosterStore();
   // Task 110: tracks whether the local player is mid attack-charge so
   // the input controller can suppress outbound `MoveIntent` frames the
   // server is going to ignore anyway. Fed by the wire layer's per-tick
@@ -510,6 +513,7 @@ export function constructSession(deps: SessionDeps): Session {
         },
         inventory,
         chestSink: { chestState },
+        rosterStore,
         local: {
           setLocalPlayerId: (id) => {
             localPlayerId = id;
@@ -695,6 +699,10 @@ export function constructSession(deps: SessionDeps): Session {
   // reads the latest authoritative `World` snapshot — independent of the
   // renderer's animation loop so the readout keeps refreshing even if the
   // canvas is occluded (rAF still fires when the tab is focused).
+  const playerListHud = mountPlayerListHud({
+    store: rosterStore,
+    getLocalPlayerId: () => localPlayerId,
+  });
   const coordsHud = mountCoordsHud();
   const hpBar = mountHpBar();
   deathOverlay = mountDeathOverlay();
@@ -747,6 +755,7 @@ export function constructSession(deps: SessionDeps): Session {
   coordsRaf = window.requestAnimationFrame(pumpCoords);
   teardowns.push(() => {
     window.cancelAnimationFrame(coordsRaf);
+    playerListHud.unmount();
     coordsHud.unmount();
     hpBar.unmount();
     swordCooldownRing.unmount();

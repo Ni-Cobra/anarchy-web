@@ -155,6 +155,75 @@ describe("applyServerMessage — Welcome", () => {
     const unloaded = onChunkUnloaded.map(([cx, cy]) => `${cx},${cy}`).sort();
     expect(unloaded).toEqual(["0,0", "1,0"]);
   });
+
+  it("seeds the roster store from welcome.initialRoster (task 170)", async () => {
+    const base = makeFixture();
+    const { RosterStore } = await import("../game/index.js");
+    const rosterStore = new RosterStore();
+    const deps: WireDeps = { ...base.deps, rosterStore };
+
+    const msg = decodeRoundtrip({
+      seq: 1,
+      welcome: {
+        serverVersion: "test",
+        tickRateHz: 20,
+        playerId: 7,
+        viewRadiusChunks: 2,
+        initialRoster: {
+          entries: [
+            { playerId: 7, username: "You" },
+            { playerId: 3, username: "Old" },
+          ],
+          maxPlayers: 32,
+        },
+      },
+    });
+    applyServerMessage(msg, deps);
+
+    const r = rosterStore.current();
+    expect(r).not.toBeNull();
+    expect(r!.maxPlayers).toBe(32);
+    expect(r!.entries.map((e) => e.playerId)).toEqual([7, 3]);
+    expect(r!.entries.map((e) => e.username)).toEqual(["You", "Old"]);
+  });
+});
+
+describe("applyServerMessage — ConnectedPlayersList (task 170)", () => {
+  it("routes a top-level roster broadcast through to the roster store", async () => {
+    const base = makeFixture();
+    const { RosterStore } = await import("../game/index.js");
+    const rosterStore = new RosterStore();
+    const deps: WireDeps = { ...base.deps, rosterStore };
+
+    const msg = decodeRoundtrip({
+      seq: 2,
+      connectedPlayersList: {
+        entries: [
+          { playerId: 1, username: "Alice" },
+          { playerId: 2, username: "Bob" },
+        ],
+        maxPlayers: 16,
+      },
+    });
+    applyServerMessage(msg, deps);
+
+    const r = rosterStore.current();
+    expect(r).not.toBeNull();
+    expect(r!.maxPlayers).toBe(16);
+    expect(r!.entries.map((e) => `${e.playerId}:${e.username}`)).toEqual([
+      "1:Alice",
+      "2:Bob",
+    ]);
+  });
+
+  it("is a no-op when no rosterStore is wired (test/sub-feature paths)", () => {
+    const { deps } = makeFixture();
+    const msg = decodeRoundtrip({
+      seq: 1,
+      connectedPlayersList: { entries: [{ playerId: 1, username: "X" }], maxPlayers: 8 },
+    });
+    expect(() => applyServerMessage(msg, deps)).not.toThrow();
+  });
 });
 
 describe("applyServerMessage — TickUpdate", () => {
