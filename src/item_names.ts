@@ -332,6 +332,15 @@ export const ITEM_REGISTRY: Record<ItemId, ItemMeta> = {
     placesBlock: null,
     textureUrl: `${ITEM_TEXTURES_BASE}/string.png`,
   },
+  // Task 180 — spider death drop, raw input for the poison-dart recipe
+  // (task 190). No dedicated icon yet; falls back to the inventory grid's
+  // gray placeholder until a polish pass lands one under /textures/items/.
+  [ItemId.VenomSack]: {
+    id: ItemId.VenomSack,
+    displayName: "Venom Sack",
+    placesBlock: null,
+    textureUrl: null,
+  },
 };
 
 /**

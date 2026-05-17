@@ -152,6 +152,11 @@ export enum ItemId {
    * straight into the killer's inventory in stacks of 1-3.
    */
   String = 49,
+  /**
+   * Task 180 — second spider death drop. Always exactly 1 per spider kill.
+   * Raw input for the poison-dart recipe landing in task 190.
+   */
+  VenomSack = 50,
 }
 
 /** A non-empty pile of one item kind. */

@@ -137,6 +137,14 @@ describe("textureUrlForItem", () => {
     }
   });
 
+  it("VenomSack resolves to the gray-fallback path (task 180)", () => {
+    // Task 180 ships the item without a dedicated icon. The inventory grid
+    // paints a gray placeholder when `textureUrlForItem` returns null —
+    // assert that contract here so a future change doesn't quietly wire a
+    // missing PNG and break the cell.
+    expect(textureUrlForItem(ItemId.VenomSack)).toBeNull();
+  });
+
   it("registry entry textureUrl agrees with textureUrlForItem", () => {
     // Each `ItemMeta.textureUrl` must agree with the public `textureUrlForItem`
     // facade. Catches drift between the registry table and any future

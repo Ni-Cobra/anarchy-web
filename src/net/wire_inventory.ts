@@ -197,6 +197,8 @@ export function itemIdFromWire(
       return ItemId.TungstenSword;
     case anarchy.v1.ItemId.ITEM_ID_STRING:
       return ItemId.String;
+    case anarchy.v1.ItemId.ITEM_ID_VENOM_SACK:
+      return ItemId.VenomSack;
     default:
       return null;
   }

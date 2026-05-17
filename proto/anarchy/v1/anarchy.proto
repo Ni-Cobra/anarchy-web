@@ -1069,6 +1069,9 @@ enum ItemId {
   // Task 080 — spider death drop. Non-placeable resource; no recipe consumes
   // it yet (future bows / fishing rods / web traps / leashes).
   ITEM_ID_STRING = 49;
+  // Task 180 — second spider death drop. Always 1 per spider kill. Raw input
+  // for the poison-dart recipe landing in task 190.
+  ITEM_ID_VENOM_SACK = 50;
 }
 
 // One inventory cell. `count == 0` is the canonical empty slot — the server
