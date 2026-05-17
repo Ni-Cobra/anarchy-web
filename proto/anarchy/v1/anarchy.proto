@@ -576,6 +576,38 @@ message TickUpdate {
   // target's chunk is outside the window are dropped). Empty when no
   // damage events fired this tick.
   repeated DamageEvent damage_events = 7;
+  // Per-tick player-death feed (task 160). One entry per player death,
+  // emitted at the tick the dying player's HP first crosses zero — *before*
+  // the same-tick respawn teleport relocates them. The client uses this
+  // to trigger the "You died" overlay; the snapshot in the same
+  // `TickUpdate` already shows the player at the spawn tile, which is
+  // exactly the visual the overlay covers. Per-receiver scoped in
+  // compose: each client receives only events whose `player_id` matches
+  // their own — strangers' deaths are not notified. A future kill-feed
+  // task can widen this filter. Empty when nobody died this tick.
+  repeated PlayerDeathEvent death_events = 8;
+}
+
+// Server→client death notification (task 160). Emitted at the tick the
+// player's HP first reaches 0, *before* the same-tick respawn teleport
+// applies. The receiver sees this on the same `TickUpdate` that also
+// carries the post-respawn snapshot — by the time the client processes
+// the event the player snapshot already shows HP = MAX at the spawn tile.
+// That ordering is intentional: the overlay the client triggers covers
+// the visual teleport.
+//
+// Per-receiver scoped in `network::compose`: each client receives only
+// events whose `player_id` matches their own. Other players' deaths are
+// not notified — a future kill-feed task can broaden this.
+message PlayerDeathEvent {
+  uint64 player_id = 1;
+  uint64 happened_at_tick = 2;
+
+  // Attacker player id when the death was caused by a player strike.
+  // `0` for self-inflicted / env / admin damage. The client doesn't
+  // render this yet (v1 just shows "You died") but the field is
+  // wire-ready for the future kill-feed task.
+  uint64 killer_player_id = 3;
 }
 
 // Server→client per-damage record (task 150). Emitted once per HP-

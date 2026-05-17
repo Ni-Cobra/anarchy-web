@@ -142,6 +142,24 @@ export interface WireDamageEvent {
   readonly happenedAtTick: number;
 }
 
+/**
+ * Per-tick death event (task 160), routed through
+ * `TickUpdate.death_events` and forwarded here by the bridge. Per-receiver
+ * scoped server-side: each client only sees events whose `playerId` is
+ * their own, so a non-empty list in v1 is always the local player's own
+ * death. The bridge fans the events through `EffectsSink.onDeathEvents`
+ * so the bootstrap controller can fire the "You died" overlay. The
+ * `killerPlayerId` field is wire-ready for a future kill-feed; v1
+ * doesn't render it.
+ *
+ * Mirrors `PlayerDeathEvent` on the server.
+ */
+export interface WireDeathEvent {
+  readonly playerId: number;
+  readonly happenedAtTick: number;
+  readonly killerPlayerId: number;
+}
+
 export interface EffectsSink {
   onBlockEdit?(event: WireBlockEditEvent): void;
   applyTargets?(targets: readonly WireTargetingStateEvent[]): void;
@@ -158,6 +176,13 @@ export interface EffectsSink {
    * the floating-number / mesh-flash lifetimes to its own animation clock.
    */
   onDamageEvents?(events: readonly WireDamageEvent[], tickReceivedMs: number): void;
+  /**
+   * Fan-out for `TickUpdate.death_events` (task 160). Optional — tests
+   * that don't exercise the respawn overlay leave it absent and the bridge
+   * silently drops the events. `tickReceivedMs` anchors the overlay's
+   * 2-second fade timeline.
+   */
+  onDeathEvents?(events: readonly WireDeathEvent[], tickReceivedMs: number): void;
 }
 
 /**
@@ -300,7 +325,27 @@ export function applyTickUpdate(
       }
       effects.onDamageEvents(events, timeMs);
     }
+    if (effects.onDeathEvents) {
+      const events: WireDeathEvent[] = [];
+      for (const wire of tick.deathEvents ?? []) {
+        const ev = deathEventFromWire(wire);
+        if (ev) events.push(ev);
+      }
+      effects.onDeathEvents(events, timeMs);
+    }
   }
+}
+
+function deathEventFromWire(
+  wire: anarchy.v1.IPlayerDeathEvent,
+): WireDeathEvent | null {
+  const playerId = toNumber(wire.playerId);
+  if (playerId === 0) return null;
+  return {
+    playerId,
+    happenedAtTick: toNumber(wire.happenedAtTick),
+    killerPlayerId: toNumber(wire.killerPlayerId),
+  };
 }
 
 function damageEventFromWire(

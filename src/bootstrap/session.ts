@@ -54,11 +54,13 @@ import {
   mountChestUi,
   mountCoordsHud,
   mountCraftingUi,
+  mountDeathOverlay,
   mountHpBar,
   mountInventoryUi,
   mountSidePanel,
   mountSwordCooldownRing,
   type CraftingUiHandle,
+  type DeathOverlayState,
   type InventoryUiHandle,
   type SidePanelAction,
 } from "../ui/index.js";
@@ -293,6 +295,14 @@ export interface AnarchyHandle {
    * a one-call read.
    */
   isHpBarFlashing: () => boolean;
+  /**
+   * Test handle (task 160): current respawn-overlay state. `visible`
+   * is true between `trigger` and the end of the 2 s title fade;
+   * `blackOpacity` / `titleOpacity` are the per-element opacities
+   * being painted this frame. Lets e2e specs assert the overlay's
+   * lifecycle without DOM scraping.
+   */
+  getDeathOverlayState: () => DeathOverlayState;
   stop: () => void;
   readonly stopped: Promise<void>;
   /**
@@ -437,6 +447,15 @@ export function constructSession(deps: SessionDeps): Session {
   // time pattern lets us define everything in dependency order.
   let registerFlow!: RegisterFlow;
 
+  // Task 160 respawn overlay — same forward-declare shape as `inventoryUi`
+  // / `registerFlow`. The wire bridge's death-event sink (below) calls
+  // `deathOverlay.trigger`, but the overlay is mounted later in this
+  // function alongside the other DOM chrome (HP bar + coords HUD). The
+  // sink reads the binding at call time — by the time a TickUpdate
+  // arrives over the socket, the synchronous construction phase has
+  // finished and the binding is set.
+  let deathOverlay!: ReturnType<typeof mountDeathOverlay>;
+
   const conn = connect(
     wsUrl,
     identity,
@@ -470,6 +489,18 @@ export function constructSession(deps: SessionDeps): Session {
           onDamageEvents: (events, tickReceivedMs) => {
             renderer.onDamageEvents(events, tickReceivedMs);
           },
+          onDeathEvents: (events) => {
+            // Server scopes the feed per-receiver, so any event we see
+            // here is for the local player by construction. Defensive
+            // `playerId === localPlayerId` keeps the trigger safe even
+            // if a future schema relaxes the filter (kill feed widens
+            // scope to view-window — that task will need to add its
+            // own renderer hook anyway).
+            for (const ev of events) {
+              if (ev.playerId !== localPlayerId) continue;
+              deathOverlay.trigger(performance.now());
+            }
+          },
         },
         daylightSink: {
           onTimeOfDay: (seconds) => {
@@ -491,6 +522,10 @@ export function constructSession(deps: SessionDeps): Session {
             // we observe on the new player never spuriously fires
             // shake/flash against a stale previous-session value.
             lastSeenLocalHp = null;
+            // Task 160: a local id reassign means a new life — hide any
+            // previous overlay synchronously so the stale "You died"
+            // from the prior session doesn't bleed over the new spawn.
+            deathOverlay.cancel();
           },
           getLocalPlayerId: () => localPlayerId,
         },
@@ -662,6 +697,7 @@ export function constructSession(deps: SessionDeps): Session {
   // canvas is occluded (rAF still fires when the tab is focused).
   const coordsHud = mountCoordsHud();
   const hpBar = mountHpBar();
+  deathOverlay = mountDeathOverlay();
   // Task 140 cooldown affordance — driven from the same rAF loop. The
   // renderer captures the latest strike timestamp; the ring reads it and
   // draws a depleting arc over the sword equipment slot. The equipment
@@ -705,6 +741,7 @@ export function constructSession(deps: SessionDeps): Session {
     // time base so the elapsed delta stays meaningful. `performance.now`
     // is a monotonic-since-page-load clock and would skew by ~1e12 ms.
     swordCooldownRing.update(Date.now(), strikeMs);
+    deathOverlay.tick(performance.now());
     coordsRaf = window.requestAnimationFrame(pumpCoords);
   };
   coordsRaf = window.requestAnimationFrame(pumpCoords);
@@ -713,6 +750,7 @@ export function constructSession(deps: SessionDeps): Session {
     coordsHud.unmount();
     hpBar.unmount();
     swordCooldownRing.unmount();
+    deathOverlay.unmount();
   });
 
   teardowns.push(attachKeybindings(window, { inventoryUi, renderer }));
@@ -817,6 +855,7 @@ export function constructSession(deps: SessionDeps): Session {
     setCursorNdc: (ndc) => renderer.setCursorNdc(ndc),
     getScreenShakeOffset: () => renderer.getScreenShakeOffset(),
     isHpBarFlashing: () => hpBar.isFlashing(),
+    getDeathOverlayState: () => deathOverlay.state(),
     sendAttackIntent,
     getAttackBeamCount: () => renderer.getAttackBeamCount(),
     getSlashCount: () => renderer.getSlashCount(),

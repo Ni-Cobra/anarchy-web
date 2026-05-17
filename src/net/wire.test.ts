@@ -982,4 +982,39 @@ describe("applyServerMessage — TickUpdate effects feed (task 070)", () => {
       },
     ]);
   });
+
+  it("forwards death events to the effects sink (task 160)", () => {
+    const base = makeTerrainFixture(() => 7_777);
+    const observed: {
+      events: import("./wire.js").WireDeathEvent[];
+      tickReceivedMs: number;
+    }[] = [];
+    const deps = {
+      ...base.deps,
+      effectsSink: {
+        onDeathEvents: (
+          events: readonly import("./wire.js").WireDeathEvent[],
+          tickReceivedMs: number,
+        ) => observed.push({ events: [...events], tickReceivedMs }),
+      },
+    };
+    const msg = decodeRoundtrip({
+      seq: 1,
+      tickUpdate: {
+        fullStateChunks: [],
+        unmodifiedChunks: [],
+        deathEvents: [
+          { playerId: 2, happenedAtTick: 100, killerPlayerId: 1 },
+          { playerId: 5, happenedAtTick: 101, killerPlayerId: 0 },
+        ],
+      },
+    });
+    applyServerMessage(msg, deps);
+    expect(observed.length).toBe(1);
+    expect(observed[0].tickReceivedMs).toBe(7_777);
+    expect(observed[0].events).toEqual([
+      { playerId: 2, happenedAtTick: 100, killerPlayerId: 1 },
+      { playerId: 5, happenedAtTick: 101, killerPlayerId: 0 },
+    ]);
+  });
 });

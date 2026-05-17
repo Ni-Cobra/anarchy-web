@@ -50,3 +50,12 @@ export {
   dashOffsetForRemainingFrac,
 } from "./sword_cooldown_ring.js";
 export type { SwordCooldownRingHandle } from "./sword_cooldown_ring.js";
+export {
+  mountDeathOverlay,
+  BLACK_FADE_SECONDS,
+  TITLE_FADE_SECONDS,
+} from "./death_overlay.js";
+export type {
+  DeathOverlayHandle,
+  DeathOverlayState,
+} from "./death_overlay.js";
