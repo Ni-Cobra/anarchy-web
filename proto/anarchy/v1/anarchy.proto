@@ -766,6 +766,31 @@ message PlayerSnapshot {
   // spawned player at full HP is the only "missing value" the legacy
   // shape can intend.
   uint32 health = 10;
+  // Task 200a — active status effects (`Slow`, future kinds). Empty when
+  // nothing is on the player. The wire carries remaining ticks per
+  // effect, not absolute expiry — the client doesn't know the server's
+  // tick number. The client renders an indicator (or mesh tint) per
+  // active effect in task 200c; 200a only ships the data path.
+  repeated ActiveEffectSnapshot effects = 11;
+}
+
+// Task 200a — kinds of status effect on the wire. `EFFECT_KIND_UNSPECIFIED`
+// is the proto3 default sentinel and is never emitted by the server. New
+// kinds (poison-over-time, stun, haste, …) slot in by appending.
+enum EffectKind {
+  EFFECT_KIND_UNSPECIFIED = 0;
+  EFFECT_KIND_SLOW = 1;
+}
+
+// Task 200a — one active status effect on a player or entity snapshot.
+// `remaining_ticks` is `expires_at_tick - now_tick` at the moment the
+// snapshot was composed — the client interprets it relative to its local
+// frame budget rather than chasing server tick numbers. Drops on its own
+// after the duration; same-kind re-apply on the server refreshes (does
+// not stack) the expiry.
+message ActiveEffectSnapshot {
+  EffectKind kind = 1;
+  uint32 remaining_ticks = 2;
 }
 
 // 8-way facing for the sphere-with-eyes player model. Cardinal first, then
@@ -950,6 +975,9 @@ message Entity {
   // the per-kind `max_health` — a freshly spawned entity at full HP is
   // the only "missing value" the legacy shape can intend.
   uint32 health = 5;
+  // Task 200a — active status effects, same shape as
+  // `PlayerSnapshot.effects`. Empty when nothing is on the entity.
+  repeated ActiveEffectSnapshot effects = 6;
 }
 
 // Kinds of entity. `ENTITY_KIND_UNSPECIFIED = 0` is the proto3 default
