@@ -236,6 +236,12 @@ export interface AnarchyHandle {
    */
   getAttackBeamCount: () => number;
   /**
+   * Test handle (task 130): number of strike-resolution slash sprites
+   * currently live in the scene. Spawned on `STRIKE_HIT` /
+   * `STRIKE_MISSED_OUT_OF_REACH`; each retires after 250 ms.
+   */
+  getSlashCount: () => number;
+  /**
    * Test handle (task 070b): the most recent `AttackEvent` observed
    * on this connection. Drives the `e2e/attack-client.spec.ts` checks
    * for "the beam appeared", "the strike landed", etc. without
@@ -785,6 +791,7 @@ export function constructSession(deps: SessionDeps): Session {
     isHpBarFlashing: () => hpBar.isFlashing(),
     sendAttackIntent,
     getAttackBeamCount: () => renderer.getAttackBeamCount(),
+    getSlashCount: () => renderer.getSlashCount(),
     getLastAttackEvent: () => lastAttackEvent,
     getLocalCooldownStartedMs: () =>
       localPlayerId === null ? null : renderer.getStrikeStartedMs(localPlayerId),

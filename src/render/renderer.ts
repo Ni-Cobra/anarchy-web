@@ -58,6 +58,12 @@ import {
 } from "./player_mesh.js";
 import { SceneGraph, type Viewport } from "./scene_graph.js";
 import { ScreenShake, type ScreenShakeOffset } from "./screen_shake.js";
+import {
+  ATTACKER_SHAKE_DURATION_MS,
+  ATTACKER_SHAKE_TILES,
+  shouldSpawnSlashFor,
+  shouldTriggerAttackerShake,
+} from "./slash_layer.js";
 import { ZoomController, clampZoomHeight } from "./zoom.js";
 
 export type { Viewport } from "./scene_graph.js";
@@ -227,6 +233,7 @@ export class Renderer {
     this.cooldownStartMsByAttacker.clear();
     this.screenShake.reset();
     this.graph.attackBeams.clearAll();
+    this.graph.slashes.clearAll();
   }
 
   setTerrain(terrain: Terrain): void {
@@ -406,25 +413,75 @@ export class Renderer {
         );
       } else {
         // STRIKE_HIT or STRIKE_MISSED. Retire the beam, capture the
-        // current rendered position as the dash "from", and pin the
-        // cooldown start.
+        // current rendered position as the dash "from", pin the
+        // cooldown start, spawn the slash flash, and (for the local
+        // player only) trigger the attacker-shake.
         this.graph.attackBeams.onResolve(ev.attackerPlayerId);
+        const nowMs = this.now();
         const from = this.lastRenderedPos.get(ev.attackerPlayerId);
         if (from !== undefined) {
           this.activeDashes.set(ev.attackerPlayerId, {
             fromX: from.x,
             fromY: from.y,
-            startMs: this.now(),
+            startMs: nowMs,
           });
         }
         // Server's resolution tick = startedAtTick + CHARGE_TICKS, but
         // we don't need to reconstruct it here — the dash just lerps
         // from "last rendered" to "current server pos" over a fixed
         // 150 ms window starting now.
-        this.cooldownStartMsByAttacker.set(ev.attackerPlayerId, this.now());
+        this.cooldownStartMsByAttacker.set(ev.attackerPlayerId, nowMs);
         // The anchor is no longer needed once the strike has fired —
         // drop it so reconnect-style state never leaks.
         this.tickAnchorByAttacker.delete(ev.attackerPlayerId);
+        // Slash anchor: target tile centre on hit, attacker landing
+        // position on miss. Direction: attacker → target on hit, or
+        // attacker pre→post-dash on miss with no surviving target.
+        if (shouldSpawnSlashFor(ev.outcome)) {
+          const attackerPos = this.world.getPlayer(ev.attackerPlayerId);
+          const targetPos =
+            ev.outcome === "strike-hit"
+              ? this.resolveTargetPos(ev.targetKind, ev.targetId)
+              : null;
+          const anchor =
+            targetPos !== null
+              ? targetPos
+              : attackerPos !== undefined
+                ? { x: attackerPos.x, y: attackerPos.y }
+                : null;
+          if (anchor !== null) {
+            let dx = 0;
+            let dy = 0;
+            if (attackerPos !== undefined && targetPos !== null) {
+              dx = targetPos.x - attackerPos.x;
+              dy = targetPos.y - attackerPos.y;
+            } else if (attackerPos !== undefined && from !== undefined) {
+              dx = attackerPos.x - from.x;
+              dy = attackerPos.y - from.y;
+            }
+            const colorIndex = attackerPos?.colorIndex ?? 0;
+            this.graph.slashes.spawn({
+              attackerPlayerId: ev.attackerPlayerId,
+              attackerColorIndex: colorIndex,
+              anchor,
+              direction: { x: dx, y: dy },
+              nowMs,
+            });
+          }
+        }
+        if (
+          shouldTriggerAttackerShake(
+            ev.outcome,
+            ev.attackerPlayerId,
+            this.localPlayerId,
+          )
+        ) {
+          this.screenShake.trigger(
+            ATTACKER_SHAKE_TILES,
+            ATTACKER_SHAKE_DURATION_MS,
+            nowMs,
+          );
+        }
       }
     }
     // Mirror `tickReceivedMs` for the `MS_PER_TICK` debug aid the
@@ -450,6 +507,38 @@ export class Renderer {
    */
   getAttackBeamCount(): number {
     return this.graph.attackBeams.size();
+  }
+
+  /**
+   * Test handle (task 130): scene-graph count of live slash sprites.
+   * Spawns are one-per-strike (hit or miss); each retires after 250 ms.
+   */
+  getSlashCount(): number {
+    return this.graph.slashes.size();
+  }
+
+  /**
+   * Resolve a strike target's tile-centre world position from game state.
+   * Players are looked up in `World`; entities are scanned out of the
+   * loaded terrain chunks. Returns `null` if the target is no longer
+   * present (e.g. an entity died this tick or a player left the view).
+   */
+  private resolveTargetPos(
+    kind: "player" | "entity",
+    id: number,
+  ): { x: number; y: number } | null {
+    if (kind === "player") {
+      const p = this.world.getPlayer(id);
+      return p ? { x: p.x, y: p.y } : null;
+    }
+    const terrain = this.terrain;
+    if (terrain === null) return null;
+    for (const [, chunk] of terrain.iter()) {
+      const e = chunk.entities.get(id);
+      if (e === undefined) continue;
+      return { x: e.tileX + 0.5, y: e.tileY + 0.5 };
+    }
+    return null;
   }
 
   /**
@@ -584,6 +673,10 @@ export class Renderer {
       }
       return null;
     }, nowMs);
+    // Task 130: advance slash lifetimes (fade + expand) and retire
+    // expired sprites. Position / rotation are fixed at spawn — the
+    // slash anchor never moves, so no per-frame re-aim is needed.
+    this.graph.slashes.tick(nowMs);
     // Capture this frame's rendered player positions so a strike
     // resolution next frame can lerp from where the attacker is
     // actually drawn.

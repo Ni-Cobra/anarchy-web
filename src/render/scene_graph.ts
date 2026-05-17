@@ -27,6 +27,7 @@ import { EntityLayer } from "./entity_layer.js";
 import { GhostMesh } from "./ghost_mesh.js";
 import { LanternLights } from "./lantern_lights.js";
 import { MushroomLights } from "./mushroom_lights.js";
+import { SlashLayer, SLASH_TEXTURE_URL } from "./slash_layer.js";
 import { TorchLights } from "./torch_lights.js";
 import {
   buildChunkMesh,
@@ -104,6 +105,7 @@ export class SceneGraph {
   readonly breakParticles: BreakParticles;
   readonly entities: EntityLayer;
   readonly attackBeams: AttackBeamLayer;
+  readonly slashes: SlashLayer;
   readonly torchLights: TorchLights;
   readonly mushroomLights: MushroomLights;
   readonly lanternLights: LanternLights;
@@ -231,6 +233,14 @@ export class SceneGraph {
     this.attackBeams = new AttackBeamLayer();
     this.scene.add(this.attackBeams.group);
 
+    // Slash layer (task 130) — shared white-on-transparent sprite tinted
+    // per-mesh by the attacker's palette colour. Loaded once at scene
+    // construction so the GPU upload happens before the first slash spawns.
+    const slashTexture = new THREE.TextureLoader().load(SLASH_TEXTURE_URL);
+    slashTexture.colorSpace = THREE.SRGBColorSpace;
+    this.slashes = new SlashLayer(slashTexture);
+    this.scene.add(this.slashes.group);
+
     this.chunkBorderGrid = buildChunkBorderGrid();
     this.chunkBorderGrid.visible = false;
     this.scene.add(this.chunkBorderGrid);
@@ -304,6 +314,8 @@ export class SceneGraph {
     this.scene.remove(this.entities.group);
     this.attackBeams.dispose();
     this.scene.remove(this.attackBeams.group);
+    this.slashes.dispose();
+    this.scene.remove(this.slashes.group);
     this.torchLights.dispose();
     this.scene.remove(this.torchLights.scene());
     this.mushroomLights.dispose();
