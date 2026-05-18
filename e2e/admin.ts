@@ -186,13 +186,33 @@ async function postDamage(url: string): Promise<DamageOutcome> {
  * Apply `amount` damage to player `playerId` (task 060). On a killing
  * blow the server runs the death pipeline (tombstone + respawn) before
  * returning, so the helper's resolution implies the world is already
- * post-respawn. Returns the server's damage outcome.
+ * post-respawn. When `killerId` is provided (task 210) the lethal hit
+ * routes through `DeathCause::Pvp { killer }` and the victim's XP is
+ * transferred to the killer; omitting it preserves the previous
+ * `DeathCause::Admin` behaviour. Returns the server's damage outcome.
  */
 export async function adminDamagePlayer(
   playerId: number,
   amount: number,
+  killerId?: number,
 ): Promise<DamageOutcome> {
-  return postDamage(`${SERVER_URL}/admin/damage-player/${playerId}/${amount}`);
+  let url = `${SERVER_URL}/admin/damage-player/${playerId}/${amount}`;
+  if (killerId !== undefined) {
+    url += `?killer=${killerId}`;
+  }
+  return postDamage(url);
+}
+
+/**
+ * Saturating-add `amount` XP to the player's `xp` field (task 210). Used
+ * by the e2e to plant a known XP on a victim before driving an admin
+ * PvP kill so the transfer is observable on the killer's HUD.
+ */
+export async function adminGrantXp(
+  playerId: number,
+  amount: number,
+): Promise<void> {
+  await postOk(`${SERVER_URL}/admin/grant-xp/${playerId}/${amount}`);
 }
 
 /**

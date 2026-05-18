@@ -624,6 +624,7 @@ function chunkFromWire(
       openChests: openChestsFromWire(p.openChests),
       health: wireHealth === 0 ? MAX_PLAYER_HEALTH : wireHealth,
       effects: activeEffectsFromWire(p.effects),
+      xp: p.xp ?? 0,
     });
   }
   const entities = new Map<EntityId, Entity>();

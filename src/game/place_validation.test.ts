@@ -32,6 +32,7 @@ const me = (
   openChests: [],
   health: MAX_PLAYER_HEALTH,
   effects: [],
+  xp: 0,
 });
 
 function setup(local: Player, others: Player[] = []): { world: World; terrain: Terrain } {

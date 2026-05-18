@@ -121,6 +121,7 @@ describe("applyServerMessage — Welcome", () => {
         openChests: [],
         health: MAX_PLAYER_HEALTH,
         effects: [],
+        xp: 0,
       },
     ]);
     buffer.push(99, 5, 5, 100);
@@ -275,6 +276,7 @@ describe("applyServerMessage — TickUpdate", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
     expect(buffer.samplesOf(1)).toHaveLength(1);
     expect(buffer.samplesOf(1)[0]).toMatchObject({ x: 1.5, y: 2.5, timeMs: 5_000 });
@@ -501,6 +503,7 @@ describe("applyServerMessage — TickUpdate", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
     expect(terrain.size()).toBe(1);
   });
@@ -547,6 +550,7 @@ describe("applyServerMessage — TickUpdate", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
   });
 

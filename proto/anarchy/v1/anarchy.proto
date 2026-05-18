@@ -850,6 +850,14 @@ message PlayerSnapshot {
   // tick number. The client renders an indicator (or mesh tint) per
   // active effect in task 200c; 200a only ships the data path.
   repeated ActiveEffectSnapshot effects = 11;
+  // Task 210 — experience points earned by breaking ores and killing
+  // spiders. Shipped on every player snapshot so the HUD label above the
+  // hotbar reads from the same channel that ships position. PvP kills
+  // transfer 100% of the victim's XP to the killer; non-PvP deaths
+  // leave it untouched. When the field is unset on the wire (older
+  // server snapshots pre-task 210), receivers treat it as `0` — the
+  // proto3 default — which is the natural spawn value.
+  uint32 xp = 12;
 }
 
 // Task 200a — kinds of status effect on the wire. `EFFECT_KIND_UNSPECIFIED`

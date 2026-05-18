@@ -24,6 +24,7 @@ const p = (
   openChests: [],
   health: MAX_PLAYER_HEALTH,
   effects: [],
+  xp: 0,
 });
 
 describe("World", () => {
@@ -49,6 +50,7 @@ describe("World", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
     expect(w.getPlayer(2)).toEqual({
       id: 2,
@@ -61,6 +63,7 @@ describe("World", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
   });
 
@@ -81,6 +84,7 @@ describe("World", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
     expect(w.getPlayer(3)).toBeUndefined();
   });
@@ -102,6 +106,7 @@ describe("World", () => {
       openChests: [],
       health: MAX_PLAYER_HEALTH,
       effects: [],
+      xp: 0,
     });
   });
 
@@ -110,5 +115,15 @@ describe("World", () => {
     w.applySnapshot([p(3), p(1), p(2)]);
     const ids = [...w.players()].map((pl) => pl.id).sort((a, b) => a - b);
     expect(ids).toEqual([1, 2, 3]);
+  });
+
+  it("applySnapshot round-trips xp (task 210)", () => {
+    const w = new World();
+    w.applySnapshot([{ ...p(1), xp: 42 }, { ...p(2), xp: 0 }]);
+    expect(w.getPlayer(1)!.xp).toBe(42);
+    expect(w.getPlayer(2)!.xp).toBe(0);
+    // Re-applying with a different xp replaces the stored value.
+    w.applySnapshot([{ ...p(1), xp: 99 }]);
+    expect(w.getPlayer(1)!.xp).toBe(99);
   });
 });

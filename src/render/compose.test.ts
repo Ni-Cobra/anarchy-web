@@ -30,6 +30,7 @@ const player = (
   openChests: [],
   health: MAX_PLAYER_HEALTH,
   effects: [],
+  xp: 0,
 });
 
 function setup() {

@@ -53,6 +53,7 @@ function buildPlayer(): Player {
     openChests: [],
     health: MAX_PLAYER_HEALTH,
     effects: [],
+    xp: 0,
   };
 }
 

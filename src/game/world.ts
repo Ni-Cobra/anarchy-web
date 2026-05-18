@@ -33,6 +33,7 @@ export class World {
         openChests: p.openChests,
         health: p.health,
         effects: p.effects,
+        xp: p.xp,
       });
     }
   }

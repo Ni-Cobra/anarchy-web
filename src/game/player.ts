@@ -86,6 +86,15 @@ export interface Player {
    * player has no effect on them.
    */
   effects: readonly ActiveEffect[];
+  /**
+   * Task 210 — experience points earned by breaking ores and killing
+   * spiders. Defaults to `0` when the wire field is unset (older server
+   * snapshots pre-task 210). PvP kills transfer 100% of the victim's XP
+   * to the killer; non-PvP deaths leave it untouched. The HUD reads
+   * the local player's `xp` to render the `XP: N` label above the
+   * hotbar.
+   */
+  xp: number;
 }
 
 /**

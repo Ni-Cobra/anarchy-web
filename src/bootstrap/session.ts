@@ -64,6 +64,7 @@ import {
   mountPlayerListHud,
   mountSidePanel,
   mountSwordCooldownRing,
+  mountXpLabel,
   type CraftingUiHandle,
   type DeathOverlayState,
   type InventoryUiHandle,
@@ -749,6 +750,7 @@ export function constructSession(deps: SessionDeps): Session {
   });
   const coordsHud = mountCoordsHud();
   const hpBar = mountHpBar();
+  const xpLabel = mountXpLabel();
   deathOverlay = mountDeathOverlay();
   // Task 140 cooldown affordance — driven from the same rAF loop. The
   // renderer captures the latest strike timestamp; the ring reads it and
@@ -797,6 +799,7 @@ export function constructSession(deps: SessionDeps): Session {
     }
     if (currentHp !== null) lastSeenLocalHp = currentHp;
     hpBar.update(currentHp);
+    xpLabel.update(me ? me.xp : null);
     const strikeMs = id === null ? null : renderer.getStrikeStartedMs(id);
     // `getStrikeStartedMs` is wall-clock (`Date.now`) — pass the same
     // time base so the elapsed delta stays meaningful. `performance.now`
@@ -812,6 +815,7 @@ export function constructSession(deps: SessionDeps): Session {
     playerListHud.unmount();
     coordsHud.unmount();
     hpBar.unmount();
+    xpLabel.unmount();
     swordCooldownRing.unmount();
     blowgunCooldownRing?.unmount();
     deathOverlay.unmount();

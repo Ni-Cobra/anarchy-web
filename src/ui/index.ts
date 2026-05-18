@@ -69,3 +69,5 @@ export type {
   DeathOverlayHandle,
   DeathOverlayState,
 } from "./death_overlay.js";
+export { mountXpLabel } from "./xp_label.js";
+export type { XpLabelHandle } from "./xp_label.js";
