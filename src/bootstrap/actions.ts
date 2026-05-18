@@ -92,6 +92,21 @@ export interface ActionSenders {
     ly: number,
     name: string,
   ): void;
+  /**
+   * Task 250: ship a held `FlagInteractIntent` against the flag at
+   * `(cx, cy, lx, ly)` in `mode` (`deposit` / `steal`). `active=true`
+   * is sent on press; `active=false` is the release. The server
+   * re-validates each tick and transfers XP at 10/s while admissible.
+   * Bumps the local action seq.
+   */
+  sendFlagInteractIntent(
+    cx: number,
+    cy: number,
+    lx: number,
+    ly: number,
+    mode: "deposit" | "steal",
+    active: boolean,
+  ): void;
 }
 
 /**
@@ -272,6 +287,19 @@ export function createActionSenders(conn: Connection): ActionSenders {
           localX: lx,
           localY: ly,
           name,
+          clientSeq: seq,
+        },
+      });
+    },
+    sendFlagInteractIntent(cx, cy, lx, ly, mode, active) {
+      const seq = ++actionSeq;
+      conn.send({
+        flagInteract: {
+          chunkCoord: { cx, cy },
+          localX: lx,
+          localY: ly,
+          mode: mode === "deposit" ? 1 : 2,
+          active,
           clientSeq: seq,
         },
       });

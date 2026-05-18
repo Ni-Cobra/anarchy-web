@@ -48,6 +48,14 @@ message ClientMessage {
     // (success) or doesn't (any reject) so the client can re-derive
     // outcome without a typed ack.
     CreateFactionIntent create_faction = 33;
+    // Task 250 — continuous "deposit my XP into the flag's faction"
+    // / "steal XP from the flag's faction into my pool" intent. Sent
+    // on right-click-hold (Deposit) / left-click-hold (Steal) of an
+    // in-reach flag; sent again with `active=false` on release. The
+    // server keeps the latest per-player state and transfers XP at
+    // 10/s via a per-player milli-XP accumulator while the intent
+    // is `active`. Latest-wins per player.
+    FlagInteractIntent flag_interact = 34;
   }
 }
 
@@ -726,6 +734,12 @@ message TickUpdate {
   // every connected client receives the same delta because the
   // leaderboard HUD is global.
   FactionsDelta factions_delta = 11;
+  // Per-tick active flag-interact snapshots (task 250). One entry
+  // per (player, flag, mode) currently transferring XP. Scoped to
+  // the receiver's view window by the flag's chunk. Empty when no
+  // flag interact is active anywhere in view this tick — the
+  // common case.
+  repeated FlagInteractSnapshot flag_interacts = 12;
 }
 
 // Server→client death notification (task 160). Emitted at the tick the
@@ -1392,6 +1406,56 @@ message CreateFactionIntent {
   // length `[1, 24]` chars after trim. Reject => silent drop.
   string name = 4;
   uint64 client_seq = 5;
+}
+
+// Whether a [`FlagInteractIntent`] is depositing XP from the player
+// into the targeted flag's faction or stealing XP back into the
+// player's pool (task 250). `FLAG_INTERACT_MODE_UNSPECIFIED` is the
+// proto3 default sentinel and is treated as a malformed intent
+// (silently dropped).
+enum FlagInteractMode {
+  FLAG_INTERACT_MODE_UNSPECIFIED = 0;
+  FLAG_INTERACT_MODE_DEPOSIT = 1;
+  FLAG_INTERACT_MODE_STEAL = 2;
+}
+
+// Client→server "interact with the flag at (chunk_coord, local_x,
+// local_y)" intent (task 250). Sent on press with `active=true` and
+// again on release with `active=false`. While active the server
+// transfers XP at `FLAG_XP_TRANSFER_PER_SECOND` between the player's
+// XP pool and the flag's faction pool (Deposit = player → faction,
+// Steal = faction → player) via a per-player milli-XP accumulator.
+// Per-tick admission re-validates: flag exists at coord; player
+// within `FLAG_INTERACT_RANGE_TILES`; deposit needs player.xp > 0;
+// steal needs faction.xp > 0. Failure clears the per-player state
+// silently. Same posture as other intent messages — latest-wins per
+// player. The targeted flag must be claimed (have a faction): an
+// un-claimed flag silently rejects.
+message FlagInteractIntent {
+  ChunkCoord chunk_coord = 1;
+  uint32 local_x = 2;
+  uint32 local_y = 3;
+  FlagInteractMode mode = 4;
+  bool active = 5;
+  uint64 client_seq = 6;
+}
+
+// Server→client per-tick snapshot of one currently-active flag
+// interact (task 250). The wire ships the player + flag coord +
+// mode so the renderer can draw a directional beam between the
+// player and the flag (Deposit: player → flag; Steal: flag →
+// player). Per-tick re-emit while the interact is admitted; absence
+// the next tick is the canonical "fade the beam" signal.
+//
+// Per-client compose scopes by the flag's chunk against the
+// receiver's view window — a beam to a flag outside the receiver's
+// view is dropped (the receiver wouldn't see the flag anyway).
+message FlagInteractSnapshot {
+  uint64 player_id = 1;
+  ChunkCoord flag_chunk = 2;
+  uint32 flag_local_x = 3;
+  uint32 flag_local_y = 4;
+  FlagInteractMode mode = 5;
 }
 
 // One faction's wire form (task 240). Mirrors the server's `Faction`

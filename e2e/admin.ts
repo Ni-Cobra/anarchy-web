@@ -344,3 +344,51 @@ export async function adminCreateFaction(
 export async function adminDestroyFaction(factionId: number): Promise<void> {
   await postOk(`${SERVER_URL}/admin/destroy-faction/${factionId}`);
 }
+
+/**
+ * Plant a `BlockType::Flag` directly on the top layer at the named
+ * cell with `FlagBlockState { color_index, owner_id: Some(playerId),
+ * faction_id: None }` (task 250). Bypasses the in-engine place path
+ * so the e2e can stamp a flag with a known owner without crafting
+ * via the UI.
+ */
+export async function adminPlaceFlag(
+  playerId: number,
+  cx: number,
+  cy: number,
+  lx: number,
+  ly: number,
+  color: number,
+): Promise<void> {
+  await postOk(
+    `${SERVER_URL}/admin/place-flag/${playerId}/${cx}/${cy}/${lx}/${ly}/${color}`,
+  );
+}
+
+/**
+ * Apply a held `FlagInteractIntent` admin-driven (task 250). Routes
+ * through `World::apply_flag_interact_intent` exactly like a wire
+ * frame would. After this call returns the per-tick
+ * `tick_flag_transfers` pass will start moving XP between the named
+ * flag's faction and `playerId` at 10/s while `mode` admission holds.
+ */
+export async function adminFlagInteract(
+  playerId: number,
+  cx: number,
+  cy: number,
+  lx: number,
+  ly: number,
+  mode: "deposit" | "steal",
+): Promise<void> {
+  await postOk(
+    `${SERVER_URL}/admin/flag-interact/${playerId}/${cx}/${cy}/${lx}/${ly}/${mode}`,
+  );
+}
+
+/**
+ * Release the player's current held flag-interact (task 250). Mirrors
+ * a wire `FlagInteractIntent { active: false }` frame.
+ */
+export async function adminFlagInteractRelease(playerId: number): Promise<void> {
+  await postOk(`${SERVER_URL}/admin/flag-interact-release/${playerId}`);
+}
