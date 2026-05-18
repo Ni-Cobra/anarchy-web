@@ -79,6 +79,19 @@ export interface ActionSenders {
     targetKind: "player" | "entity",
     targetId: number,
   ): void;
+  /**
+   * Task 240: ship a `CreateFactionIntent` for the flag at
+   * `(cx, cy, lx, ly)` with `name`. The server validates flag-exists,
+   * un-claimed, ownership, name shape + uniqueness; rejections are
+   * silent. Bumps the local action seq.
+   */
+  sendCreateFactionIntent(
+    cx: number,
+    cy: number,
+    lx: number,
+    ly: number,
+    name: string,
+  ): void;
 }
 
 /**
@@ -250,6 +263,18 @@ export function createActionSenders(conn: Connection): ActionSenders {
         payload.targetEntityId = targetId;
       }
       conn.send({ fireBlowgun: payload });
+    },
+    sendCreateFactionIntent(cx, cy, lx, ly, name) {
+      const seq = ++actionSeq;
+      conn.send({
+        createFaction: {
+          chunkCoord: { cx, cy },
+          localX: lx,
+          localY: ly,
+          name,
+          clientSeq: seq,
+        },
+      });
     },
   };
 }

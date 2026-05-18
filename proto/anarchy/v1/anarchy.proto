@@ -40,6 +40,14 @@ message ClientMessage {
     // cooldown + not-self, then spawns a homing `Projectile`. Latest-
     // wins per attacker. Silent-failure on rejection.
     FireBlowgunIntent fire_blowgun = 32;
+    // Task 240 — "create a faction named `name` on the flag at
+    // (chunk_coord, local_x, local_y)". The server validates flag
+    // exists + un-claimed + caller is placer, plus name shape +
+    // case-insensitive uniqueness. Silent-failure on rejection; the
+    // next tick's `factions_delta` either carries the new entry
+    // (success) or doesn't (any reject) so the client can re-derive
+    // outcome without a typed ack.
+    CreateFactionIntent create_faction = 33;
   }
 }
 
@@ -111,6 +119,10 @@ message ServerWelcome {
   // player-list HUD from this on welcome, then keeps it current via the
   // sibling `ConnectedPlayersList` broadcasts on every join/leave.
   ConnectedPlayersList initial_roster = 5;
+  // Task 240: initial faction-registry snapshot taken at admit time.
+  // The client populates its leaderboard HUD from this on welcome,
+  // then keeps it current via `TickUpdate.factions_delta` (ADR 0008 §7).
+  FactionsSnapshot initial_factions = 6;
 }
 
 // Server reply sent in response to a `ClientHello` whose admission failed.
@@ -706,6 +718,14 @@ message TickUpdate {
   // covers the impact position. Empty when no projectile impacts
   // resolved this tick.
   repeated ProjectileImpactEvent projectile_impacts = 10;
+  // Per-tick faction-registry delta (task 240, ADR 0008 §7). Carries
+  // every faction that was created / mutated this tick (`upserts`)
+  // plus every faction that was destroyed this tick (`removed`). The
+  // common case is both lists empty — the registry is rarely touched
+  // outside the create/destroy moments. Global (not view-scoped):
+  // every connected client receives the same delta because the
+  // leaderboard HUD is global.
+  FactionsDelta factions_delta = 11;
 }
 
 // Server→client death notification (task 160). Emitted at the tick the
@@ -1345,4 +1365,71 @@ message RecipeEntry {
 enum RecipeAvailability {
   RECIPE_AVAILABILITY_AFFORDABLE = 0;
   RECIPE_AVAILABILITY_PARTIAL_HINT = 1;
+}
+
+// === Factions (task 240, ADR 0008) ===
+//
+// A faction is a named entry bound to a placed `BLOCK_TYPE_FLAG` block.
+// Founded via `CreateFactionIntent`, destroyed when its source flag
+// breaks. The wire shape is small and global: every connected client
+// receives the same `FactionsSnapshot` on welcome and the same
+// `FactionsDelta` on each tick where the registry changed.
+
+// Client→server "create a faction named `name` bound to the flag at
+// `(chunk_coord, local_x, local_y)`" (task 240). The server validates
+// flag-exists + un-claimed, caller is the placer, and name shape +
+// case-insensitive uniqueness. Silent-failure on rejection — the
+// client re-derives outcome from whether the next tick's
+// `factions_delta` carries the requested entry. Latest-wins is NOT
+// used here: every submission is processed in arrival order so two
+// players racing the same name see deterministic ordering.
+message CreateFactionIntent {
+  ChunkCoord chunk_coord = 1;
+  uint32 local_x = 2;
+  uint32 local_y = 3;
+  // Display name. Server normalises by trimming leading/trailing
+  // ASCII whitespace; case is preserved. Charset: `[A-Za-z0-9 _-]+`,
+  // length `[1, 24]` chars after trim. Reject => silent drop.
+  string name = 4;
+  uint64 client_seq = 5;
+}
+
+// One faction's wire form (task 240). Mirrors the server's `Faction`
+// struct minus the `owner_id` and `created_at` fields (not needed by
+// the leaderboard HUD; can be added later without a wire shape break).
+message FactionSnapshot {
+  uint64 id = 1;
+  string name = 2;
+  uint64 xp = 3;
+  // World-space chunk of the bound flag.
+  ChunkCoord flag_chunk = 4;
+  // Local cell `(x, y)` of the bound flag inside `flag_chunk`. Bounded
+  // to `[0, LAYER_SIZE)` server-side; the client validates defensively.
+  uint32 flag_local_x = 5;
+  uint32 flag_local_y = 6;
+  // Color index of the founding flag (from the placing stack's
+  // `ItemSlot.extra.flag.color_index`). Surfaced so the HUD can paint a
+  // colored chip next to the faction name without re-fetching the
+  // chunk.
+  uint32 color_index = 7;
+}
+
+// Initial faction-registry snapshot shipped on `ServerWelcome.initial_factions`
+// (task 240). Empty when the world has no factions yet. The order of
+// `factions` matches the server's `BTreeMap<FactionId, _>` iteration
+// (ascending by id) so the wire form is deterministic.
+message FactionsSnapshot {
+  repeated FactionSnapshot factions = 1;
+}
+
+// Per-tick faction-registry delta carried on `TickUpdate.factions_delta`
+// (task 240, ADR 0008 §7). `upserts` carries every faction that was
+// created OR mutated this tick (the client replaces its cached entry
+// wholesale on either case). `removed` carries every faction id that
+// was destroyed this tick (the client retires the cached entry). Both
+// fields are empty in the common case — the registry only changes on
+// create / destroy moments today.
+message FactionsDelta {
+  repeated FactionSnapshot upserts = 1;
+  repeated uint64 removed = 2;
 }

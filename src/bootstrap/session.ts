@@ -26,7 +26,9 @@ import {
   ChestState,
   chestLocationFromKey,
   Inventory,
+  ItemId,
   LAYER_SIZE,
+  LeaderboardStore,
   LocalAttackChargeTracker,
   EffectKind,
   ProjectileStore,
@@ -61,8 +63,10 @@ import {
   mountDeathOverlay,
   mountHpBar,
   mountInventoryUi,
+  mountLeaderboardHud,
   mountPlayerListHud,
   mountSidePanel,
+  showCreateFactionDialog,
   mountSwordCooldownRing,
   mountXpLabel,
   type CraftingUiHandle,
@@ -103,6 +107,12 @@ export interface AnarchyHandle {
    * `location() === null` means no chest is open.
    */
   chestState: ChestState;
+  /**
+   * Task 240 faction-leaderboard mirror. Populated by the welcome's
+   * `initial_factions` snapshot and the per-tick `factions_delta`.
+   * Lets e2e specs inspect the registry without inspecting Three.js.
+   */
+  leaderboardStore: LeaderboardStore;
   getLocalPlayerId: () => number | null;
   sendMoveIntent: (dx: number, dy: number) => void;
   /**
@@ -410,6 +420,7 @@ export function constructSession(deps: SessionDeps): Session {
   const inventory = new Inventory();
   const chestState = new ChestState();
   const rosterStore = new RosterStore();
+  const leaderboardStore = new LeaderboardStore();
   // Task 200c: per-tick projectile mirror, written by the wire layer
   // and read by the renderer.
   const projectiles = new ProjectileStore();
@@ -551,6 +562,7 @@ export function constructSession(deps: SessionDeps): Session {
         inventory,
         chestSink: { chestState },
         rosterStore,
+        leaderboardStore,
         local: {
           setLocalPlayerId: (id) => {
             localPlayerId = id;
@@ -603,6 +615,7 @@ export function constructSession(deps: SessionDeps): Session {
     sendCloseChest,
     sendAttackIntent,
     sendFireBlowgunIntent,
+    sendCreateFactionIntent,
   } = createActionSenders(conn);
 
   const input = new InputController(
@@ -748,6 +761,7 @@ export function constructSession(deps: SessionDeps): Session {
     store: rosterStore,
     getLocalPlayerId: () => localPlayerId,
   });
+  const leaderboardHud = mountLeaderboardHud({ store: leaderboardStore });
   const coordsHud = mountCoordsHud();
   const hpBar = mountHpBar();
   const xpLabel = mountXpLabel();
@@ -813,6 +827,7 @@ export function constructSession(deps: SessionDeps): Session {
   teardowns.push(() => {
     window.cancelAnimationFrame(coordsRaf);
     playerListHud.unmount();
+    leaderboardHud.unmount();
     coordsHud.unmount();
     hpBar.unmount();
     xpLabel.unmount();
@@ -833,6 +848,21 @@ export function constructSession(deps: SessionDeps): Session {
       sendOpenChest,
       sendAttackIntent,
       sendFireBlowgunIntent,
+      onPlaceDispatched: (cx, cy, lx, ly) => {
+        // Task 240: opening the create-faction dialog is part of the
+        // place-block flow when the selected item is a Flag. Server
+        // validates ownership + un-claimed on the eventual
+        // `CreateFactionIntent`, so we open optimistically as soon as
+        // the place is dispatched without waiting for a server echo.
+        const slot = inventoryUi.selectedHotbarSlot();
+        const stack = inventory.slot(slot);
+        if (stack === null) return;
+        if (stack.item !== ItemId.Flag) return;
+        showCreateFactionDialog({
+          onSubmit: (name) =>
+            sendCreateFactionIntent(cx, cy, lx, ly, name),
+        });
+      },
       onBlowgunFireDispatched: (t) => {
         lastBlowgunFireMs = t;
       },
@@ -901,6 +931,7 @@ export function constructSession(deps: SessionDeps): Session {
     terrain,
     inventory,
     chestState,
+    leaderboardStore,
     getLocalPlayerId: () => localPlayerId,
     sendMoveIntent,
     sendBreakIntent,

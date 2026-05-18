@@ -65,6 +65,22 @@ export { ChestState } from "./chest_state.js";
 export type { ChestLocation } from "./chest_state.js";
 export { RosterStore } from "./roster.js";
 export type { Roster, RosterEntry, RosterListener } from "./roster.js";
+export {
+  LeaderboardStore,
+  currentLeader,
+  sortedByXpDesc,
+} from "./leaderboard.js";
+export type {
+  FactionEntry,
+  FactionId,
+  LeaderboardListener,
+} from "./leaderboard.js";
+export {
+  MAX_FACTION_NAME_LEN,
+  MIN_FACTION_NAME_LEN,
+  validateFactionName,
+} from "./faction_name.js";
+export type { FactionNameError } from "./faction_name.js";
 export { chestKeyOf, chestLocationFromKey } from "./chest_key.js";
 export type { ChestKey } from "./chest_key.js";
 export {

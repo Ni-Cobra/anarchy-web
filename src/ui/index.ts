@@ -71,3 +71,16 @@ export type {
 } from "./death_overlay.js";
 export { mountXpLabel } from "./xp_label.js";
 export type { XpLabelHandle } from "./xp_label.js";
+export { mountLeaderboardHud, formatFactionCoords } from "./leaderboard_hud.js";
+export type {
+  LeaderboardHudHandle,
+  LeaderboardHudOptions,
+} from "./leaderboard_hud.js";
+export {
+  createFactionErrorMessage,
+  showCreateFactionDialog,
+} from "./create_faction_dialog.js";
+export type {
+  CreateFactionDialogHandle,
+  CreateFactionDialogOptions,
+} from "./create_faction_dialog.js";

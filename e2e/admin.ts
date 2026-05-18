@@ -303,3 +303,44 @@ export async function adminFireBlowgun(
     `${SERVER_URL}/admin/fire-blowgun/${attackerId}/${targetKind}/${targetId}`,
   );
 }
+
+/**
+ * Synthesise an admin-driven `CreateFactionIntent` from `playerId`
+ * against the flag at `(cx, cy, lx, ly)` with `name` (task 240).
+ * Routes through the same admission path the wire intent would
+ * (`World::try_create_faction`). Returns the allocated faction id on
+ * success; throws on rejection (status 4xx) carrying the server's
+ * typed reason body — `no_flag_at_coord` (404), `flag_already_claimed`
+ * (409), `not_placer` (403), `name_invalid` / `name_taken` (400).
+ */
+export async function adminCreateFaction(
+  cx: number,
+  cy: number,
+  lx: number,
+  ly: number,
+  playerId: number,
+  name: string,
+): Promise<number> {
+  const url = `${SERVER_URL}/admin/create-faction/${cx}/${cy}/${lx}/${ly}/${playerId}/${encodeURIComponent(name)}`;
+  const r = await fetch(url, { method: "POST" });
+  const body = (await r.text()).trim();
+  if (!r.ok) {
+    throw new Error(
+      `admin create-faction failed: POST ${url} → ${r.status} ${r.statusText} ${body}`,
+    );
+  }
+  const id = Number.parseInt(body, 10);
+  if (!Number.isFinite(id)) {
+    throw new Error(`admin create-faction returned non-numeric id: "${body}"`);
+  }
+  return id;
+}
+
+/**
+ * Destroy faction `factionId` (task 240) — equivalent to breaking the
+ * bound flag but without disturbing the world geometry. Idempotent:
+ * a stale id silently succeeds.
+ */
+export async function adminDestroyFaction(factionId: number): Promise<void> {
+  await postOk(`${SERVER_URL}/admin/destroy-faction/${factionId}`);
+}

@@ -17,6 +17,7 @@ import { anarchy } from "../gen/anarchy.js";
 import {
   type ChunkCoord,
   type Inventory,
+  type LeaderboardStore,
   type PlayerId,
   type RosterStore,
   type SnapshotBuffer,
@@ -27,6 +28,10 @@ import {
 import { applyChestUpdate, type ChestSink } from "./wire_chest.js";
 import { toNumber } from "./wire_codec.js";
 import { applyInventoryUpdate } from "./wire_inventory.js";
+import {
+  applyFactionsDelta,
+  applyFactionsSnapshot,
+} from "./wire_leaderboard.js";
 import { applyConnectedPlayersList } from "./wire_roster.js";
 import {
   applyTickUpdate,
@@ -114,6 +119,13 @@ export interface WireDeps {
    * the per-join/leave `ConnectedPlayersList` broadcasts feed the HUD.
    */
   readonly rosterStore?: RosterStore;
+  /**
+   * Task 240 faction-leaderboard store. Optional — tests that don't
+   * exercise the leaderboard HUD leave it absent; production bootstrap
+   * mounts a `LeaderboardStore` here so the welcome's
+   * `initial_factions` and the per-tick `factions_delta` feed the HUD.
+   */
+  readonly leaderboardStore?: LeaderboardStore;
   /** Wall-clock for stamping samples. Override in tests. */
   readonly now?: () => number;
 }
@@ -144,11 +156,24 @@ export function applyServerMessage(
     if (msg.welcome.initialRoster) {
       applyConnectedPlayersList(msg.welcome.initialRoster, deps.rosterStore);
     }
+    // Task 240: seed the leaderboard from the welcome's
+    // `initial_factions` snapshot so the leaderboard HUD paints
+    // before the first per-tick `factions_delta` arrives.
+    if (msg.welcome.initialFactions) {
+      applyFactionsSnapshot(
+        msg.welcome.initialFactions,
+        deps.leaderboardStore,
+      );
+    }
     return;
   }
 
   if (msg.tickUpdate) {
     applyTickUpdate(msg.tickUpdate, deps, now());
+    // Task 240: leaderboard delta fans into the cached table on every
+    // tick. The handler short-circuits when both lists are empty so
+    // the common case is cheap.
+    applyFactionsDelta(msg.tickUpdate.factionsDelta, deps.leaderboardStore);
     return;
   }
 

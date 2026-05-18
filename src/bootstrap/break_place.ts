@@ -62,6 +62,19 @@ export interface BreakPlaceDeps {
     ly: number,
   ) => void;
   /**
+   * Task 240: notify the session that a place was just dispatched at
+   * `(cx, cy, lx, ly)`. The session uses this to open the create-
+   * faction dialog when the placed item was a Flag — break_place
+   * doesn't know about factions, but it owns the place gate so the
+   * dispatch order is correct.
+   */
+  readonly onPlaceDispatched?: (
+    cx: number,
+    cy: number,
+    lx: number,
+    ly: number,
+  ) => void;
+  /**
    * Task 420: right-click on a chest in range opens it. Optional — tests
    * that don't exercise the chest path leave it absent.
    */
@@ -418,6 +431,7 @@ export function attachBreakAndPlace(
       return;
     }
     deps.sendPlaceBlock(place.cx, place.cy, place.lx, place.ly);
+    deps.onPlaceDispatched?.(place.cx, place.cy, place.lx, place.ly);
   };
   target.addEventListener("mousedown", onMousedown);
 
