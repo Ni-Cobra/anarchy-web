@@ -6,7 +6,7 @@ import { adminDamagePlayer, adminTeleport } from "./admin";
 // `PlayerDeathEvent` at the same tick the local player's HP first
 // crosses zero; the client triggers a full-screen black overlay with a
 // large red "You died" title, then fades the two elements over
-// independent 1 s / 2 s timelines.
+// independent 4 s / 8 s timelines.
 
 interface SelfView {
   id: number;
@@ -30,7 +30,7 @@ async function openClient(page: Page, username: string): Promise<SelfView> {
     .then((h) => h.jsonValue() as Promise<SelfView>);
 }
 
-test("local death triggers the overlay; black fades over 1 s, title over 2 s", async ({
+test("local death triggers the overlay; black fades over 4 s, title over 8 s", async ({
   browser,
 }) => {
   const ctx = await browser.newContext();
@@ -69,14 +69,14 @@ test("local death triggers the overlay; black fades over 1 s, title over 2 s", a
     await expect(title).toHaveText("You died");
     await expect(title).toHaveAttribute("aria-live", "assertive");
 
-    // Black layer fades over 1 s.
+    // Black layer fades over 4 s.
     await page.waitForFunction(
       () => {
         const s = window.__anarchy!.getDeathOverlayState();
         return s.visible && s.blackOpacity < 0.05;
       },
       undefined,
-      { timeout: 1_600 },
+      { timeout: 5_000 },
     );
 
     // Title stays visible past the black layer's fade, then both clear.
@@ -86,7 +86,7 @@ test("local death triggers the overlay; black fades over 1 s, title over 2 s", a
         return !s.visible && s.titleOpacity === 0 && s.blackOpacity === 0;
       },
       undefined,
-      { timeout: 2_200 },
+      { timeout: 6_000 },
     );
   } finally {
     await ctx.close();

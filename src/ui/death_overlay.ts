@@ -5,8 +5,8 @@
  * the overlay paints the screen fully black with a large red "You died"
  * title, then fades both elements over independent timelines:
  *
- *   - Black layer  : opacity 1 → 0 over 1.0 s
- *   - Title text   : opacity 1 → 0 over 2.0 s
+ *   - Black layer  : opacity 1 → 0 over 4.0 s
+ *   - Title text   : opacity 1 → 0 over 8.0 s
  *
  * Both fades are JS-driven via `tick(nowMs)` from the existing per-frame
  * rAF loop in `session.ts` — no CSS transitions, because the trigger needs
@@ -24,9 +24,9 @@ const STYLE_ID = "anarchy-death-overlay-style";
 const ROOT_ID = "anarchy-death-overlay";
 
 /** Black overlay fade duration (seconds). */
-export const BLACK_FADE_SECONDS = 1.0;
+export const BLACK_FADE_SECONDS = 4.0;
 /** Title text fade duration (seconds). */
-export const TITLE_FADE_SECONDS = 2.0;
+export const TITLE_FADE_SECONDS = 8.0;
 
 const STYLE = `
   #${ROOT_ID} {
