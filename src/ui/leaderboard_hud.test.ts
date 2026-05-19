@@ -23,10 +23,12 @@ function entry(
 }
 
 describe("formatFactionCoords", () => {
-  test("renders chunk + local as cx,cy:lx,ly", () => {
+  test("renders flag chunk + local as global tile coords", () => {
+    // chunk (2, -1), local (3, 5): globalX = 2 * 16 + 3 = 35,
+    // globalY = -1 * 16 + 5 = -11.
     expect(
-      formatFactionCoords(entry(1, "A", 0, 0, [-3, 7], [5, 11])),
-    ).toBe("-3,7:5,11");
+      formatFactionCoords(entry(1, "A", 0, 0, [2, -1], [3, 5])),
+    ).toBe("35, -11");
   });
 });
 

@@ -15,6 +15,7 @@
  * mine?" today. Future polish can layer that on top.
  */
 
+import { CHUNK_SIZE } from "../game/terrain.js";
 import {
   type FactionEntry,
   type LeaderboardStore,
@@ -113,11 +114,11 @@ const STYLE = `
   }
 `;
 
-/** Render a faction's flag coords as `cx,cy:lx,ly` for the dropdown. */
+/** Render a faction's flag coords as `globalX, globalY` for the dropdown. */
 export function formatFactionCoords(entry: FactionEntry): string {
   const [cx, cy] = entry.flagChunk;
   const [lx, ly] = entry.flagLocal;
-  return `${cx},${cy}:${lx},${ly}`;
+  return `${cx * CHUNK_SIZE + lx}, ${cy * CHUNK_SIZE + ly}`;
 }
 
 export interface LeaderboardHudHandle {
