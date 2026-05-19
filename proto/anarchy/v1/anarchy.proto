@@ -504,12 +504,12 @@ enum ToolKind {
   // mirrored to the wire so a future task can render the held sword
   // sprite without an extra schema bump.
   TOOL_KIND_SWORD = 5;
-  // Task 190 sixth equipment slot — blowgun (single tier, single item).
-  // Mutually exclusive with the sword slot per the task brief: equipping
-  // a blowgun unequips the sword (and vice versa) so the player carries
-  // at most one combat tool at a time. The right-click shoot mechanic
-  // lands in task 200.
-  TOOL_KIND_BLOWGUN = 6;
+  // Task 190 originally allocated a dedicated `TOOL_KIND_BLOWGUN = 6`
+  // mutually exclusive with the sword slot. Task 310 re-homed the blowgun
+  // into `TOOL_KIND_UTILITY` (shared with the lantern), so clients now send
+  // `TOOL_KIND_UTILITY` when equipping a blowgun. The old tag is reserved.
+  reserved 6;
+  reserved "TOOL_KIND_BLOWGUN";
 }
 
 // Client→server "equip the tool currently at `source_slot` into the
@@ -1334,12 +1334,12 @@ message InventoryUpdate {
   // `equipped_pickaxe_slot`. Empty by default; populated when a sword
   // tier is equipped. The matching cell paints red.
   int32 equipped_sword_slot = 10;
-  // Inventory slot index of the equipped blowgun (task 190) — see
-  // `equipped_pickaxe_slot`. Empty by default; populated when the single
-  // blowgun item is equipped. The matching cell paints with the same
-  // highlight as the sword slot (combat-tool family) since the two are
-  // mutually exclusive — only one can be populated at a time.
-  int32 equipped_blowgun_slot = 11;
+  // Task 190 originally shipped `int32 equipped_blowgun_slot = 11` for the
+  // dedicated blowgun slot. Task 310 collapsed the blowgun into
+  // `equipped_utility_slot`; the field is reserved so a future schema
+  // edit can't reuse the tag with a different shape.
+  reserved 11;
+  reserved "equipped_blowgun_slot";
   // Field 6 originally carried `repeated string craftable_recipe_ids`
   // (task 090). Task 100 reshaped it into a richer
   // `repeated RecipeEntry` so each row carries its availability tier

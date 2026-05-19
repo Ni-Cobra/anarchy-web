@@ -413,7 +413,7 @@ describe("attachBreakAndPlace — task 200c blowgun routing", () => {
     if (darts > 0) {
       slots[1] = { item: ItemId.PoisonDart, count: darts };
     }
-    inv.replaceFromWire(slots, null, null, [], null, null, null, 0);
+    inv.replaceFromWire(slots, null, null, [], 0, null, null);
     return inv;
   }
 

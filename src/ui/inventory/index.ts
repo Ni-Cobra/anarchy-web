@@ -252,8 +252,6 @@ export function mountInventoryUi(
             return "Shovel slot (empty)";
           case "sword":
             return "Sword slot (empty)";
-          case "blowgun":
-            return "Blowgun slot (empty)";
           case "utility":
             return "Utility slot (empty)";
         }

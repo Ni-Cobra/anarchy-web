@@ -387,9 +387,13 @@ export function attachBreakAndPlace(
     // `FireBlowgunIntent`. Otherwise the click silently no-ops (mirrors
     // the attack-pick silent-drop posture). The local cooldown gate
     // suppresses repeat sends inside the same server cooldown window.
+    //
+    // Task 310: the blowgun shares the utility slot with the lantern.
+    // The fire path is only armed when the utility slot specifically
+    // holds the blowgun (a lantern there leaves right-click as place).
     if (
       deps.sendFireBlowgunIntent &&
-      deps.getInventory().getEquipped("blowgun") === ItemId.Blowgun
+      deps.getInventory().getEquipped("utility") === ItemId.Blowgun
     ) {
       // Suppress any place-block / open-chest fall-through while the
       // blowgun is equipped, regardless of whether the click resolves a

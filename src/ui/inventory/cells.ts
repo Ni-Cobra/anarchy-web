@@ -74,10 +74,6 @@ function utilityPlaceholder(kind: ToolKind): ItemStack | null {
       return { item: ItemId.WoodShovel, count: 1 };
     case "sword":
       return { item: ItemId.WoodSword, count: 1 };
-    case "blowgun":
-      // Task 190 single-tier blowgun has no dedicated empty-slot icon yet.
-      // The future ready-to-fire indicator (task 200) will land here.
-      return null;
     case "utility":
       return null;
   }

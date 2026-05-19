@@ -74,9 +74,9 @@ async function setupAttackerWithBlowgun(
   );
   const slot = await findSlotFor(page, AdminItemId.Blowgun);
   expect(slot).toBeGreaterThanOrEqual(0);
-  await adminEquipTool(playerId, "blowgun", slot);
+  await adminEquipTool(playerId, "utility", slot);
   await page.waitForFunction(
-    () => window.__anarchy!.inventory.getEquippedSlot("blowgun") !== null,
+    () => window.__anarchy!.inventory.getEquippedSlot("utility") !== null,
   );
 }
 

@@ -272,8 +272,7 @@ export type AdminToolKind =
   | "axe"
   | "utility"
   | "shovel"
-  | "sword"
-  | "blowgun";
+  | "sword";
 
 export async function adminEquipTool(
   playerId: number,

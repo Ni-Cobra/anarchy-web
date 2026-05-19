@@ -126,8 +126,6 @@ function toolKindToWire(kind: ToolKind): number {
       return 4;
     case "sword":
       return 5;
-    case "blowgun":
-      return 6;
   }
 }
 

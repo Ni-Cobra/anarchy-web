@@ -4,8 +4,9 @@ import { AdminItemId, adminGiveItem } from "./admin";
 
 // Task 190 e2e: craft a blowgun (3 Sticks → 1 Blowgun) and a poison-dart
 // stack (1 VenomSack + 2 Sticks → 4 PoisonDart) from admin-granted
-// ingredients, then equip the blowgun and verify it shares a slot with
-// the sword (equipping either clears the other).
+// ingredients. Task 310 re-homed the blowgun into the utility slot
+// (shared with the lantern), so the post-craft auto-equip lands in
+// `getEquippedSlot("utility")` and sword + blowgun can coexist.
 
 const ITEM_ID_BLOWGUN = AdminItemId.Blowgun;
 const ITEM_ID_POISON_DART = AdminItemId.PoisonDart;
@@ -63,7 +64,7 @@ test("craft blowgun from sticks, craft poison darts from venom + sticks", async 
       return (
         inv.countOf(stickId) === 2 &&
         inv.countOf(blowgunId) === 1 &&
-        inv.getEquippedSlot("blowgun") !== null
+        inv.getEquippedSlot("utility") !== null
       );
     },
     { stickId: ITEM_ID_STICK, blowgunId: ITEM_ID_BLOWGUN },
@@ -94,7 +95,7 @@ test("craft blowgun from sticks, craft poison darts from venom + sticks", async 
   );
 });
 
-test("equipping a sword unequips the blowgun (combat-tool slot exclusion)", async ({
+test("task 310: sword and blowgun coexist (no combat-tool slot exclusion)", async ({
   page,
 }) => {
   await openClient(page, "blow-equip");
@@ -104,7 +105,8 @@ test("equipping a sword unequips the blowgun (combat-tool slot exclusion)", asyn
 
   // Seed a blowgun + a wood-sword directly via admin. `give-item` uses raw
   // `try_add` (no auto-equip), so this test ships explicit `EquipTool`
-  // actions through the wire to drive the mutual-exclusion path.
+  // actions through the wire. Task 310 dropped the sword↔blowgun
+  // exclusion; both slots stay filled across re-equips.
   await adminGiveItem(playerId!, AdminItemId.Blowgun, 1);
   await adminGiveItem(playerId!, AdminItemId.WoodSword, 1);
   await page.waitForFunction(
@@ -130,20 +132,20 @@ test("equipping a sword unequips the blowgun (combat-tool slot exclusion)", asyn
   const swordSlot = await findSlot(ITEM_ID_WOOD_SWORD);
   expect(swordSlot).toBeGreaterThanOrEqual(0);
 
-  // Equip the blowgun via the wire.
+  // Equip the blowgun into the utility slot.
   await page.evaluate((slot: number) => {
-    window.__anarchy!.sendEquipTool(slot, "blowgun");
+    window.__anarchy!.sendEquipTool(slot, "utility");
   }, blowgunSlot);
   await expect
     .poll(async () =>
       page.evaluate(() => ({
         sword: window.__anarchy!.inventory.getEquippedSlot("sword"),
-        blowgun: window.__anarchy!.inventory.getEquippedSlot("blowgun"),
+        utility: window.__anarchy!.inventory.getEquippedSlot("utility"),
       })),
     )
-    .toEqual({ sword: null, blowgun: blowgunSlot });
+    .toEqual({ sword: null, utility: blowgunSlot });
 
-  // Now equip the sword — the blowgun slot must clear.
+  // Equip the sword — the utility slot (blowgun) must stay in place.
   await page.evaluate((slot: number) => {
     window.__anarchy!.sendEquipTool(slot, "sword");
   }, swordSlot);
@@ -151,22 +153,8 @@ test("equipping a sword unequips the blowgun (combat-tool slot exclusion)", asyn
     .poll(async () =>
       page.evaluate(() => ({
         sword: window.__anarchy!.inventory.getEquippedSlot("sword"),
-        blowgun: window.__anarchy!.inventory.getEquippedSlot("blowgun"),
+        utility: window.__anarchy!.inventory.getEquippedSlot("utility"),
       })),
     )
-    .toEqual({ sword: swordSlot, blowgun: null });
-
-  // Re-equip the blowgun — the sword slot must clear again (reverse
-  // direction of the exclusion).
-  await page.evaluate((slot: number) => {
-    window.__anarchy!.sendEquipTool(slot, "blowgun");
-  }, blowgunSlot);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => ({
-        sword: window.__anarchy!.inventory.getEquippedSlot("sword"),
-        blowgun: window.__anarchy!.inventory.getEquippedSlot("blowgun"),
-      })),
-    )
-    .toEqual({ sword: null, blowgun: blowgunSlot });
+    .toEqual({ sword: swordSlot, utility: blowgunSlot });
 });

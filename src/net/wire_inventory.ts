@@ -49,7 +49,6 @@ export function applyInventoryUpdate(
   const equippedUtilitySlot = equippedSlotFromWire(update.equippedUtilitySlot);
   const equippedShovelSlot = equippedSlotFromWire(update.equippedShovelSlot);
   const equippedSwordSlot = equippedSlotFromWire(update.equippedSwordSlot);
-  const equippedBlowgunSlot = equippedSlotFromWire(update.equippedBlowgunSlot);
   const craftableRecipes = (update.craftableRecipes ?? [])
     .map(craftableRecipeFromWire)
     .filter((r): r is CraftableRecipe => r !== null);
@@ -61,7 +60,6 @@ export function applyInventoryUpdate(
     equippedUtilitySlot,
     equippedShovelSlot,
     equippedSwordSlot,
-    equippedBlowgunSlot,
   );
 }
 
