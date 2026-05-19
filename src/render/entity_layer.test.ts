@@ -88,15 +88,13 @@ describe("spider mesh dimensions", () => {
     expect(SPIDER_HEIGHT).toBeCloseTo(0.25, 10);
   });
 
-  it("sits with its bottom face above the tallest walkable top-layer block", () => {
-    // Mirrors the renderer constants in `terrain.ts`: the tallest
-    // walkable (non-solid) top-layer block is the Torch at
-    //   TORCH_BOTTOM (0.025) + TORCH_HEIGHT (0.85) = 0.875.
-    // The spider's bottom face must clear that so it draws *above* any
-    // walkable top-layer item co-occupying its tile (sticks/flowers/etc.).
-    const WALKABLE_TOP_LAYER_MAX_Y = 0.875;
+  it("sits with its bottom face flush with the ground slab (task 330)", () => {
+    // Task 330 dropped the lifted offset so a spider on bare grass no
+    // longer hovers a full tile-unit above the ground. The accepted
+    // tradeoff is that the cube may clip behind a torch/sticks/flower
+    // billboard on a shared tile — visually less wrong than floating.
     const spiderBottomY = SPIDER_Y - SPIDER_HEIGHT / 2;
-    expect(spiderBottomY).toBeGreaterThanOrEqual(WALKABLE_TOP_LAYER_MAX_Y);
+    expect(spiderBottomY).toBe(0);
   });
 });
 

@@ -31,23 +31,16 @@ import { purgeMeshFlash } from "./mesh_flash.js";
 import { tileCenterToScene } from "./terrain.js";
 
 // Spider mesh dimensions (task 040). The spider renders as a small black
-// cube — a quarter-tile-side `BoxGeometry` lifted above the ground so it
-// draws clearly over walkable top-layer decor (sticks, flowers, bushes,
-// mushrooms, torches). The previous flat 0.6×0.05 slab sat flush with the
-// ground slab and was visually occluded by any taller top-layer item
-// sharing the tile.
+// cube — a quarter-tile-side `BoxGeometry` sitting on the ground slab.
 export const SPIDER_SIDE = 0.25;
 export const SPIDER_HEIGHT = 0.25;
-// Worst-case (tallest) walkable top-layer block top, in scene-Y. Sticks /
-// flowers / bushes / mushrooms / torches are all non-solid server-side
-// and so a spider can co-occupy their tile; the torch is the tallest of
-// the bunch at ~0.875 (terrain.ts: TORCH_BOTTOM + TORCH_HEIGHT). Placing
-// the cube's bottom face at this height guarantees the spider always
-// sits visually *above* any walkable top-layer item sharing its tile.
-// Non-walkable top-layer (Tree, full-cell blocks) can still clip the
-// cube — that's fine because the server's walkability gate refuses
-// solid-top destinations, so a spider never enters those tiles.
-const SPIDER_GROUND_OFFSET = 0.875;
+// Bottom face sits flush with the ground slab. A spider co-occupying a
+// walkable top-layer decor tile (sticks / flowers / bushes / mushrooms /
+// torches) may clip behind the decor billboard — accepted tradeoff
+// (task 330): the previous lifted-cube offset made lone spiders on bare
+// grass visually hover a full tile-unit above the ground, which read as
+// more wrong than the occasional decor clip.
+const SPIDER_GROUND_OFFSET = 0.0;
 export const SPIDER_Y = SPIDER_GROUND_OFFSET + SPIDER_HEIGHT / 2;
 const SPIDER_COLOR = 0x000000;
 
